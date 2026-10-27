@@ -52,7 +52,7 @@ cmake --build build-win -j
 | 1–7 / wheel | Switch engine |
 | Tab / Shift+Tab | Cycle target |
 | F | Point the nose at the target |
-| G / Shift+G | Warp to target / warp to near its surface |
+| G / Shift+G | Warp to target / warp to near its surface (with a ~1.7 s warp animation; controls are locked during it) |
 | T / Shift+T | Autopilot / autopilot with automatic engine selection |
 | Right mouse button (hold) | Zoom |
 | V | Chase view / cockpit view |

@@ -356,6 +356,7 @@ static Mesh GenRing(float inner, float outer, int segs) {
 struct Cam {
     V3 pos, fwd, up, right;
     double fovy = 60 * DEG;
+    double fovBase = 60 * DEG;  // ズーム込みの視野角（fovy はこれにワープ演出を加えたもの）
     double focal = 1;  // ピクセル単位の焦点距離
     float W = 1280, H = 720;
 };
@@ -607,6 +608,7 @@ struct Options {
     bool warp = false, land = false, face = false, autopilot = false, autoEngine = false, cockpit = false, help = false;
     int engine = -1;
     double throttleSec = 0;
+    double warpAnimAt = -1;  // 指定秒にワープ演出を開始（確認用）
     double timeScale = 1;
     const char* lang = nullptr;  // "ja" / "en"
 };
@@ -619,6 +621,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--frames") o.frames = atoi(next());
         else if (a == "--target") o.target = atoi(next());
         else if (a == "--warp") o.warp = true;
+        else if (a == "--warp-anim") o.warpAnimAt = atof(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
         else if (a == "--autopilot") o.autopilot = true;
@@ -658,6 +661,11 @@ struct App {
     double apRemain = 0;    // 到着点までの残り距離 km
     std::string toast;
     double toastTime = 0;
+    // ワープ演出
+    double warpT = -1;      // 演出開始からの実時間 秒（-1: 停止中）
+    int warpTarget = 0;
+    bool warpLand = false, warpJumped = false;
+    double warpPhase = 0;   // 光の筋の流れ（強さに応じて進む）
     Mesh sphere{}, ring{};
     Mesh shipMesh{};
     Material shipMat{};
@@ -726,6 +734,54 @@ static void WarpTo(App& app, int ti, bool land) {
 static void FaceTarget(App& app) {
     V3 d = app.B[app.target].pos - ShipWorld(app);
     app.ship.q = QuatFromBasis(d, ShipUp(app.ship));
+}
+
+// ---------------------------------------------------------------- ワープ演出
+// 加速（機首を目標へ向けながら光の筋が伸びる）→ 閃光の頂点で移動 → 到着（筋が縮んで消える）
+static const double WARP_CHARGE = 0.9, WARP_ARRIVE = 0.8;  // 実時間 秒
+
+static void StartWarp(App& app, int ti, bool land) {
+    if (app.warpT >= 0) return;
+    app.warpT = 0;
+    app.warpTarget = ti;
+    app.warpLand = land;
+    app.warpJumped = false;
+    app.ship.speed = 0;
+    app.autopilot = false;
+}
+
+// 演出の強さ 0..1（光の筋の長さ・視野角の広がり）
+static double WarpIntensity(const App& app) {
+    if (app.warpT < 0) return 0;
+    if (app.warpT < WARP_CHARGE) { double k = app.warpT / WARP_CHARGE; return k * k; }
+    double k = 1 - std::min(1.0, (app.warpT - WARP_CHARGE) / WARP_ARRIVE);
+    return k * k * k;
+}
+
+// 移動の瞬間を頂点とする閃光 0..1
+static double WarpFlash(const App& app) {
+    if (app.warpT < 0) return 0;
+    double d = app.warpT - WARP_CHARGE;
+    return d < 0 ? std::exp(d * 14.0) : std::exp(-d * 6.0);
+}
+
+static double TurnToward(Ship& s, V3 desired, double maxAngle);
+
+static void UpdateWarp(App& app, double dt) {
+    if (app.warpT < 0) return;
+    app.warpT += dt;
+    app.warpPhase += dt * (0.4 + 4.0 * WarpIntensity(app));
+    if (!app.warpJumped) {
+        V3 d = app.B[app.warpTarget].pos - ShipWorld(app);
+        TurnToward(app.ship, d, 3.0 * dt);
+        app.ship.thrusting = true;
+        if (app.warpT >= WARP_CHARGE) {
+            WarpTo(app, app.warpTarget, app.warpLand);
+            app.warpJumped = true;
+        }
+    } else if (app.warpT >= WARP_CHARGE + WARP_ARRIVE) {
+        app.warpT = -1;
+    }
 }
 
 // ---------------------------------------------------------------- ゲームパッド
@@ -816,8 +872,10 @@ static void HandleInput(App& app, double dt) {
         DisableCursor();
     }
 
+    bool warping = app.warpT >= 0;  // ワープ演出中は操縦を受け付けない
+
     // 回転
-    double zoomK = app.cam.fovy / (60 * DEG);
+    double zoomK = app.cam.fovBase / (60 * DEG);
     double pitch = 0, yaw = 0, roll = 0;
     bool manual = false;  // 手動操作があれば自動操縦を解除する
     if (app.mouseCaptured) {
@@ -842,7 +900,7 @@ static void HandleInput(App& app, double dt) {
         manual = true;
     Quaternion r = QuaternionMultiply(QuaternionFromAxisAngle({0, 1, 0}, (float)yaw), QuaternionFromAxisAngle({1, 0, 0}, (float)pitch));
     r = QuaternionMultiply(r, QuaternionFromAxisAngle({0, 0, 1}, (float)roll));
-    s.q = QuaternionNormalize(QuaternionMultiply(s.q, r));
+    if (!warping) s.q = QuaternionNormalize(QuaternionMultiply(s.q, r));
 
     // エンジン
     int engineBefore = s.engine;
@@ -861,6 +919,7 @@ static void HandleInput(App& app, double dt) {
     double sdt = SimDt(app, dt);
     double throttle = std::max(IsKeyDown(KEY_W) ? 1.0 : 0.0, pad.throttle);
     double brake = std::max(IsKeyDown(KEY_S) ? 1.0 : 0.0, pad.brake);
+    if (warping) throttle = brake = 0;
     if (throttle > 0 || brake > 0 || IsKeyPressed(KEY_X) || pad.stop) manual = true;
     if (manual && app.autopilot) {
         app.autopilot = false;
@@ -888,8 +947,8 @@ static void HandleInput(App& app, double dt) {
     int n = (int)app.B.size();
     if (IsKeyPressed(KEY_TAB)) app.target = (app.target + (shift ? n - 1 : 1)) % n;
     if (pad.nextTarget) app.target = (app.target + 1) % n;
-    if (IsKeyPressed(KEY_F)) FaceTarget(app);
-    if (IsKeyPressed(KEY_T) || pad.autopilot) {
+    if (IsKeyPressed(KEY_F) && !warping) FaceTarget(app);
+    if ((IsKeyPressed(KEY_T) || pad.autopilot) && !warping) {
         if (app.autopilot) {
             app.autopilot = false;
             Toast(app, T(UI_AP_OFF));
@@ -899,8 +958,8 @@ static void HandleInput(App& app, double dt) {
             Toast(app, T(shift ? UI_AP_ON_AUTO : UI_AP_ON));
         }
     }
-    if (IsKeyPressed(KEY_G)) WarpTo(app, app.target, shift);
-    if (pad.warp || pad.land) WarpTo(app, app.target, pad.land);
+    if (IsKeyPressed(KEY_G)) StartWarp(app, app.target, shift);
+    if (pad.warp || pad.land) StartWarp(app, app.target, pad.land);
 
     // 表示
     if (IsKeyPressed(KEY_V) || pad.view) { app.cockpit = !app.cockpit; Toast(app, T(app.cockpit ? UI_VIEW_COCKPIT : UI_VIEW_CHASE)); }
@@ -1051,13 +1110,22 @@ static void UpdateCamera(App& app) {
     c.W = (float)GetScreenWidth();
     c.H = (float)GetScreenHeight();
     double targetFov = (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || app.padZoom) ? 8 * DEG : 60 * DEG;
-    c.fovy += (targetFov - c.fovy) * std::min(1.0, GetFrameTime() * 10.0);
+    c.fovBase += (targetFov - c.fovBase) * std::min(1.0, GetFrameTime() * 10.0);
+    double wi = WarpIntensity(app);
+    c.fovy = std::min(150 * DEG, c.fovBase * (1.0 + 0.75 * wi));  // ワープ中は視野が広がる
     c.focal = c.H * 0.5 / std::tan(c.fovy * 0.5);
     c.fwd = ShipFwd(s);
     c.up = ShipUp(s);
     c.right = ShipRight(s);
     V3 sw = ShipWorld(app);
-    c.pos = app.cockpit ? sw + c.up * 0.0025 : sw - c.fwd * 0.055 + c.up * 0.013;
+    // ワープ中は自機が前へ飛び出し、カメラが置いていかれる。閃光の前後は小刻みに揺れる
+    double lag = 0.055 + (app.warpJumped ? 0.12 : 0.2) * wi;
+    c.pos = app.cockpit ? sw + c.up * 0.0025 : sw - c.fwd * lag + c.up * 0.013;
+    double shake = WarpFlash(app) * 0.0012;
+    if (shake > 0) {
+        double t = GetTime() * 61.0;
+        c.pos = c.pos + c.right * (std::sin(t) * shake) + c.up * (std::sin(t * 1.37 + 1.0) * shake);
+    }
     if (!std::isnan(app.camYaw)) {
         // 確認用: 自機の周囲を回る視点（yaw 0 = 真後ろ）
         double y = app.camYaw * DEG, p = app.camPitch * DEG;
@@ -1569,6 +1637,57 @@ static void DrawEngineBar(const App& app) {
     }
 }
 
+// ワープの 2D 演出: 星が放射状の光の筋になり、奥から光の粒が流れ、周辺が青く染まり、移動の瞬間に閃光
+static void DrawWarpEffect(const App& app) {
+    if (app.warpT < 0) return;
+    const Cam& c = app.cam;
+    double wi = WarpIntensity(app), flash = WarpFlash(app);
+    Vector2 ctr = {c.W * 0.5f, c.H * 0.5f};
+    float halfDiag = std::sqrt(c.W * c.W + c.H * c.H) * 0.5f;
+
+    BeginBlendMode(BLEND_ADDITIVE);
+    // 星の光の筋（画面中央から外へ伸びる）
+    if (wi > 0.01) {
+        float len = (float)(1.6 * wi);
+        for (size_t i = 0; i < app.stars.size(); i++) {
+            const Star& st = app.stars[i];
+            if (st.size <= 0 && i % 2) continue;  // 暗い星は半分に間引く（画面が白飛びしないように）
+            Vector2 p;
+            if (!Project(c, st.dir, &p)) continue;
+            Vector2 v = {p.x - ctr.x, p.y - ctr.y};
+            float r = std::sqrt(v.x * v.x + v.y * v.y) / halfDiag;
+            if (r > 1.2f) continue;
+            Vector2 q = {p.x + v.x * len * r, p.y + v.y * len * r};
+            Color col = st.col;
+            col.a = (unsigned char)(std::min(1.0, 0.25 + wi) * col.a);
+            DrawLineEx(p, q, st.size > 0 ? 2.0f : 1.0f, col);
+        }
+    }
+    // 奥から手前へ流れる光の粒（トンネル）
+    float tunnel = (float)std::min(1.0, wi * 1.6);
+    if (tunnel > 0.01) {
+        for (int i = 0; i < 220; i++) {
+            double h1 = std::fmod(std::sin(i * 12.9898) * 43758.5453, 1.0);
+            double h2 = std::fmod(std::sin(i * 78.233) * 12543.123, 1.0);
+            double ang = std::fabs(h1) * 2 * PI;
+            double z = 1.0 - std::fmod(std::fabs(h2) + app.warpPhase * (0.6 + 0.4 * std::fabs(h1)), 1.0);  // 1(奥)→0(手前)
+            double z2 = std::min(1.0, z + 0.05 + 0.25 * wi);
+            float r1 = (float)(halfDiag * 0.06 / (z + 0.05)), r2 = (float)(halfDiag * 0.06 / (z2 + 0.05));
+            Vector2 dir = {(float)std::cos(ang), (float)std::sin(ang)};
+            Vector2 a = {ctr.x + dir.x * r2, ctr.y + dir.y * r2};
+            Vector2 b = {ctr.x + dir.x * r1, ctr.y + dir.y * r1};
+            float fade = (float)(tunnel * std::min(1.0, (1.0 - z) * 3.0));
+            Color col = i % 3 == 0 ? Color{255, 220, 170, 255} : Color{140, 190, 255, 255};
+            DrawLineEx(a, b, 1.5f + 2.5f * (float)(1.0 - z), Fade(col, fade * 0.8f));
+        }
+    }
+    EndBlendMode();
+
+    // 周辺の青い滲みと閃光
+    DrawCircleGradient((int)ctr.x, (int)ctr.y, halfDiag, {40, 90, 200, 0}, Fade({60, 120, 255, 255}, (float)(0.55 * wi)));
+    if (flash > 0.003) DrawRectangle(0, 0, (int)c.W, (int)c.H, Fade({225, 238, 255, 255}, (float)std::min(1.0, flash)));
+}
+
 static void DrawHUD(App& app) {
     const Cam& c = app.cam;
     const Ship& s = app.ship;
@@ -1732,7 +1851,7 @@ int main(int argc, char** argv) {
         app.ship.q = QuatFromBasis(-dir + side * -0.25, dir);
     }
     if (opt.target >= 0 && opt.target < (int)app.B.size()) app.target = opt.target;
-    if (opt.warp || opt.land) WarpTo(app, app.target, opt.land);
+    if ((opt.warp || opt.land) && opt.warpAnimAt < 0) WarpTo(app, app.target, opt.land);
     if (opt.gotoTarget >= 0 && opt.gotoTarget < (int)app.B.size()) app.target = opt.gotoTarget;
     if (opt.face) FaceTarget(app);
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
@@ -1750,6 +1869,8 @@ int main(int argc, char** argv) {
         if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) break;
 
         HandleInput(app, dt);
+        if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) StartWarp(app, app.target, opt.land);
+        UpdateWarp(app, dt);
         UpdateAutopilot(app, dt);
         if (opt.shot && frame * dt < opt.throttleSec) {
             const Engine& e = ENGINES[app.ship.engine];
@@ -1775,7 +1896,8 @@ int main(int argc, char** argv) {
         DrawShipPass(app, dt);
         EndMode3D();
 
-        DrawMarkers(app);
+        if (app.warpT < 0) DrawMarkers(app);
+        DrawWarpEffect(app);
         DrawHUD(app);
 
         frame++;
