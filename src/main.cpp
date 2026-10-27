@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "embedded_assets.h"
 #include "font_loader.h"
 #include "shaders.h"
 #include "ship_model.h"
@@ -270,7 +271,7 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
             b.pos = B[d.parent].pos + (b.oN * std::cos(th) + b.oQ * std::sin(th)) * d.moonA;
         }
         double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
-        b.spin = std::fmod(2 * PI * t / rp, 2 * PI);
+        b.spin = std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
     }
 }
 
@@ -604,6 +605,8 @@ struct Options {
     int target = -1;
     int gotoTarget = -1;  // ワープ後に切り替えるターゲット
     double camYaw = NAN, camPitch = 0, camDist = 60;  // 自機を任意の角度から見る（確認用、度・m）
+    double atLat = NAN, atLon = 0, atAlt = 0;          // ターゲット天体の緯度・経度・高度 km に置く（確認用）
+    double hours = 0;                                   // 開始時刻をずらす（確認用、時間）
     bool trace = false;  // 1 秒ごとに自機の状態を標準出力へ（動作確認用）
     bool warp = false, land = false, face = false, autopilot = false, autoEngine = false, cockpit = false, help = false;
     int engine = -1;
@@ -635,6 +638,8 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--throttle") o.throttleSec = atof(next());
         else if (a == "--timescale") o.timeScale = atof(next());
         else if (a == "--lang") o.lang = next();
+        else if (a == "--hours") o.hours = atof(next());
+        else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
     return o;
 }
@@ -673,6 +678,8 @@ struct App {
     int locSunDir = -1, locSunColor = -1, locFillDir = -1, locFillColor = -1, locEngColor = -1, locEngGlow = -1, locNavBlink = -1;
     Material mat{};
     Shader shader{};
+    Texture2D earthColor{}, earthData{};  // 地球の実データ（読めなければ手続き生成で描く）
+    bool earthTex = false;
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
     std::vector<Vector3> dust;
     double glow = 0;
@@ -729,6 +736,26 @@ static void WarpTo(App& app, int ti, bool land) {
     }
     UpdateReferenceFrame(app);
     Toast(app, std::string(land ? T(UI_LAND) : T(UI_WARP)) + ": " + TR(b.d.jp, b.d.en));
+}
+
+// 天体の緯度・経度（東経が正）・高度に置き、北の地平線のやや手前を見下ろす
+static void PlaceAt(App& app, int ti, double lat, double lon, double altKm) {
+    const Body& b = app.B[ti];
+    double cs = std::cos(b.spin), sn = std::sin(b.spin);
+    V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;  // 本体座標の X 軸（経度 0）と Z 軸
+    double la = lat * DEG, lo = lon * DEG;
+    V3 dir = X * (std::cos(la) * std::cos(lo)) + b.pole * std::sin(la) - Z * (std::cos(la) * std::sin(lo));
+    app.ship.ref = ti;
+    app.ship.speed = 0;
+    double r0 = SurfaceRadius(b, dir), alt = std::max(altKm, MinAltitude(b));
+    app.ship.local = dir * (r0 + alt);
+    V3 north = b.pole - dir * Dot(b.pole, dir);
+    if (Len(north) < 1e-9) north = X;
+    north = Norm(north);
+    double dip = std::acos(r0 / (r0 + alt)) + 12 * DEG;  // 地平線の見下ろし角 + 12°
+    V3 fwd = north * std::cos(dip) - dir * std::sin(dip);
+    app.ship.q = QuatFromBasis(fwd, north * std::sin(dip) + dir * std::cos(dip));
+    UpdateReferenceFrame(app);
 }
 
 static void FaceTarget(App& app) {
@@ -1177,6 +1204,34 @@ static void DrawOrbits(App& app) {
     rlEnableDepthTest();
 }
 
+// 埋め込みの地球データをテクスチャにする（経度方向は繰り返し、緯度方向は端で止める）
+static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext) {
+    Image img = LoadImageFromMemory(ext, f.data, (int)f.size);
+    if (!img.data) return Texture2D{};
+    Texture2D t = LoadTextureFromImage(img);
+    UnloadImage(img);
+    if (!t.id) return t;
+    GenTextureMipmaps(&t);
+    SetTextureFilter(t, TEXTURE_FILTER_TRILINEAR);
+    rlTextureParameters(t.id, RL_TEXTURE_FILTER_ANISOTROPIC, 8);
+    rlTextureParameters(t.id, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_REPEAT);
+    rlTextureParameters(t.id, RL_TEXTURE_WRAP_T, RL_TEXTURE_WRAP_CLAMP);
+    return t;
+}
+
+static void LoadEarthTextures(App& app) {
+    app.earthColor = LoadEmbeddedTexture(EarthColorJpg(), ".jpg");
+    app.earthData = LoadEmbeddedTexture(EarthDataPng(), ".png");
+    app.earthTex = app.earthColor.id && app.earthData.id;
+    if (!app.earthTex) {
+        TraceLog(LOG_WARNING, "Earth textures unavailable, using procedural surface");
+        return;
+    }
+    // シェーダの texture0 / texture1 に割り当てる（地球以外の天体では使わない）
+    app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.earthColor;
+    app.mat.maps[MATERIAL_MAP_SPECULAR].texture = app.earthData;
+}
+
 static void DrawBodies(App& app) {
     const Cam& c = app.cam;
     struct Item { int i; double dist; };
@@ -1220,7 +1275,8 @@ static void DrawBodies(App& app) {
         SetShaderValue(app.shader, app.locParams, params, SHADER_UNIFORM_VEC4);
         // 模様の細かさは 1 画素の大きさで決める。地球の雲は高度 10〜35 km で消える（地表付近で地面が白く覆われないように）
         float cloudK = (float)std::min(1.0, std::max(0.0, (alt - d.radius * 0.0015) / (d.radius * 0.004)));
-        float detail[4] = {(float)d.style, (float)(1.0 / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
+        int style = (d.style == S_EARTH && app.earthTex) ? S_EARTH_TEX : d.style;
+        float detail[4] = {(float)style, (float)(1.0 / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
         SetShaderValue(app.shader, app.locDetail, detail, SHADER_UNIFORM_VEC4);
         DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
 
@@ -1823,6 +1879,7 @@ int main(int argc, char** argv) {
     app.locParams = GetShaderLocation(app.shader, "params");
     app.locDetail = GetShaderLocation(app.shader, "detail");
     app.mat = LoadMaterialDefault();
+    LoadEarthTextures(app);
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
     app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
@@ -1842,7 +1899,7 @@ int main(int argc, char** argv) {
         app.dust.push_back({GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f});
 
     // 初期状態: PC 時刻の天体配置、地球の昼側上空から地球を見る
-    app.tDays = NowDaysSinceJ2000();
+    app.tDays = NowDaysSinceJ2000() + opt.hours / 24.0;
     for (int i = 0; i < TIME_SCALE_COUNT; i++)
         if (TIME_SCALES[i] <= opt.timeScale) app.timeIdx = i;
     UpdateBodies(app.B, app.tDays);
@@ -1858,6 +1915,7 @@ int main(int argc, char** argv) {
     if (opt.target >= 0 && opt.target < (int)app.B.size()) app.target = opt.target;
     if ((opt.warp || opt.land) && opt.warpAnimAt < 0) WarpTo(app, app.target, opt.land);
     if (opt.gotoTarget >= 0 && opt.gotoTarget < (int)app.B.size()) app.target = opt.gotoTarget;
+    if (!std::isnan(opt.atLat)) PlaceAt(app, app.target, opt.atLat, opt.atLon, opt.atAlt);
     if (opt.face) FaceTarget(app);
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
     app.cockpit = opt.cockpit;
@@ -1931,6 +1989,7 @@ int main(int argc, char** argv) {
     UnloadMesh(app.shipMesh);
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
+    if (app.earthTex) { UnloadTexture(app.earthColor); UnloadTexture(app.earthData); }
     if (g_jpFont) UnloadFont(g_font);
     CloseWindow();
     return 0;

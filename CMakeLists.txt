@@ -20,13 +20,18 @@ if(NOT raylib_FOUND)
   set(CUSTOMIZE_BUILD ON CACHE BOOL "" FORCE)
   set(SUPPORT_SCREEN_CAPTURE OFF CACHE BOOL "" FORCE)
   set(SUPPORT_GIF_RECORDING OFF CACHE BOOL "" FORCE)
+  set(SUPPORT_FILEFORMAT_JPG ON CACHE BOOL "" FORCE)   # 地球の地表画像
   FetchContent_Declare(raylib
     URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   FetchContent_MakeAvailable(raylib)
 endif()
 
-add_executable(solar_voyager src/main.cpp)
+add_executable(solar_voyager src/main.cpp src/embedded_assets.cpp)
+# assets/ の地球データを実行ファイルに埋め込む
+target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+set_source_files_properties(src/embedded_assets.cpp PROPERTIES
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png")
 target_link_libraries(solar_voyager PRIVATE raylib)
 
 if(MINGW)

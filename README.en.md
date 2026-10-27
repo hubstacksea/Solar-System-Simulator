@@ -119,12 +119,23 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 ## How it works
 
 - **Body positions**: planets are computed from JPL J2000 mean orbital elements via Kepler's equation (accurate to a few arcminutes). Moons use circular orbits with real radii, periods and inclinations, but their phases do not match their actual positions
-- **Surfaces**: generated procedurally in shaders (no textures). Finer patterns and relief (craters, mountains) appear as you get closer, so surfaces stay detailed even near the ground. Distinct features include lunar maria, Martian polar caps, Io's volcanoes, Europa's lineae, Jupiter's Great Red Spot, Saturn's north polar hexagon, Pluto's heart, and Earth's continents, vegetation, clouds, ocean glint and city lights
+- **Surfaces**: everything except Earth is generated procedurally in shaders. Finer patterns and relief (craters, mountains) appear as you get closer, so surfaces stay detailed even near the ground. Distinct features include lunar maria, Martian polar caps, Io's volcanoes, Europa's lineae, Jupiter's Great Red Spot, Saturn's north polar hexagon and Pluto's heart
+- **Earth**: built from real NASA data — continents, coastlines, elevation (relief shading), ocean depth (shallow-water color), sea ice and city lights at night (about 10 km resolution, with finer detail filled in procedurally). Its rotation follows Greenwich sidereal time, so the regions in daylight and the lit cities at night match the PC clock. Clouds are procedural
 - **Sizes**: equatorial radius and flattening (Jupiter and Saturn are visibly oblate), and Saturn's rings (C ring to A ring, Cassini Division, Encke Gap) drawn at true scale
 - **Reference frame**: the ship moves along with the body whose sphere of influence (SOI) it is in, so even at car speed you are not left behind by Earth
 - **Precision**: positions are stored as doubles and rendered relative to the camera. Each body is drawn at its own scale with its own near/far planes, so a 30 m ship and Neptune 4.5 billion km away can be rendered at the same time
 - **Minimum altitude**: because of floating-point precision, you cannot descend below 1/100,000 of a body's radius (minimum 30 m) — about 64 m on Earth
 - No physics (gravity etc.) is simulated. The ship flies arcade-style in the direction of its nose
+
+## Earth data
+
+The images in `assets/` are made from NASA data by `tools/make_earth_assets.py` and embedded into the executable at build time (no files needed at run time).
+
+- Surface color: NASA Earth Observatory, Blue Marble: Next Generation (April 2004)
+- Elevation and ocean depth: NASA Visible Earth, GEBCO_08 Digital Elevation Model
+- City lights: NASA Earth Observatory, Black Marble 2016
+
+All are NASA imagery (public domain). To regenerate them: `python3 tools/make_earth_assets.py <work dir>` (requires Pillow; downloads about 15 MB).
 
 ## Display language (日本語 / English)
 

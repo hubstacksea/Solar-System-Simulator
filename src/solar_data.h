@@ -17,7 +17,7 @@ enum SurfaceStyle {
     S_GENERIC = 0, S_MOON, S_MERCURY, S_MARS, S_IO, S_EUROPA, S_GANYMEDE, S_CALLISTO, S_ICY, S_IAPETUS,
     S_PLUTO, S_ENCELADUS, S_TRITON,
     S_JUPITER = 20, S_SATURN, S_URANUS, S_NEPTUNE, S_VENUS, S_TITAN,
-    S_EARTH = 30, S_SUN = 40
+    S_EARTH = 30, S_EARTH_TEX = 31, S_SUN = 40
 };
 
 struct BodyDef {
@@ -41,6 +41,7 @@ struct BodyDef {
     bool inheritPole = false;  // 母天体の自転軸を使う
     double poleRA = 0, poleDec = 90;
     double rotPeriod = 1;      // 自転周期 日（負: 逆行、0: 公転と同期）
+    double spin0 = 0;          // J2000 での自転角 deg（地球は実際の地図の向きに合わせる）
 
     int kind = KIND_ROCKY;
     Col3 c1{1, 1, 1}, c2{0.5f, 0.5f, 0.5f}, atm{0, 0, 0};
@@ -103,7 +104,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                            KIND_GAS, {0.95f, 0.88f, 0.68f}, {0.86f, 0.76f, 0.55f}, 3, {1.0f, 0.9f, 0.7f}, 0.6f));
     v.push_back(MakePlanet("地球", "Earth", 6378.137, 0.0033528, 5.972e24,
                            1.00000261, 0.01671123, -0.00001531, 100.46457166, 102.93768193, 0.0,
-                           0.0, 90.0, 0.99727,
+                           0.0, 90.0, 360.0 / 360.98564736629,
                            KIND_EARTH, {0.06f, 0.18f, 0.45f}, {0.22f, 0.40f, 0.17f}, 0, {0.35f, 0.6f, 1.0f}, 1.2f));
     v.push_back(MakePlanet("火星", "Mars", 3396.2, 0.00589, 6.417e23,
                            1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891,
@@ -201,6 +202,9 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         {"Dione", S_ICY}, {"Rhea", S_ICY}, {"Titan", S_TITAN}, {"Iapetus", S_IAPETUS}, {"Miranda", S_ICY},
         {"Ariel", S_ICY}, {"Titania", S_ICY}, {"Oberon", S_ICY}, {"Triton", S_TRITON},
     };
+    // 地球の自転角: グリニッジ子午線の赤経 = グリニッジ平均恒星時 (GMST)。
+    // 本体の座標系では自転角 0 の X 軸が赤経 180° を向くので、180° を引く
+    v[B_EARTH].spin0 = 280.46061837 - 180.0;
     for (BodyDef& d : v)
         for (const auto& st : STYLES)
             if (std::strcmp(d.en, st.en) == 0) d.style = st.style;
