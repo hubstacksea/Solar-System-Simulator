@@ -1,0 +1,1487 @@
+// Solar System Voyager — 実スケール太陽系 3D シミュレータ
+//
+//  * 単位: 距離 km / 速度 km/s / 時間 s（天体暦は日）
+//  * 位置はすべて double で保持し、描画時にカメラ相対へ変換してから float にする
+//  * 天体は「スケール空間」で描画する: 天体ごとに距離 100 単位へ縮小し、専用の near/far と
+//    深度クリアで描画する（遠い順）。これで 30m の自機から数十億 km まで破綻なく描ける
+//  * 惑星の位置は PC の時刻 (UTC) から J2000 軌道要素 + ケプラー方程式で計算する
+#include "raylib.h"
+#include "raymath.h"
+#include "rlgl.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <string>
+#include <vector>
+
+#include "font_loader.h"
+#include "shaders.h"
+#include "solar_data.h"
+
+#ifdef _WIN32
+#define SIM_GLAPI __stdcall
+#else
+#define SIM_GLAPI
+#endif
+extern "C" void SIM_GLAPI glClear(unsigned int mask);  // 深度だけをクリアするため直接呼ぶ
+static const unsigned int GL_DEPTH_BIT = 0x00000100;
+
+// ---------------------------------------------------------------- 定数
+static const double AU_KM = 149597870.7;
+static const double C_KMS = 299792.458;
+static const double J2000_UNIX = 946728000.0;  // 2000-01-01 12:00:00 UTC
+static const double DEG = PI / 180.0;
+
+// ---------------------------------------------------------------- double ベクトル
+struct V3 {
+    double x = 0, y = 0, z = 0;
+    V3() {}
+    V3(double a, double b, double c) : x(a), y(b), z(c) {}
+    V3 operator+(const V3& o) const { return {x + o.x, y + o.y, z + o.z}; }
+    V3 operator-(const V3& o) const { return {x - o.x, y - o.y, z - o.z}; }
+    V3 operator*(double s) const { return {x * s, y * s, z * s}; }
+    V3 operator-() const { return {-x, -y, -z}; }
+    V3& operator+=(const V3& o) { x += o.x; y += o.y; z += o.z; return *this; }
+};
+static inline double Dot(V3 a, V3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+static inline V3 Cross(V3 a, V3 b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
+static inline double Len(V3 a) { return std::sqrt(Dot(a, a)); }
+static inline V3 Norm(V3 a) { double l = Len(a); return l > 0 ? a * (1.0 / l) : V3(0, 0, 0); }
+static inline Vector3 ToF(V3 a) { return {(float)a.x, (float)a.y, (float)a.z}; }
+static inline V3 FromF(Vector3 v) { return {v.x, v.y, v.z}; }
+static const V3 Y_UP(0, 1, 0);  // 描画座標の +Y = 黄道北
+
+// 黄道座標 (x, y, z: z=黄道北) → 描画座標 (Y-up)
+static V3 EclToRender(double x, double y, double z) { return {x, z, -y}; }
+static V3 EquToRender(double raDeg, double decDeg) {
+    const double eps = 23.4392911 * DEG;
+    double ra = raDeg * DEG, dec = decDeg * DEG;
+    double x = std::cos(dec) * std::cos(ra), y = std::cos(dec) * std::sin(ra), z = std::sin(dec);
+    return EclToRender(x, y * std::cos(eps) + z * std::sin(eps), -y * std::sin(eps) + z * std::cos(eps));
+}
+
+// ---------------------------------------------------------------- 表示文字列
+#define UI_STRINGS(X)                                                                        \
+    X(ENGINE, "エンジン", "Engine")                                                          \
+    X(ACCEL, "加速", "Accel")                                                                \
+    X(MAXSPD, "最高", "Max")                                                                 \
+    X(SPEED, "速度", "Speed")                                                                \
+    X(FRAME, "基準系", "Frame")                                                              \
+    X(NEAREST, "最寄り", "Nearest")                                                          \
+    X(ALT, "高度", "Alt")                                                                    \
+    X(DATE, "日時", "Date")                                                                  \
+    X(TSCALE, "時間倍率", "Time")                                                            \
+    X(REALTIME, "実時間", "real-time")                                                       \
+    X(PAUSED, "停止中", "PAUSED")                                                            \
+    X(TARGET, "ターゲット", "Target")                                                        \
+    X(DIST, "距離", "Dist")                                                                  \
+    X(ETA, "到達予想", "ETA")                                                                \
+    X(ETA_MAX, "最高速なら", "at max")                                                       \
+    X(LIGHT, "光で", "light")                                                                \
+    X(DAY, "日", "d")                                                                        \
+    X(YEAR, "年", "y")                                                                       \
+    X(HELP_HINT, "[H] 操作説明   [Esc] マウス解放/捕捉", "[H] Help   [Esc] Release/capture mouse") \
+    X(VIEW_CHASE, "追尾視点", "Chase view")                                                  \
+    X(VIEW_COCKPIT, "コクピット視点", "Cockpit view")                                        \
+    X(WARP, "ワープ", "Warp")                                                                \
+    X(LAND, "地表付近へワープ", "Surface warp")                                              \
+    X(ORBITS_ON, "軌道表示 ON", "Orbits ON")                                                 \
+    X(ORBITS_OFF, "軌道表示 OFF", "Orbits OFF")                                              \
+    X(LABELS_ON, "衛星マーカー ON", "Moon markers ON")                                       \
+    X(LABELS_OFF, "衛星マーカー OFF", "Moon markers OFF")                                    \
+    X(INVERT_ON, "マウス上下反転 ON", "Invert mouse ON")                                     \
+    X(INVERT_OFF, "マウス上下反転 OFF", "Invert mouse OFF")                                  \
+    X(TIME_RESET, "現在時刻・等倍に同期", "Synced to current time")                          \
+    X(HEADING, "方位", "Heading")                                                            \
+    X(ECL_LON, "黄経", "Ecl.Lon")                                                            \
+    X(ECL_LAT, "黄緯", "Ecl.Lat")                                                            \
+    X(PITCH, "ピッチ", "Pitch")                                                              \
+    X(ROLL, "ロール", "Roll")                                                                \
+    X(N, "北", "N")                                                                          \
+    X(E, "東", "E")                                                                          \
+    X(S, "南", "S")                                                                          \
+    X(W, "西", "W")                                                                          \
+    X(REVERSE, "後退", "REV")                                                                \
+    X(OVERSPEED, "減速中", "SLOWING")                                                        \
+    X(HELP_TITLE, "操作説明", "Controls")                                                    \
+    X(HELP1, "マウス / 矢印キー : 機首の上下・左右", "Mouse / Arrows : pitch & yaw")         \
+    X(HELP2, "A / D : ヨー      Q / E : ロール", "A / D : yaw      Q / E : roll")            \
+    X(HELP3, "W : 加速      S : 減速・後退      X : 停止", "W : accelerate   S : brake/reverse   X : stop") \
+    X(HELP4, "1〜7 / マウスホイール : エンジン切替", "1-7 / Mouse wheel : select engine")    \
+    X(HELP5, "Tab / Shift+Tab : ターゲット切替", "Tab / Shift+Tab : cycle target")           \
+    X(HELP6, "F : ターゲットへ機首を向ける", "F : face target")                              \
+    X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
+    X(HELP8, "右クリック(押している間) : ズーム", "Right mouse (hold) : zoom")               \
+    X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー", "V : view    O : orbits    L : moon markers") \
+    X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
+    X(HELP11, "I : マウス上下反転    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    F11 : fullscreen    F12 : screenshot") \
+    X(HELP12, "Esc : マウス解放/捕捉    Ctrl+Q : 終了", "Esc : release/capture mouse    Ctrl+Q : quit") \
+    X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
+    X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 機首を向ける    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : face target    B : stop") \
+    X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
+    X(PAD_ON, "コントローラ接続", "Controller connected") \
+    X(PAD_OFF, "コントローラ切断", "Controller disconnected")
+
+enum UiId {
+#define X(id, jp, en) UI_##id,
+    UI_STRINGS(X)
+#undef X
+    UI_COUNT
+};
+static const char* UI_JP[] = {
+#define X(id, jp, en) jp,
+    UI_STRINGS(X)
+#undef X
+};
+static const char* UI_EN[] = {
+#define X(id, jp, en) en,
+    UI_STRINGS(X)
+#undef X
+};
+
+static bool g_jp = false;
+static Font g_font;
+static inline const char* T(UiId id) { return g_jp ? UI_JP[id] : UI_EN[id]; }
+static inline const char* TR(const char* jp, const char* en) { return g_jp ? jp : en; }
+
+// ---------------------------------------------------------------- エンジン
+struct Engine {
+    const char* jp;
+    const char* en;
+    double accel;  // m/s^2
+    double vmax;   // m/s
+    int dialUnit;  // 0: km/h, 1: km/s, 2: c
+    Color flame;
+};
+static const Engine ENGINES[] = {
+    {"自動車", "Car", 3.0, 100.0 / 3.6, 0, {255, 160, 60, 255}},
+    {"電車", "Train", 0.8, 130.0 / 3.6, 0, {255, 200, 90, 255}},
+    {"高速電車", "Bullet train", 0.72, 320.0 / 3.6, 0, {255, 230, 120, 255}},
+    {"音速", "Mach 1", 10.0, 343.0, 0, {200, 230, 255, 255}},
+    {"ジェット機", "Jet", 15.0, 850.0, 0, {120, 180, 255, 255}},
+    {"ロケットエンジン", "Rocket", 30.0, 50000.0, 1, {255, 120, 40, 255}},
+    {"光速", "Light speed", 3.0e7, 299792458.0, 2, {180, 120, 255, 255}},
+};
+static const int ENGINE_COUNT = sizeof(ENGINES) / sizeof(ENGINES[0]);
+
+// ---------------------------------------------------------------- 天体
+struct Body {
+    BodyDef d;
+    V3 pos;               // 太陽中心・描画座標 km
+    V3 pole, ex, ez;      // 赤道座標系 (ex, pole, ez) 右手系
+    V3 oN, oQ;            // 衛星軌道面の基底
+    double spin = 0;
+    double soi = 1e300;   // 基準系切替に使う影響圏半径
+    double outer = 0;     // 描画上の最大半径（環を含む）
+    std::vector<V3> orbit;  // 母天体相対の軌道点
+};
+
+static V3 PlanetOrbitPoint(const BodyDef& d, double E) {
+    double a = d.a_au * AU_KM, e = d.e;
+    double w = (d.varpi - d.node) * DEG, O = d.node * DEG, I = d.inc * DEG;
+    double xp = a * (std::cos(E) - e), yp = a * std::sqrt(1 - e * e) * std::sin(E);
+    double cw = std::cos(w), sw = std::sin(w), cO = std::cos(O), sO = std::sin(O), cI = std::cos(I), sI = std::sin(I);
+    double x = (cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp;
+    double y = (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp;
+    double z = (sw * sI) * xp + (cw * sI) * yp;
+    return EclToRender(x, y, z);
+}
+
+static V3 PlanetPos(const BodyDef& d, double tDays) {
+    double n = 360.0 / (365.25 * std::pow(d.a_au, 1.5));  // 平均運動 deg/day
+    double M = std::fmod(d.L0 + n * tDays - d.varpi, 360.0) * DEG;
+    double E = M + d.e * std::sin(M);
+    for (int i = 0; i < 8; i++) E -= (E - d.e * std::sin(E) - M) / (1 - d.e * std::cos(E));
+    return PlanetOrbitPoint(d, E);
+}
+
+static void EquatorBasis(V3 pole, V3* e1, V3* e2) {
+    V3 a = Cross(Y_UP, pole);
+    if (Len(a) < 1e-6) a = V3(1, 0, 0);
+    *e1 = Norm(a);
+    *e2 = Cross(*e1, pole);
+}
+
+static std::vector<Body> InitBodies() {
+    std::vector<Body> B;
+    for (const BodyDef& d : BuildSolarSystem()) {
+        Body b;
+        b.d = d;
+        B.push_back(b);
+    }
+    for (size_t i = 0; i < B.size(); i++) {
+        Body& b = B[i];
+        const BodyDef& d = b.d;
+        b.pole = d.inheritPole ? B[d.parent].pole : EquToRender(d.poleRA, d.poleDec);
+        EquatorBasis(b.pole, &b.ex, &b.ez);
+        b.outer = d.rings ? d.radius * 2.27 : d.radius;
+        if (d.parent == 0) {
+            b.soi = d.a_au * AU_KM * std::pow(d.mass / B[0].d.mass, 0.4);
+            for (int k = 0; k <= 720; k++) b.orbit.push_back(PlanetOrbitPoint(d, 2 * PI * k / 720.0));
+        } else if (d.parent > 0) {
+            b.soi = d.moonA * std::pow(d.mass / B[d.parent].d.mass, 0.4);
+            V3 ref = d.eclipticRef ? Y_UP : B[d.parent].pole;
+            V3 e1, e2;
+            EquatorBasis(ref, &e1, &e2);
+            e2 = Cross(ref, e1);
+            V3 N = e1 * std::cos(d.moonNode * DEG) + e2 * std::sin(d.moonNode * DEG);
+            V3 M = Cross(ref, N);
+            b.oN = N;
+            b.oQ = M * std::cos(d.moonIncl * DEG) + ref * std::sin(d.moonIncl * DEG);
+            for (int k = 0; k <= 180; k++) {
+                double th = 2 * PI * k / 180.0;
+                b.orbit.push_back((b.oN * std::cos(th) + b.oQ * std::sin(th)) * d.moonA);
+            }
+        }
+        if (d.parent >= 0) b.soi = std::max(b.soi, d.radius * 5);
+    }
+    return B;
+}
+
+static void UpdateBodies(std::vector<Body>& B, double t) {
+    for (Body& b : B) {
+        const BodyDef& d = b.d;
+        if (d.parent < 0) {
+            b.pos = V3();
+        } else if (d.parent == 0) {
+            b.pos = PlanetPos(d, t);
+        } else {
+            double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
+            b.pos = B[d.parent].pos + (b.oN * std::cos(th) + b.oQ * std::sin(th)) * d.moonA;
+        }
+        double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
+        b.spin = std::fmod(2 * PI * t / rp, 2 * PI);
+    }
+}
+
+// 楕円体表面までの半径（dir は単位ベクトル）
+static double SurfaceRadius(const Body& b, V3 dir) {
+    double a = b.d.radius, c = a * (1 - b.d.flattening);
+    double y = Dot(dir, b.pole);
+    return 1.0 / std::sqrt((1 - y * y) / (a * a) + y * y / (c * c));
+}
+static double MinAltitude(const Body& b) { return std::max(0.03, b.d.radius * 1e-5); }
+
+static Color BodyColor(const Body& b, float bright = 1.0f) {
+    const Col3& c = b.d.c1;
+    auto f = [&](float v) { return (unsigned char)std::min(255.0f, (v * 0.7f + 0.3f) * 255 * bright); };
+    return {f(c.r), f(c.g), f(c.b), 255};
+}
+
+// ---------------------------------------------------------------- メッシュ
+static Mesh GenUVSphere(int rings, int slices) {
+    Mesh m = {0};
+    int vc = (rings + 1) * (slices + 1);
+    m.vertexCount = vc;
+    m.triangleCount = rings * slices * 2;
+    m.vertices = (float*)MemAlloc(vc * 3 * sizeof(float));
+    m.normals = (float*)MemAlloc(vc * 3 * sizeof(float));
+    m.texcoords = (float*)MemAlloc(vc * 2 * sizeof(float));
+    m.indices = (unsigned short*)MemAlloc(m.triangleCount * 3 * sizeof(unsigned short));
+    int k = 0;
+    for (int r = 0; r <= rings; r++) {
+        double phi = PI * r / rings;
+        for (int s = 0; s <= slices; s++) {
+            double th = 2 * PI * s / slices;
+            float x = (float)(std::sin(phi) * std::cos(th)), y = (float)std::cos(phi), z = (float)(std::sin(phi) * std::sin(th));
+            m.vertices[k * 3] = m.normals[k * 3] = x;
+            m.vertices[k * 3 + 1] = m.normals[k * 3 + 1] = y;
+            m.vertices[k * 3 + 2] = m.normals[k * 3 + 2] = z;
+            m.texcoords[k * 2] = (float)s / slices;
+            m.texcoords[k * 2 + 1] = (float)r / rings;
+            k++;
+        }
+    }
+    int t = 0;
+    for (int r = 0; r < rings; r++) {
+        for (int s = 0; s < slices; s++) {
+            unsigned short a = r * (slices + 1) + s, b = (r + 1) * (slices + 1) + s;
+            m.indices[t++] = a; m.indices[t++] = b + 1; m.indices[t++] = b;
+            m.indices[t++] = a; m.indices[t++] = a + 1; m.indices[t++] = b + 1;
+        }
+    }
+    UploadMesh(&m, false);
+    return m;
+}
+
+static Mesh GenRing(float inner, float outer, int segs) {
+    Mesh m = {0};
+    m.vertexCount = (segs + 1) * 2;
+    m.triangleCount = segs * 2;
+    m.vertices = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.normals = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.texcoords = (float*)MemAlloc(m.vertexCount * 2 * sizeof(float));
+    m.indices = (unsigned short*)MemAlloc(m.triangleCount * 3 * sizeof(unsigned short));
+    for (int i = 0; i <= segs; i++) {
+        float th = 2 * PI * i / segs, c = std::cos(th), s = std::sin(th);
+        float rr[2] = {inner, outer};
+        for (int j = 0; j < 2; j++) {
+            int v = i * 2 + j;
+            m.vertices[v * 3] = c * rr[j]; m.vertices[v * 3 + 1] = 0; m.vertices[v * 3 + 2] = s * rr[j];
+            m.normals[v * 3] = 0; m.normals[v * 3 + 1] = 1; m.normals[v * 3 + 2] = 0;
+            m.texcoords[v * 2] = (float)j; m.texcoords[v * 2 + 1] = (float)i / segs;
+        }
+    }
+    int t = 0;
+    for (int i = 0; i < segs; i++) {
+        unsigned short a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+        m.indices[t++] = a; m.indices[t++] = b; m.indices[t++] = d;
+        m.indices[t++] = a; m.indices[t++] = d; m.indices[t++] = c;
+    }
+    UploadMesh(&m, false);
+    return m;
+}
+
+// ---------------------------------------------------------------- カメラ・投影
+struct Cam {
+    V3 pos, fwd, up, right;
+    double fovy = 60 * DEG;
+    double focal = 1;  // ピクセル単位の焦点距離
+    float W = 1280, H = 720;
+};
+
+// 画面座標へ投影。カメラ前方なら true
+static bool Project(const Cam& c, V3 rel, Vector2* out) {
+    double z = Dot(rel, c.fwd);
+    if (z <= 1e-9) return false;
+    out->x = (float)(c.W * 0.5 + Dot(rel, c.right) / z * c.focal);
+    out->y = (float)(c.H * 0.5 - Dot(rel, c.up) / z * c.focal);
+    return true;
+}
+
+static Matrix g_view;
+static void SetPassProjection(const Cam& c, double n, double f) {
+    rlDrawRenderBatchActive();
+    rlMatrixMode(RL_PROJECTION);
+    rlLoadIdentity();
+    double top = n * std::tan(c.fovy * 0.5), right = top * c.W / c.H;
+    rlFrustum(-right, right, -top, top, n, f);
+    rlMatrixMode(RL_MODELVIEW);
+    rlLoadIdentity();
+    rlMultMatrixf(MatrixToFloat(g_view));
+}
+static void ClearDepth() {
+    rlDrawRenderBatchActive();
+    glClear(GL_DEPTH_BIT);
+}
+
+static Quaternion QuatFromBasis(V3 fwd, V3 upHint) {
+    V3 f = Norm(fwd);
+    V3 r = Cross(f, upHint);
+    if (Len(r) < 1e-6) r = Cross(f, V3(1, 0, 0));
+    if (Len(r) < 1e-6) r = Cross(f, V3(0, 0, 1));
+    r = Norm(r);
+    V3 u = Cross(r, f);
+    Matrix m = MatrixIdentity();
+    m.m0 = (float)r.x; m.m1 = (float)r.y; m.m2 = (float)r.z;
+    m.m4 = (float)u.x; m.m5 = (float)u.y; m.m6 = (float)u.z;
+    m.m8 = (float)-f.x; m.m9 = (float)-f.y; m.m10 = (float)-f.z;
+    return QuaternionNormalize(QuaternionFromMatrix(m));
+}
+
+// 天体のモデル行列: 平行移動 * 赤道基底 * 自転(Y軸) * 拡大
+static Matrix BodyMatrix(const Body& b, V3 center, double sEq, double sPol, double spin) {
+    double cw = std::cos(spin), sw = std::sin(spin);
+    V3 X = (b.ex * cw - b.ez * sw) * sEq, Y = b.pole * sPol, Z = (b.ex * sw + b.ez * cw) * sEq;
+    Matrix m = {0};
+    m.m0 = (float)X.x; m.m1 = (float)X.y; m.m2 = (float)X.z;
+    m.m4 = (float)Y.x; m.m5 = (float)Y.y; m.m6 = (float)Y.z;
+    m.m8 = (float)Z.x; m.m9 = (float)Z.y; m.m10 = (float)Z.z;
+    m.m12 = (float)center.x; m.m13 = (float)center.y; m.m14 = (float)center.z;
+    m.m15 = 1;
+    return m;
+}
+
+// ---------------------------------------------------------------- 書式
+static void Txt(const char* s, float x, float y, float size, Color c) {
+    float sp = g_jp ? 0.5f : size / 10;
+    DrawTextEx(g_font, s, {x + 1, y + 1}, size, sp, {0, 0, 0, (unsigned char)(c.a * 0.8f)});
+    DrawTextEx(g_font, s, {x, y}, size, sp, c);
+}
+static float TxtW(const char* s, float size) { return MeasureTextEx(g_font, s, size, g_jp ? 0.5f : size / 10).x; }
+static void TxtC(const char* s, float cx, float y, float size, Color c) { Txt(s, cx - TxtW(s, size) / 2, y, size, c); }
+
+static std::string Grouped(double v, int decimals) {
+    char buf[64];
+    snprintf(buf, sizeof buf, "%.*f", decimals, std::fabs(v));
+    std::string s(buf), intPart = s.substr(0, s.find('.')), frac = s.find('.') == std::string::npos ? "" : s.substr(s.find('.'));
+    std::string out;
+    for (size_t i = 0; i < intPart.size(); i++) {
+        if (i > 0 && (intPart.size() - i) % 3 == 0) out += ',';
+        out += intPart[i];
+    }
+    return (v < 0 ? "-" : "") + out + frac;
+}
+
+static std::string FmtDist(double km) {
+    char b[96];
+    if (km < 1) snprintf(b, sizeof b, "%.0f m", km * 1000);
+    else if (km < 1e7) snprintf(b, sizeof b, "%s km", Grouped(km, km < 100 ? 2 : 0).c_str());
+    else snprintf(b, sizeof b, "%.3f AU", km / AU_KM);
+    return b;
+}
+
+static std::string FmtSpeed(double kms) {
+    char b[96];
+    double a = std::fabs(kms);
+    if (a < 1) snprintf(b, sizeof b, "%s km/h", Grouped(kms * 3600, 1).c_str());
+    else snprintf(b, sizeof b, "%s km/s", Grouped(kms, a < 100 ? 3 : 0).c_str());
+    std::string s = b;
+    if (a > C_KMS * 0.001) {
+        snprintf(b, sizeof b, "  (%.4f c)", kms / C_KMS);
+        s += b;
+    }
+    return s;
+}
+
+static std::string FmtDuration(double sec) {
+    char b[96];
+    if (!std::isfinite(sec) || sec < 0 || sec > 1e13) return "---";
+    if (sec < 60) snprintf(b, sizeof b, "%.1f s", sec);
+    else if (sec < 86400) snprintf(b, sizeof b, "%02d:%02d:%02d", (int)(sec / 3600), (int)std::fmod(sec / 60, 60), (int)std::fmod(sec, 60));
+    else if (sec < 365.25 * 86400 * 10) snprintf(b, sizeof b, "%d%s %02d:%02d", (int)(sec / 86400), T(UI_DAY), (int)std::fmod(sec / 3600, 24), (int)std::fmod(sec / 60, 60));
+    else snprintf(b, sizeof b, "%s%s", Grouped(sec / (365.25 * 86400), 1).c_str(), T(UI_YEAR));
+    return b;
+}
+
+static double NowDaysSinceJ2000() { return ((double)std::time(nullptr) - J2000_UNIX) / 86400.0; }
+
+static std::string FmtDate(double tDays) {
+    double unixSec = J2000_UNIX + tDays * 86400.0;
+    if (unixSec < -62135596800.0 || unixSec > 253402300799.0) return "----";
+    time_t tt = (time_t)std::floor(unixSec);
+    struct tm* g = std::gmtime(&tt);
+    if (!g) return "----";
+    char b[64];
+    snprintf(b, sizeof b, "%04d-%02d-%02d %02d:%02d:%02d UTC", g->tm_year + 1900, g->tm_mon + 1, g->tm_mday, g->tm_hour, g->tm_min, g->tm_sec);
+    return b;
+}
+
+// ---------------------------------------------------------------- 背景の星
+struct Star { V3 dir; Color col; float size; };
+static std::vector<Star> MakeStars() {
+    std::vector<Star> s;
+    SetRandomSeed(12345);
+    auto rnd = [] { return GetRandomValue(0, 1000000) / 1000000.0; };
+    auto gauss = [&] { double u = std::max(rnd(), 1e-9), v = rnd(); return std::sqrt(-2 * std::log(u)) * std::cos(2 * PI * v); };
+    V3 gp = EquToRender(192.85948, 27.12825), gc = EquToRender(266.405, -28.936);  // 銀河北極・銀河中心
+    gc = Norm(gc - gp * Dot(gc, gp));
+    V3 gc2 = Cross(gp, gc);
+    for (int i = 0; i < 7000; i++) {
+        V3 d;
+        if (i % 2 == 0) {
+            double z = rnd() * 2 - 1, a = rnd() * 2 * PI, r = std::sqrt(1 - z * z);
+            d = V3(r * std::cos(a), z, r * std::sin(a));
+        } else {
+            double l = (i % 6 == 1) ? gauss() * 0.6 : rnd() * 2 * PI;
+            double bb = gauss() * (i % 6 == 1 ? 0.06 : 0.12);
+            d = (gc * std::cos(l) + gc2 * std::sin(l)) * std::cos(bb) + gp * std::sin(bb);
+        }
+        double m = std::pow(rnd(), 5.0);
+        double tint = rnd();
+        unsigned char a = (unsigned char)(50 + 205 * std::min(1.0, m * 3 + 0.15));
+        Color c = tint < 0.15 ? Color{180, 200, 255, a} : tint < 0.3 ? Color{255, 225, 190, a} : Color{240, 240, 255, a};
+        s.push_back({Norm(d), c, (float)(m > 0.3 ? 1.6 : m > 0.08 ? 1.1 : 0.0)});
+    }
+    return s;
+}
+
+// ---------------------------------------------------------------- 自機
+struct Ship {
+    int ref = B_EARTH;  // 基準系の天体（自機はこの天体と一緒に公転移動する）
+    V3 local;           // 基準天体からの相対位置 km
+    Quaternion q = QuaternionIdentity();
+    double speed = 0;   // km/s（機首方向）
+    int engine = 0;
+    bool thrusting = false;
+};
+static V3 ShipFwd(const Ship& s) { return FromF(Vector3RotateByQuaternion({0, 0, -1}, s.q)); }
+static V3 ShipUp(const Ship& s) { return FromF(Vector3RotateByQuaternion({0, 1, 0}, s.q)); }
+static V3 ShipRight(const Ship& s) { return FromF(Vector3RotateByQuaternion({1, 0, 0}, s.q)); }
+
+static void DrawShipModel(const Ship& s, double throttleGlow) {
+    // 単位: m。機首は -Z
+    Color hull = {190, 196, 205, 255}, dark = {70, 76, 88, 255}, accent = {220, 90, 60, 255};
+    DrawCylinderEx({0, 0, 12}, {0, 0, -10}, 2.2f, 1.6f, 16, hull);
+    DrawCylinderWiresEx({0, 0, 12}, {0, 0, -10}, 2.2f, 1.6f, 16, dark);
+    DrawCylinderEx({0, 0, -10}, {0, 0, -18}, 1.6f, 0.05f, 16, {225, 228, 235, 255});
+    DrawSphere({0, 1.3f, -7}, 1.1f, {60, 140, 220, 255});
+    for (int sgn = -1; sgn <= 1; sgn += 2) {
+        float x = (float)sgn;
+        Vector3 a = {2.0f * x, 0, -3}, b = {12.0f * x, -0.4f, 9}, c = {2.0f * x, 0, 10};
+        DrawTriangle3D(a, b, c, hull);
+        DrawTriangle3D(a, c, b, {150, 155, 165, 255});
+        DrawLine3D(a, b, dark);
+        DrawLine3D(b, c, dark);
+        DrawCylinderEx({11.5f * x, -0.4f, 3}, {11.5f * x, -0.4f, 9}, 0.35f, 0.35f, 6, accent);
+        DrawCylinderEx({3.2f * x, 0, 8}, {3.2f * x, 0, 13.5f}, 1.0f, 1.25f, 12, dark);
+    }
+    DrawTriangle3D({0, 2, 4}, {0, 7.5f, 12}, {0, 2, 12}, hull);
+    DrawTriangle3D({0, 2, 4}, {0, 2, 12}, {0, 7.5f, 12}, {150, 155, 165, 255});
+    if (throttleGlow > 0.01) {
+        Color f = ENGINES[s.engine].flame;
+        BeginBlendMode(BLEND_ADDITIVE);
+        float len = (float)(3 + 9 * throttleGlow);
+        for (int sgn = -1; sgn <= 1; sgn += 2) {
+            DrawCylinderEx({3.2f * sgn, 0, 13.5f}, {3.2f * sgn, 0, 13.5f + len}, 1.0f, 0.05f, 10, f);
+            DrawCylinderEx({3.2f * sgn, 0, 13.5f}, {3.2f * sgn, 0, 13.5f + len * 0.5f}, 0.6f, 0.05f, 10, WHITE);
+        }
+        EndBlendMode();
+    }
+}
+
+// 実際のフレームバッファサイズで保存する（raylib の TakeScreenshot は DPI スケール時に範囲がずれる）
+static void SaveScreenshot(const char* path) {
+    rlDrawRenderBatchActive();
+    int w = GetRenderWidth(), h = GetRenderHeight();
+    Image img = {rlReadScreenPixels(w, h), w, h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+    ExportImage(img, path);
+    UnloadImage(img);
+}
+
+// ---------------------------------------------------------------- 起動オプション（自動スクリーンショット用）
+struct Options {
+    const char* shot = nullptr;
+    int frames = 90;
+    int target = -1;
+    bool warp = false, land = false, face = false, cockpit = false, help = false;
+    int engine = -1;
+    double throttleSec = 0;
+    double timeScale = 1;
+};
+static Options ParseArgs(int argc, char** argv) {
+    Options o;
+    for (int i = 1; i < argc; i++) {
+        std::string a = argv[i];
+        auto next = [&] { return i + 1 < argc ? argv[++i] : ""; };
+        if (a == "--shot") o.shot = next();
+        else if (a == "--frames") o.frames = atoi(next());
+        else if (a == "--target") o.target = atoi(next());
+        else if (a == "--warp") o.warp = true;
+        else if (a == "--land") o.land = true;
+        else if (a == "--face") o.face = true;
+        else if (a == "--cockpit") o.cockpit = true;
+        else if (a == "--help-overlay") o.help = true;
+        else if (a == "--engine") o.engine = atoi(next());
+        else if (a == "--throttle") o.throttleSec = atof(next());
+        else if (a == "--timescale") o.timeScale = atof(next());
+    }
+    return o;
+}
+
+// ---------------------------------------------------------------- アプリ本体
+struct App {
+    std::vector<Body> B;
+    std::vector<Star> stars;
+    Ship ship;
+    Cam cam;
+    double tDays = 0;
+    int timeIdx = 0;
+    bool paused = false;
+    int target = B_MOON;
+    bool cockpit = false, showOrbits = true, showMoonMarkers = true, showHelp = false, invertY = false;
+    bool mouseCaptured = true;
+    int pad = -1;                 // 使用中のゲームパッド番号（-1: なし）
+    bool padTrigSeen[2] = {false, false};
+    bool padZoom = false;
+    std::string toast;
+    double toastTime = 0;
+    Mesh sphere{}, ring{};
+    Material mat{};
+    Shader shader{};
+    int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1;
+    std::vector<Vector3> dust;
+    double glow = 0;
+};
+
+static const double TIME_SCALES[] = {1, 10, 60, 600, 3600, 86400, 864000, 8640000, 31557600};
+static const char* TIME_SCALE_NAMES[] = {"x1", "x10", "x60 (1min/s)", "x600 (10min/s)", "x3600 (1h/s)",
+                                         "x86400 (1d/s)", "x864000 (10d/s)", "x8.64M (100d/s)", "x31.6M (1y/s)"};
+static const int TIME_SCALE_COUNT = sizeof(TIME_SCALES) / sizeof(TIME_SCALES[0]);
+
+static V3 ShipWorld(const App& app) { return app.B[app.ship.ref].pos + app.ship.local; }
+static void SetShipWorld(App& app, V3 w) { app.ship.local = w - app.B[app.ship.ref].pos; }
+static void Toast(App& app, const std::string& s) { app.toast = s; app.toastTime = 2.5; }
+
+// 基準系の再判定: 影響圏に入っている最も小さい天体を基準にする
+static void UpdateReferenceFrame(App& app) {
+    V3 w = ShipWorld(app);
+    int best = B_SUN;
+    double bestSoi = 1e301;
+    for (size_t i = 1; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        if (Len(w - b.pos) < b.soi && b.soi < bestSoi) { best = (int)i; bestSoi = b.soi; }
+    }
+    if (best != app.ship.ref) {
+        app.ship.ref = best;
+        SetShipWorld(app, w);
+    }
+}
+
+static void WarpTo(App& app, int ti, bool land) {
+    const Body& b = app.B[ti];
+    V3 toSun = ti == B_SUN ? Norm(app.B[B_EARTH].pos) : Norm(-b.pos);
+    V3 side = Cross(toSun, Y_UP);
+    if (Len(side) < 1e-6) side = V3(1, 0, 0);
+    side = Norm(side);
+    V3 dir = Norm(toSun * 0.6 + side * 0.8 + Y_UP * 0.15);
+    app.ship.ref = ti;
+    app.ship.speed = 0;
+    if (!land) {
+        double d = std::max(b.d.radius * 4.0, b.outer * 2.4);
+        app.ship.local = dir * d;
+        app.ship.q = QuatFromBasis(-dir, Y_UP);
+    } else {
+        dir = Norm(toSun * 0.85 + side * 0.5);
+        double r = SurfaceRadius(b, dir) + MinAltitude(b) + 0.15;
+        app.ship.local = dir * r;
+        V3 east = Cross(b.pole, dir);
+        if (Len(east) < 1e-6) east = side;
+        // 東向き・やや下向き（地平線が画面中央より少し上に来る）
+        V3 fwd = Norm(Norm(east) - dir * 0.08);
+        app.ship.q = QuatFromBasis(fwd, dir);
+    }
+    UpdateReferenceFrame(app);
+    Toast(app, std::string(land ? T(UI_LAND) : T(UI_WARP)) + ": " + TR(b.d.jp, b.d.en));
+}
+
+static void FaceTarget(App& app) {
+    V3 d = app.B[app.target].pos - ShipWorld(app);
+    app.ship.q = QuatFromBasis(d, ShipUp(app.ship));
+}
+
+// ---------------------------------------------------------------- ゲームパッド
+struct PadState {
+    double pitch = 0, yaw = 0, roll = 0;  // -1..1
+    double throttle = 0, brake = 0;       // 0..1
+    bool engineUp = false, engineDown = false, timeUp = false, timeDown = false;
+    bool face = false, stop = false, nextTarget = false, warp = false, land = false, view = false, help = false, zoom = false;
+};
+
+static double StickCurve(double v) {
+    const double dead = 0.15;
+    double a = std::fabs(v);
+    if (a < dead) return 0;
+    a = (a - dead) / (1 - dead);
+    return (v < 0 ? -1 : 1) * a * a;  // 二乗カーブで微調整しやすくする
+}
+
+static PadState ReadPad(App& app) {
+    PadState p;
+    // 接続の検出（最初に見つかったパッドを使う）
+    if (app.pad >= 0 && !IsGamepadAvailable(app.pad)) {
+        app.pad = -1;
+        Toast(app, T(UI_PAD_OFF));
+    }
+    if (app.pad < 0) {
+        for (int i = 0; i < 4; i++) {
+            if (IsGamepadAvailable(i)) {
+                app.pad = i;
+                app.padTrigSeen[0] = app.padTrigSeen[1] = false;
+                Toast(app, std::string(T(UI_PAD_ON)) + ": " + GetGamepadName(i));
+                break;
+            }
+        }
+    }
+    if (app.pad < 0) return p;
+    int g = app.pad;
+    p.yaw = -StickCurve(GetGamepadAxisMovement(g, GAMEPAD_AXIS_LEFT_X));
+    p.pitch = -StickCurve(GetGamepadAxisMovement(g, GAMEPAD_AXIS_LEFT_Y));
+    p.roll = -StickCurve(GetGamepadAxisMovement(g, GAMEPAD_AXIS_RIGHT_X));
+    if (IsGamepadButtonDown(g, GAMEPAD_BUTTON_LEFT_TRIGGER_1)) p.roll += 1;
+    if (IsGamepadButtonDown(g, GAMEPAD_BUTTON_RIGHT_TRIGGER_1)) p.roll -= 1;
+
+    // トリガーは -1(離す)〜1(押し込み)。ドライバによっては一度動かすまで 0 を返すので、
+    // 0 以外の値を観測するまでは未入力として扱う
+    GamepadAxis trig[2] = {GAMEPAD_AXIS_RIGHT_TRIGGER, GAMEPAD_AXIS_LEFT_TRIGGER};
+    double tv[2];
+    for (int k = 0; k < 2; k++) {
+        float v = GetGamepadAxisMovement(g, trig[k]);
+        if (v != 0.0f) app.padTrigSeen[k] = true;
+        tv[k] = app.padTrigSeen[k] ? (v + 1.0) * 0.5 : 0.0;
+        if (tv[k] < 0.05) tv[k] = 0;
+    }
+    p.throttle = std::max(tv[0], IsGamepadButtonDown(g, GAMEPAD_BUTTON_RIGHT_TRIGGER_2) && !app.padTrigSeen[0] ? 1.0 : 0.0);
+    p.brake = std::max(tv[1], IsGamepadButtonDown(g, GAMEPAD_BUTTON_LEFT_TRIGGER_2) && !app.padTrigSeen[1] ? 1.0 : 0.0);
+
+    p.engineUp = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
+    p.engineDown = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
+    p.timeUp = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_FACE_UP);
+    p.timeDown = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_FACE_DOWN);
+    p.face = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);       // A / ×
+    p.stop = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);      // B / ○
+    p.nextTarget = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_LEFT); // X / □
+    p.warp = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_UP);         // Y / △
+    p.land = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_THUMB);
+    p.zoom = IsGamepadButtonDown(g, GAMEPAD_BUTTON_RIGHT_THUMB);
+    p.view = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_MIDDLE_LEFT);
+    p.help = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+    return p;
+}
+
+static void HandleInput(App& app, double dt) {
+    Ship& s = app.ship;
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    PadState pad = ReadPad(app);
+    app.padZoom = pad.zoom;
+
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        app.mouseCaptured = !app.mouseCaptured;
+        if (app.mouseCaptured) DisableCursor(); else EnableCursor();
+    }
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !app.mouseCaptured) {
+        app.mouseCaptured = true;
+        DisableCursor();
+    }
+
+    // 回転
+    double zoomK = app.cam.fovy / (60 * DEG);
+    double pitch = 0, yaw = 0, roll = 0;
+    if (app.mouseCaptured) {
+        Vector2 md = GetMouseDelta();
+        const double sens = 0.0022 * zoomK;
+        yaw -= md.x * sens;
+        pitch -= md.y * sens * (app.invertY ? -1 : 1);
+    }
+    double kr = 1.1 * dt * zoomK;
+    if (IsKeyDown(KEY_UP)) pitch += kr;
+    if (IsKeyDown(KEY_DOWN)) pitch -= kr;
+    if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) yaw += kr;
+    if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) yaw -= kr;
+    if (IsKeyDown(KEY_Q)) roll += 1.6 * dt;
+    if (IsKeyDown(KEY_E)) roll -= 1.6 * dt;
+    pitch += pad.pitch * 1.3 * dt * zoomK * (app.invertY ? -1 : 1);
+    yaw += pad.yaw * 1.3 * dt * zoomK;
+    roll += std::max(-1.0, std::min(1.0, pad.roll)) * 1.6 * dt;
+    Quaternion r = QuaternionMultiply(QuaternionFromAxisAngle({0, 1, 0}, (float)yaw), QuaternionFromAxisAngle({1, 0, 0}, (float)pitch));
+    r = QuaternionMultiply(r, QuaternionFromAxisAngle({0, 0, 1}, (float)roll));
+    s.q = QuaternionNormalize(QuaternionMultiply(s.q, r));
+
+    // エンジン
+    for (int i = 0; i < ENGINE_COUNT; i++)
+        if (IsKeyPressed((KeyboardKey)(KEY_ONE + i)) || IsKeyPressed((KeyboardKey)(KEY_KP_1 + i))) s.engine = i;
+    float wheel = GetMouseWheelMove();
+    if (wheel > 0) s.engine = std::min(ENGINE_COUNT - 1, s.engine + 1);
+    if (wheel < 0) s.engine = std::max(0, s.engine - 1);
+    if (pad.engineUp) s.engine = std::min(ENGINE_COUNT - 1, s.engine + 1);
+    if (pad.engineDown) s.engine = std::max(0, s.engine - 1);
+
+    const Engine& e = ENGINES[s.engine];
+    double acc = e.accel / 1000.0, vmax = e.vmax / 1000.0;
+    // スロットル（キーボードは全開、トリガーは押し込み量に比例）
+    double throttle = std::max(IsKeyDown(KEY_W) ? 1.0 : 0.0, pad.throttle);
+    double brake = std::max(IsKeyDown(KEY_S) ? 1.0 : 0.0, pad.brake);
+    s.thrusting = false;
+    if (throttle > 0 && s.speed < vmax) {
+        s.speed = std::min(vmax, s.speed + acc * throttle * dt);
+        s.thrusting = true;
+    }
+    if (brake > 0) {
+        s.speed = std::max(-vmax * 0.25, s.speed - acc * brake * dt);
+        s.thrusting = true;
+    }
+    if (IsKeyPressed(KEY_X) || pad.stop) s.speed = 0;
+    // 下位エンジンへ切り替えた時は最高速度まで素早く減速
+    double lim = s.speed >= 0 ? vmax : vmax * 0.25;
+    if (std::fabs(s.speed) > lim) {
+        double sign = s.speed > 0 ? 1 : -1;
+        double over = (std::fabs(s.speed) - lim) * std::exp(-3.0 * dt);
+        s.speed = sign * (over < lim * 1e-4 ? lim : lim + over);
+    }
+
+    // ターゲット
+    int n = (int)app.B.size();
+    if (IsKeyPressed(KEY_TAB)) app.target = (app.target + (shift ? n - 1 : 1)) % n;
+    if (pad.nextTarget) app.target = (app.target + 1) % n;
+    if (IsKeyPressed(KEY_F) || pad.face) FaceTarget(app);
+    if (IsKeyPressed(KEY_G)) WarpTo(app, app.target, shift);
+    if (pad.warp || pad.land) WarpTo(app, app.target, pad.land);
+
+    // 表示
+    if (IsKeyPressed(KEY_V) || pad.view) { app.cockpit = !app.cockpit; Toast(app, T(app.cockpit ? UI_VIEW_COCKPIT : UI_VIEW_CHASE)); }
+    if (IsKeyPressed(KEY_O)) { app.showOrbits = !app.showOrbits; Toast(app, T(app.showOrbits ? UI_ORBITS_ON : UI_ORBITS_OFF)); }
+    if (IsKeyPressed(KEY_L)) { app.showMoonMarkers = !app.showMoonMarkers; Toast(app, T(app.showMoonMarkers ? UI_LABELS_ON : UI_LABELS_OFF)); }
+    if (IsKeyPressed(KEY_I)) { app.invertY = !app.invertY; Toast(app, T(app.invertY ? UI_INVERT_ON : UI_INVERT_OFF)); }
+    if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
+    if (IsKeyPressed(KEY_F11)) ToggleBorderlessWindowed();
+
+    // 時間
+    if (IsKeyPressed(KEY_RIGHT_BRACKET) || pad.timeUp) app.timeIdx = std::min(TIME_SCALE_COUNT - 1, app.timeIdx + 1);
+    if (IsKeyPressed(KEY_LEFT_BRACKET) || pad.timeDown) app.timeIdx = std::max(0, app.timeIdx - 1);
+    if (IsKeyPressed(KEY_P)) app.paused = !app.paused;
+    if (IsKeyPressed(KEY_BACKSPACE)) {
+        app.tDays = NowDaysSinceJ2000();
+        app.timeIdx = 0;
+        app.paused = false;
+        Toast(app, T(UI_TIME_RESET));
+    }
+    (void)ctrl;
+}
+
+static void UpdateShip(App& app, double dt) {
+    Ship& s = app.ship;
+    s.local += ShipFwd(s) * (s.speed * dt);
+    // 地表との衝突: 最低高度まで押し戻す（速度は維持して地表を滑る）
+    for (const Body& b : app.B) {
+        V3 rel = ShipWorld(app) - b.pos;
+        double d = Len(rel);
+        if (d > b.d.radius * 1.2 + 1) continue;
+        V3 dir = rel * (1.0 / d);
+        double rs = SurfaceRadius(b, dir) + MinAltitude(b);
+        if (d < rs) SetShipWorld(app, b.pos + dir * rs);
+    }
+    UpdateReferenceFrame(app);
+}
+
+static void UpdateCamera(App& app) {
+    Cam& c = app.cam;
+    const Ship& s = app.ship;
+    c.W = (float)GetScreenWidth();
+    c.H = (float)GetScreenHeight();
+    double targetFov = (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || app.padZoom) ? 8 * DEG : 60 * DEG;
+    c.fovy += (targetFov - c.fovy) * std::min(1.0, GetFrameTime() * 10.0);
+    c.focal = c.H * 0.5 / std::tan(c.fovy * 0.5);
+    c.fwd = ShipFwd(s);
+    c.up = ShipUp(s);
+    c.right = ShipRight(s);
+    V3 sw = ShipWorld(app);
+    c.pos = app.cockpit ? sw + c.up * 0.0025 : sw - c.fwd * 0.055 + c.up * 0.013;
+    for (const Body& b : app.B) {
+        V3 rel = c.pos - b.pos;
+        double d = Len(rel);
+        if (d > b.d.radius * 1.2 + 1) continue;
+        V3 dir = rel * (1.0 / d);
+        double rs = SurfaceRadius(b, dir) + MinAltitude(b) * 0.5;
+        if (d < rs) c.pos = b.pos + dir * rs;
+    }
+    g_view = MatrixLookAt({0, 0, 0}, ToF(c.fwd), ToF(c.up));
+}
+
+// ---------------------------------------------------------------- 描画: 3D
+static void DrawOrbits(App& app) {
+    const Cam& c = app.cam;
+    // 地表近くでは軌道線が視界を横切って邪魔なので描かない
+    for (const Body& b : app.B)
+        if (Len(c.pos - b.pos) < b.d.radius * 1.3) return;
+    SetPassProjection(c, 1.0, 1e11);
+    rlDisableDepthTest();
+    for (size_t i = 1; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        const BodyDef& d = b.d;
+        V3 center = d.parent == 0 ? V3() : app.B[d.parent].pos;
+        if (d.parent > 0 && Len(c.pos - center) > d.moonA * 60) continue;  // 衛星の軌道は近くでだけ表示
+        if (Len(c.pos - b.pos) < d.radius * 40) continue;  // 自分の軌道線が天体を貫いて見えるのを防ぐ
+        Color col = BodyColor(b, 0.8f);
+        col.a = (int)i == app.target ? 150 : (d.parent == 0 ? 70 : 55);
+        rlCheckRenderBatchLimit((int)b.orbit.size() * 2);
+        rlBegin(RL_LINES);
+        rlColor4ub(col.r, col.g, col.b, col.a);
+        for (size_t k = 0; k + 1 < b.orbit.size(); k++) {
+            Vector3 p0 = ToF(center + b.orbit[k] - c.pos), p1 = ToF(center + b.orbit[k + 1] - c.pos);
+            rlVertex3f(p0.x, p0.y, p0.z);
+            rlVertex3f(p1.x, p1.y, p1.z);
+        }
+        rlEnd();
+    }
+    rlDrawRenderBatchActive();
+    rlEnableDepthTest();
+}
+
+static void DrawBodies(App& app) {
+    const Cam& c = app.cam;
+    struct Item { int i; double dist; };
+    std::vector<Item> items;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        V3 rel = b.pos - c.pos;
+        double dist = Len(rel);
+        if (Dot(rel, c.fwd) < -b.outer) continue;
+        if (b.outer / dist * c.focal < 0.8) continue;  // サブピクセルは 2D の点で描く
+        items.push_back({(int)i, dist});
+    }
+    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.dist > b.dist; });
+
+    for (const Item& it : items) {
+        const Body& b = app.B[it.i];
+        const BodyDef& d = b.d;
+        V3 rel = b.pos - c.pos;
+        double dist = it.dist;
+        double s = 100.0 / dist;
+        double rPol = d.radius * (1 - d.flattening);
+        // near: 最も近い表面（環があればその外縁）より手前
+        double alt = dist - SurfaceRadius(b, rel * (-1.0 / dist));
+        double nearKm = (dist > b.outer && b.outer > d.radius) ? std::min(alt, dist - b.outer) * 0.9 : alt * 0.5;
+        nearKm = std::max(nearKm, dist * 1e-7);
+        SetPassProjection(c, nearKm * s, (dist + b.outer) * s * 1.01);
+        ClearDepth();
+
+        V3 L = it.i == B_SUN ? V3(0, 1, 0) : Norm(-b.pos);
+        V3 Lobj(Dot(L, b.ex), Dot(L, b.pole), Dot(L, b.ez));
+        Vector3 lf = ToF(L), lo = ToF(Lobj);
+        Vector3 c1 = {d.c1.r, d.c1.g, d.c1.b}, c2 = {d.c2.r, d.c2.g, d.c2.b}, atm = {d.atm.r, d.atm.g, d.atm.b};
+        // 大気の縁の光は外から見た時だけ（地表付近では地面全体が光ってしまう）
+        float atmK = (float)std::min(1.0, std::max(0.0, alt / (d.radius * 0.05)));
+        float params[4] = {(float)d.kind, d.bands, (float)(it.i * 7.31), d.atmStrength * atmK};
+        SetShaderValue(app.shader, app.locLight, &lf, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shader, app.locLightObj, &lo, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shader, app.locC1, &c1, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shader, app.locAtm, &atm, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shader, app.locParams, params, SHADER_UNIFORM_VEC4);
+        DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
+
+        if (d.rings) {
+            float rp[4] = {4.0f, (float)d.radius, 0, 0};
+            Vector3 rc1 = {0.93f, 0.86f, 0.72f}, rc2 = {0.55f, 0.50f, 0.44f};
+            SetShaderValue(app.shader, app.locC1, &rc1, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locC2, &rc2, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locParams, rp, SHADER_UNIFORM_VEC4);
+            rlDisableBackfaceCulling();
+            DrawMesh(app.ring, app.mat, BodyMatrix(b, rel * s, d.radius * s, d.radius * s, 0));
+            rlEnableBackfaceCulling();
+        }
+    }
+}
+
+static void DrawShipPass(App& app, double dt) {
+    const Cam& c = app.cam;
+    const Ship& s = app.ship;
+    SetPassProjection(c, 0.0005, 5.0);
+    ClearDepth();
+
+    // 宇宙塵: 速度感を出すための演出（対数スケール）
+    double v = std::fabs(s.speed) * 1000.0;
+    double vis = 0.012 * std::pow(std::log10(1 + v), 1.3) * (s.speed < 0 ? -1 : 1);
+    V3 f = c.fwd;
+    const float box = 0.12f;
+    Vector3 ff = ToF(f);
+    float streak = (float)std::min(0.03, std::fabs(vis) * 0.06 + 0.0004) * (vis < 0 ? -1.0f : 1.0f);
+    for (Vector3& p : app.dust) {
+        p = Vector3Subtract(p, Vector3Scale(ff, (float)(vis * dt)));
+        for (int k = 0; k < 3; k++) {
+            float* q = k == 0 ? &p.x : k == 1 ? &p.y : &p.z;
+            if (*q > box) *q -= 2 * box;
+            if (*q < -box) *q += 2 * box;
+        }
+        DrawLine3D(p, Vector3Add(p, Vector3Scale(ff, streak)), {200, 210, 230, 90});
+    }
+
+    if (!app.cockpit) {
+        V3 rel = ShipWorld(app) - c.pos;
+        rlPushMatrix();
+        rlTranslatef((float)rel.x, (float)rel.y, (float)rel.z);
+        rlMultMatrixf(MatrixToFloat(QuaternionToMatrix(s.q)));
+        rlScalef(0.001f, 0.001f, 0.001f);
+        double target = s.thrusting ? 1.0 : (std::fabs(s.speed) > 0 ? 0.25 : 0.0);
+        app.glow += (target - app.glow) * std::min(1.0, dt * 6);
+        DrawShipModel(s, app.glow);
+        rlPopMatrix();
+    }
+    rlDrawRenderBatchActive();
+}
+
+// ---------------------------------------------------------------- 描画: 2D
+static void DrawStars(const App& app) {
+    const Cam& c = app.cam;
+    for (const Star& st : app.stars) {
+        Vector2 p;
+        if (!Project(c, st.dir, &p)) continue;
+        if (p.x < 0 || p.y < 0 || p.x >= c.W || p.y >= c.H) continue;
+        if (st.size > 0) DrawCircleV(p, st.size, st.col);
+        else DrawPixelV(p, st.col);
+    }
+}
+
+// 天体が他の天体に隠れていないか（太陽のグロー用）
+static bool Occluded(const App& app, V3 from, V3 to, int self) {
+    V3 d = to - from;
+    double L = Len(d);
+    d = d * (1.0 / L);
+    for (size_t i = 0; i < app.B.size(); i++) {
+        if ((int)i == self) continue;
+        V3 oc = app.B[i].pos - from;
+        double t = Dot(oc, d);
+        if (t < 0 || t > L) continue;
+        if (Len(oc - d * t) < app.B[i].d.radius) return true;
+    }
+    return false;
+}
+
+static void DrawSunGlowAndDots(const App& app) {
+    const Cam& c = app.cam;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        V3 rel = b.pos - c.pos;
+        Vector2 p;
+        if (!Project(c, rel, &p)) continue;
+        double px = b.d.radius / Len(rel) * c.focal;
+        if (i == B_SUN) {
+            if (Occluded(app, c.pos, b.pos, B_SUN)) continue;
+            float r = (float)(px * 1.8 + 14);
+            BeginBlendMode(BLEND_ADDITIVE);
+            DrawCircleGradient((int)p.x, (int)p.y, r, {255, 240, 200, 200}, {255, 200, 120, 0});
+            DrawCircleGradient((int)p.x, (int)p.y, r * 3, {255, 200, 140, 35}, {255, 160, 80, 0});
+            EndBlendMode();
+            if (px < 0.8) DrawCircleV(p, 2.5f, {255, 250, 230, 255});
+        } else if (b.outer / Len(rel) * c.focal < 0.8) {
+            DrawCircleV(p, b.d.parent == 0 ? 1.8f : 1.2f, BodyColor(b));
+        }
+    }
+}
+
+// ラベルの重なり回避: 既に置いた矩形（HUD パネル含む）と重ならない位置まで縦にずらす
+static std::vector<Rectangle> g_placed;
+static void PlaceLabel(float* x, float* y, float w, float h, float screenH) {
+    float y0 = *y;
+    for (int attempt = 0; attempt < 16; attempt++) {
+        Rectangle r = {*x, *y, w, h};
+        bool hit = false;
+        for (const Rectangle& o : g_placed) {
+            if (CheckCollisionRecs(r, o)) {
+                hit = true;
+                // 下へずらし、画面下端に達したら上方向へ
+                *y = (y0 > screenH * 0.5f) ? o.y - h - 1 : o.y + o.height + 1;
+                break;
+            }
+        }
+        if (!hit) break;
+    }
+    g_placed.push_back({*x, *y, w, h});
+}
+
+// 天体方向マーカー（画面外なら画面端に矢印）
+static void DrawMarker(const App& app, int idx) {
+    const Cam& c = app.cam;
+    const Body& b = app.B[idx];
+    V3 rel = b.pos - c.pos;
+    double dist = Len(rel);
+    double surf = dist - b.d.radius;
+    bool isTarget = idx == app.target;
+    Color col = isTarget ? Color{255, 220, 80, 255} : BodyColor(b, 1.1f);
+    std::string label = std::string(TR(b.d.jp, b.d.en)) + "  " + FmtDist(std::max(0.0, surf));
+    float fs = isTarget ? 18.0f : 15.0f;
+
+    // 矢印を置く枠（上は方位計、下はエンジン表示を避ける）
+    const float mL = 30, mR = 30, mT = 100, mB = 76;
+    Vector2 p;
+    bool front = Project(c, rel, &p);
+    bool on = front && p.x >= mL && p.x <= c.W - mR && p.y >= mT && p.y <= c.H - mB;
+    double px = b.d.radius / dist * c.focal;
+    if (on) {
+        if (px > 260 && !isTarget) return;  // 視界いっぱいの天体にはラベル不要
+        float r = (float)std::max(7.0, std::min(px + 6, 60.0));
+        if (isTarget) {
+            float k = r * 0.45f;
+            Color tc = col;
+            DrawLineEx({p.x - r, p.y - r}, {p.x - r + k, p.y - r}, 2, tc); DrawLineEx({p.x - r, p.y - r}, {p.x - r, p.y - r + k}, 2, tc);
+            DrawLineEx({p.x + r, p.y - r}, {p.x + r - k, p.y - r}, 2, tc); DrawLineEx({p.x + r, p.y - r}, {p.x + r, p.y - r + k}, 2, tc);
+            DrawLineEx({p.x - r, p.y + r}, {p.x - r + k, p.y + r}, 2, tc); DrawLineEx({p.x - r, p.y + r}, {p.x - r, p.y + r - k}, 2, tc);
+            DrawLineEx({p.x + r, p.y + r}, {p.x + r - k, p.y + r}, 2, tc); DrawLineEx({p.x + r, p.y + r}, {p.x + r, p.y + r - k}, 2, tc);
+        } else {
+            DrawCircleLinesV(p, r, Fade(col, 0.6f));
+        }
+        float lx = p.x + r + 4, ly = p.y - fs * 0.5f;
+        PlaceLabel(&lx, &ly, TxtW(label.c_str(), fs), fs + 2, c.H);
+        Txt(label.c_str(), lx, ly, fs, col);
+        return;
+    }
+    // 画面外: 方向を画面端へ投影
+    double x = Dot(rel, c.right), y = -Dot(rel, c.up);
+    if (!front && std::fabs(x) < 1e-12 && std::fabs(y) < 1e-12) y = 1;
+    double l = std::sqrt(x * x + y * y);
+    x /= l; y /= l;
+    double cx = (mL + c.W - mR) * 0.5, cy = (mT + c.H - mB) * 0.5;
+    double hw = (c.W - mR - mL) * 0.5, hh = (c.H - mB - mT) * 0.5;
+    double t = std::min(hw / std::max(std::fabs(x), 1e-9), hh / std::max(std::fabs(y), 1e-9));
+    Vector2 e = {(float)(cx + x * t), (float)(cy + y * t)};
+    Vector2 dir = {(float)x, (float)y}, nrm = {(float)-y, (float)x};
+    float as = isTarget ? 13.0f : 9.0f;
+    Vector2 tip = {e.x + dir.x * as, e.y + dir.y * as};
+    Vector2 b1 = {e.x - dir.x * as * 0.6f + nrm.x * as * 0.7f, e.y - dir.y * as * 0.6f + nrm.y * as * 0.7f};
+    Vector2 b2 = {e.x - dir.x * as * 0.6f - nrm.x * as * 0.7f, e.y - dir.y * as * 0.6f - nrm.y * as * 0.7f};
+    DrawTriangle(tip, b1, b2, col);
+    DrawTriangle(tip, b2, b1, col);
+    float tw = TxtW(label.c_str(), fs);
+    float lx = e.x - dir.x * (tw * 0.5f + 16) - tw * 0.5f, ly = e.y - dir.y * 22 - fs * 0.5f;
+    lx = std::max(4.0f, std::min(lx, c.W - tw - 4));
+    ly = std::max(4.0f, std::min(ly, c.H - fs - 4));
+    PlaceLabel(&lx, &ly, tw, fs + 2, c.H);
+    Txt(label.c_str(), lx, ly, fs, Fade(col, 0.9f));
+}
+
+static void DrawMarkers(const App& app) {
+    const Cam& c = app.cam;
+    float R = std::min(105.0f, c.H * 0.16f);
+    g_placed = {
+        {0, 0, 482, 158},                                   // 左上パネル
+        {c.W - 340, 0, 340, 112},                           // ターゲット情報
+        {c.W * 0.5f - 290, 0, 580, 96},                     // 方位計
+        {c.W - 2 * R - 44, c.H - 2 * R - 48, 2 * R + 44, 2 * R + 48},  // 速度計
+        {0, c.H - 64, c.W, 64},                             // エンジン表示
+    };
+    DrawMarker(app, app.target);  // ターゲットを優先して配置
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const BodyDef& d = app.B[i].d;
+        if ((int)i == app.target) continue;
+        if (d.parent > 0) {
+            if (!app.showMoonMarkers) continue;
+            // 衛星: 母天体の近くにいる時、または画面上で母天体から十分離れて見える時だけ
+            const Body& par = app.B[d.parent];
+            bool near = Len(c.pos - par.pos) < par.soi;
+            Vector2 p0, p1;
+            bool sep = Project(c, app.B[i].pos - c.pos, &p1) && Project(c, par.pos - c.pos, &p0) && Vector2Distance(p0, p1) > 45;
+            if (!near && !sep) continue;
+            if (!near) {
+                Vector2 p;
+                if (!Project(c, app.B[i].pos - c.pos, &p) || p.x < 0 || p.y < 0 || p.x > c.W || p.y > c.H) continue;
+            }
+        }
+        DrawMarker(app, (int)i);
+    }
+}
+
+// 方位計（コンパス・テープ）
+static void DrawCompass(const App& app) {
+    const Cam& c = app.cam;
+    const Ship& s = app.ship;
+    const Body& ref = app.B[s.ref];
+    V3 rel = ShipWorld(app) - ref.pos;
+    bool local = s.ref != B_SUN && Len(rel) < ref.d.radius * 30;
+    V3 upRef, north, east;
+    if (local) {
+        upRef = Norm(rel);
+        east = Cross(ref.pole, upRef);
+        if (Len(east) < 1e-9) east = Cross(V3(1, 0, 0), upRef);
+        east = Norm(east);
+        north = Cross(upRef, east);
+    } else {
+        upRef = Y_UP;
+        north = V3(1, 0, 0);   // 黄経 0°（春分点方向）
+        east = V3(0, 0, -1);   // 黄経 90°
+    }
+    auto headingOf = [&](V3 v) { return std::atan2(Dot(v, east), Dot(v, north)) / DEG; };
+    double heading = headingOf(c.fwd);
+    if (heading < 0) heading += 360;
+    double pitch = std::asin(std::max(-1.0, std::min(1.0, Dot(c.fwd, upRef)))) / DEG;
+    double roll = std::atan2(-Dot(c.right, upRef), Dot(c.up, upRef)) / DEG;
+
+    float W = std::min(560.0f, c.W - 40), cx = c.W * 0.5f, y0 = 10, h = 34;
+    const double range = 60;  // 表示幅 ±60°
+    DrawRectangleRounded({cx - W / 2, y0, W, h}, 0.3f, 6, {0, 10, 25, 150});
+    BeginScissorMode((int)(cx - W / 2), (int)y0, (int)W, (int)h + 30);
+    for (int deg = -180; deg <= 540; deg += 5) {
+        double dd = deg - heading;
+        if (dd < -range || dd > range) continue;
+        float x = (float)(cx + dd / range * W / 2);
+        bool major = deg % 15 == 0;
+        DrawLineEx({x, y0 + h}, {x, y0 + h - (major ? 12.0f : 6.0f)}, 1.5f, {170, 200, 230, 200});
+        if (deg % 45 == 0) {
+            int d360 = ((deg % 360) + 360) % 360;
+            char b[16];
+            const char* lab = b;
+            if (local && d360 % 90 == 0) lab = T(d360 == 0 ? UI_N : d360 == 90 ? UI_E : d360 == 180 ? UI_S : UI_W);
+            else snprintf(b, sizeof b, "%d", d360);
+            TxtC(lab, x, y0 + 2, 16, (local && d360 % 90 == 0) ? Color{255, 220, 120, 255} : Color{200, 220, 240, 255});
+        }
+    }
+    // ターゲット方位
+    V3 tdir = app.B[app.target].pos - c.pos;
+    double th = headingOf(tdir) - heading;
+    while (th > 180) th -= 360;
+    while (th < -180) th += 360;
+    float tx = (float)(cx + std::max(-range, std::min(range, th)) / range * W / 2);
+    DrawTriangle({tx, y0 + h + 1}, {tx + 7, y0 + h + 10}, {tx - 7, y0 + h + 10}, {255, 220, 80, 255});
+    EndScissorMode();
+    DrawTriangle({cx, y0 + h - 2}, {cx - 8, y0 + h + 8}, {cx + 8, y0 + h + 8}, {255, 255, 255, 255});
+    DrawTriangle({cx, y0 + h - 2}, {cx + 8, y0 + h + 8}, {cx - 8, y0 + h + 8}, {255, 255, 255, 255});
+
+    char line[160];
+    snprintf(line, sizeof line, "%s %05.1f°   %s %+05.1f°   %s %+06.1f°",
+             local ? T(UI_HEADING) : T(UI_ECL_LON), heading, local ? T(UI_PITCH) : T(UI_ECL_LAT), pitch, T(UI_ROLL), roll);
+    TxtC(line, cx, y0 + h + 12, 16, {200, 225, 255, 255});
+    if (local) {
+        snprintf(line, sizeof line, "(%s)", TR(ref.d.jp, ref.d.en));
+        TxtC(line, cx, y0 + h + 31, 14, {150, 170, 200, 255});
+    }
+
+    // 簡易姿勢指示: 中央の水平線をロールに合わせて傾ける
+    float rr = (float)(roll * DEG);
+    Vector2 ctr = {c.W * 0.5f, c.H * 0.5f};
+    float len = 70, gap = 26;
+    Vector2 dx = {std::cos(rr), -std::sin(rr)};
+    Color hc = {120, 255, 160, 140};
+    DrawLineEx({ctr.x - dx.x * (gap + len), ctr.y - dx.y * (gap + len)}, {ctr.x - dx.x * gap, ctr.y - dx.y * gap}, 1.5f, hc);
+    DrawLineEx({ctr.x + dx.x * gap, ctr.y + dx.y * gap}, {ctr.x + dx.x * (gap + len), ctr.y + dx.y * (gap + len)}, 1.5f, hc);
+}
+
+// 速度計（アナログメーター）
+static void DrawSpeedometer(const App& app) {
+    const Cam& c = app.cam;
+    const Ship& s = app.ship;
+    const Engine& e = ENGINES[s.engine];
+    float R = std::min(105.0f, c.H * 0.16f);
+    Vector2 ctr = {c.W - R - 26, c.H - R - 30};
+    DrawCircleV(ctr, R + 8, {0, 10, 25, 170});
+    DrawRing(ctr, R - 4, R, 135, 405, 90, {90, 120, 160, 200});
+
+    // 目盛の単位
+    double unitScale;  // km/s → 表示単位
+    const char* unit;
+    if (e.dialUnit == 0) { unitScale = 3600; unit = "km/h"; }
+    else if (e.dialUnit == 1) { unitScale = 1; unit = "km/s"; }
+    else { unitScale = 1.0 / C_KMS; unit = "c"; }
+    double vmax = e.vmax / 1000.0;
+    double vmaxU = vmax * unitScale;
+
+    for (int i = 0; i <= 10; i++) {
+        double u = i / 10.0;
+        float a = (float)((135 + 270 * u) * DEG);
+        Vector2 dir = {std::cos(a), std::sin(a)};
+        float l = i % 2 == 0 ? 14.0f : 7.0f;
+        DrawLineEx({ctr.x + dir.x * (R - 4), ctr.y + dir.y * (R - 4)}, {ctr.x + dir.x * (R - 4 - l), ctr.y + dir.y * (R - 4 - l)}, 2, {200, 220, 240, 230});
+        if (i % 2 == 0) {
+            char b[32];
+            double v = vmaxU * u;
+            if (e.dialUnit == 2) snprintf(b, sizeof b, "%.1f", v);
+            else if (v >= 10000) snprintf(b, sizeof b, "%.0fk", v / 1000);
+            else snprintf(b, sizeof b, "%.0f", v);
+            float fs = 13;
+            float tw = TxtW(b, fs);
+            Txt(b, ctr.x + dir.x * (R - 32) - tw / 2, ctr.y + dir.y * (R - 32) - fs / 2, fs, {180, 200, 225, 255});
+        }
+    }
+    // 現在速度の円弧と針
+    double u = std::min(1.08, std::fabs(s.speed) / vmax);
+    bool over = std::fabs(s.speed) > vmax * 1.001;
+    Color needle = over ? Color{255, 80, 60, 255} : (s.speed < 0 ? Color{255, 170, 60, 255} : Color{90, 230, 255, 255});
+    if (u > 0.002) DrawRing(ctr, R - 3, R + 4, 135, (float)(135 + 270 * std::min(1.0, u)), 60, Fade(needle, 0.8f));
+    float a = (float)((135 + 270 * u) * DEG);
+    DrawLineEx(ctr, {ctr.x + std::cos(a) * (R - 10), ctr.y + std::sin(a) * (R - 10)}, 3, needle);
+    DrawCircleV(ctr, 6, needle);
+
+    // デジタル表示
+    char b[64];
+    double v = s.speed * unitScale;
+    if (e.dialUnit == 2) snprintf(b, sizeof b, "%.5f", v);
+    else snprintf(b, sizeof b, "%s", Grouped(v, std::fabs(v) < 100 ? 1 : 0).c_str());
+    TxtC(b, ctr.x, ctr.y + R * 0.28f, 24, WHITE);
+    TxtC(unit, ctr.x, ctr.y + R * 0.28f + 24, 14, {170, 190, 215, 255});
+    if (over) TxtC(T(UI_OVERSPEED), ctr.x, ctr.y - R * 0.45f, 14, needle);
+    else if (s.speed < 0) TxtC(T(UI_REVERSE), ctr.x, ctr.y - R * 0.45f, 14, needle);
+    TxtC(TR(e.jp, e.en), ctr.x, ctr.y + R + 10, 15, e.flame);
+}
+
+static void DrawEngineBar(const App& app) {
+    const Cam& c = app.cam;
+    float bw = std::min(118.0f, (c.W - 300) / ENGINE_COUNT), bh = 40;
+    float total = bw * ENGINE_COUNT, x0 = (c.W - total) * 0.5f - 60, y0 = c.H - bh - 14;
+    if (x0 < 10) x0 = 10;
+    for (int i = 0; i < ENGINE_COUNT; i++) {
+        const Engine& e = ENGINES[i];
+        bool cur = i == app.ship.engine;
+        Rectangle r = {x0 + i * bw + 2, y0, bw - 4, bh};
+        DrawRectangleRounded(r, 0.2f, 6, cur ? Color{40, 70, 110, 220} : Color{0, 10, 25, 150});
+        if (cur) DrawRectangleRoundedLinesEx(r, 0.2f, 6, 2, e.flame);
+        char b[64];
+        snprintf(b, sizeof b, "%d", i + 1);
+        Txt(b, r.x + 6, r.y + 3, 13, cur ? WHITE : Color{140, 160, 190, 255});
+        float fs = TxtW(TR(e.jp, e.en), 15) > bw - 14 ? 12.0f : 15.0f;
+        TxtC(TR(e.jp, e.en), r.x + r.width / 2, r.y + 18, fs, cur ? e.flame : Color{170, 185, 205, 255});
+    }
+}
+
+static void DrawHUD(App& app) {
+    const Cam& c = app.cam;
+    const Ship& s = app.ship;
+    const Engine& e = ENGINES[s.engine];
+    V3 sw = ShipWorld(app);
+
+    // 中央の照準
+    Vector2 ctr = {c.W * 0.5f, c.H * 0.5f};
+    DrawCircleLinesV(ctr, 12, {120, 255, 160, 160});
+    DrawLineEx({ctr.x - 4, ctr.y}, {ctr.x + 4, ctr.y}, 1, {120, 255, 160, 200});
+    DrawLineEx({ctr.x, ctr.y - 4}, {ctr.x, ctr.y + 4}, 1, {120, 255, 160, 200});
+
+    // 最寄りの天体
+    int nearest = 0;
+    double nearestAlt = 1e300;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        V3 rel = sw - app.B[i].pos;
+        double d = Len(rel);
+        double alt = d - SurfaceRadius(app.B[i], rel * (1.0 / d));
+        if (alt < nearestAlt) { nearestAlt = alt; nearest = (int)i; }
+    }
+
+    // 左上パネル
+    float x = 14, y = 12, fs = 17, lh = 22;
+    DrawRectangleRounded({6, 6, 470, lh * 6 + 14}, 0.06f, 6, {0, 10, 25, 150});
+    char b[256];
+    snprintf(b, sizeof b, "%s [%d] %s", T(UI_ENGINE), s.engine + 1, TR(e.jp, e.en));
+    Txt(b, x, y, fs + 2, e.flame); y += lh + 2;
+    std::string vmaxS = FmtSpeed(e.vmax / 1000.0);
+    snprintf(b, sizeof b, "%s %s m/s%s   %s %s", T(UI_ACCEL), Grouped(e.accel, e.accel < 100 ? 2 : 0).c_str(), g_jp ? "²" : "^2", T(UI_MAXSPD), vmaxS.c_str());
+    Txt(b, x, y, fs - 1, {190, 205, 225, 255}); y += lh;
+    snprintf(b, sizeof b, "%s %s", T(UI_SPEED), FmtSpeed(s.speed).c_str());
+    Txt(b, x, y, fs + 1, WHITE); y += lh;
+    snprintf(b, sizeof b, "%s %s    %s %s  %s %s", T(UI_FRAME), TR(app.B[s.ref].d.jp, app.B[s.ref].d.en), T(UI_NEAREST),
+             TR(app.B[nearest].d.jp, app.B[nearest].d.en), T(UI_ALT), FmtDist(std::max(0.0, nearestAlt)).c_str());
+    Txt(b, x, y, fs, {200, 220, 240, 255}); y += lh;
+    snprintf(b, sizeof b, "%s %s", T(UI_DATE), FmtDate(app.tDays).c_str());
+    Txt(b, x, y, fs, {200, 220, 240, 255}); y += lh;
+    std::string ts = app.paused ? T(UI_PAUSED) : (app.timeIdx == 0 ? std::string("x1 (") + T(UI_REALTIME) + ")" : TIME_SCALE_NAMES[app.timeIdx]);
+    snprintf(b, sizeof b, "%s %s", T(UI_TSCALE), ts.c_str());
+    Txt(b, x, y, fs, app.paused ? Color{255, 160, 80, 255} : (app.timeIdx == 0 ? Color{140, 230, 160, 255} : Color{255, 210, 120, 255}));
+
+    // 右上: ターゲット情報
+    const Body& tb = app.B[app.target];
+    double tdist = std::max(0.0, Len(tb.pos - sw) - tb.d.radius);
+    float pw = 330, px = c.W - pw - 6;
+    DrawRectangleRounded({px, 6, pw, lh * 4 + 14}, 0.06f, 6, {0, 10, 25, 150});
+    x = px + 10; y = 12;
+    snprintf(b, sizeof b, "%s: %s  (Tab)", T(UI_TARGET), TR(tb.d.jp, tb.d.en));
+    Txt(b, x, y, fs + 1, {255, 220, 80, 255}); y += lh;
+    snprintf(b, sizeof b, "%s %s", T(UI_DIST), FmtDist(tdist).c_str());
+    Txt(b, x, y, fs, WHITE); y += lh;
+    snprintf(b, sizeof b, "%s %s   (%s %s)", T(UI_ETA), s.speed > 0 ? FmtDuration(tdist / s.speed).c_str() : "---", T(UI_LIGHT),
+             FmtDuration(tdist / C_KMS).c_str());
+    Txt(b, x, y, fs - 1, {200, 220, 240, 255}); y += lh;
+    snprintf(b, sizeof b, "%s %s", T(UI_ETA_MAX), FmtDuration(tdist / (e.vmax / 1000.0)).c_str());
+    Txt(b, x, y, fs - 1, {200, 220, 240, 255});
+
+    DrawCompass(app);
+    DrawSpeedometer(app);
+    DrawEngineBar(app);
+
+    Txt(T(UI_HELP_HINT), 12, c.H - 24, 15, {150, 170, 200, 220});
+    snprintf(b, sizeof b, "%d FPS", GetFPS());
+    Txt(b, 12, c.H - 44, 13, {110, 130, 160, 200});
+
+    if (app.toastTime > 0) {
+        float a = (float)std::min(1.0, app.toastTime);
+        TxtC(app.toast.c_str(), c.W * 0.5f, c.H * 0.24f, 24, Fade({255, 240, 200, 255}, a));
+    }
+
+    if (app.showHelp) {
+        const int lines = UI_HELP15 - UI_HELP1 + 1;
+        float w = std::min(c.W - 20, 860.0f), h = 44 + lines * 26.0f, hx = (c.W - w) / 2, hy = (c.H - h) / 2;
+        DrawRectangleRounded({hx, hy, w, h}, 0.04f, 6, {0, 8, 20, 225});
+        DrawRectangleRoundedLinesEx({hx, hy, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
+        TxtC(T(UI_HELP_TITLE), c.W * 0.5f, hy + 10, 22, {255, 220, 120, 255});
+        for (int i = 0; i < lines; i++)
+            Txt(T((UiId)(UI_HELP1 + i)), hx + 24, hy + 44 + i * 26.0f, i >= 12 ? 15 : 17, i >= 12 ? Color{170, 220, 190, 255} : Color{215, 228, 245, 255});
+    }
+}
+
+// ---------------------------------------------------------------- main
+int main(int argc, char** argv) {
+    Options opt = ParseArgs(argc, argv);
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+    InitWindow(1280, 720, "Solar System Voyager");
+    SetExitKey(KEY_NULL);
+
+    App app;
+    app.B = InitBodies();
+
+    // フォント
+    std::string allText = "°²·×〜";
+    for (int i = 0; i < UI_COUNT; i++) allText += UI_JP[i];
+    for (const Body& b : app.B) allText += b.d.jp;
+    for (const Engine& e : ENGINES) allText += e.jp;
+    g_jp = fontload::LoadJapaneseFont(allText, 36, &g_font);
+    if (!g_jp) g_font = GetFontDefault();
+
+    app.shader = LoadShaderFromMemory(PLANET_VS, PLANET_FS);
+    app.locLight = GetShaderLocation(app.shader, "lightDir");
+    app.locLightObj = GetShaderLocation(app.shader, "lightDirObj");
+    app.locC1 = GetShaderLocation(app.shader, "color1");
+    app.locC2 = GetShaderLocation(app.shader, "color2");
+    app.locAtm = GetShaderLocation(app.shader, "atmColor");
+    app.locParams = GetShaderLocation(app.shader, "params");
+    app.mat = LoadMaterialDefault();
+    app.mat.shader = app.shader;
+    app.sphere = GenUVSphere(128, 256);
+    app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
+    app.stars = MakeStars();
+    for (int i = 0; i < 260; i++)
+        app.dust.push_back({GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f});
+
+    // 初期状態: PC 時刻の天体配置、地球の昼側上空から地球を見る
+    app.tDays = NowDaysSinceJ2000();
+    for (int i = 0; i < TIME_SCALE_COUNT; i++)
+        if (TIME_SCALES[i] <= opt.timeScale) app.timeIdx = i;
+    UpdateBodies(app.B, app.tDays);
+    {
+        const Body& earth = app.B[B_EARTH];
+        V3 toSun = Norm(-earth.pos);
+        V3 side = Norm(Cross(toSun, Y_UP));
+        V3 dir = Norm(toSun * 0.55 + side * 0.83 + Y_UP * 0.1);
+        app.ship.ref = B_EARTH;
+        app.ship.local = dir * (earth.d.radius + 14000);
+        app.ship.q = QuatFromBasis(-dir + side * -0.25, dir);
+    }
+    if (opt.target >= 0 && opt.target < (int)app.B.size()) app.target = opt.target;
+    if (opt.warp || opt.land) WarpTo(app, app.target, opt.land);
+    if (opt.face) FaceTarget(app);
+    if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
+    app.cockpit = opt.cockpit;
+    app.showHelp = opt.help;
+    if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
+
+    int frame = 0;
+    while (!WindowShouldClose()) {
+        double dt = std::min((double)GetFrameTime(), 0.1);
+        if (opt.shot) dt = 1.0 / 60.0;
+        if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) break;
+
+        HandleInput(app, dt);
+        if (opt.shot && frame * dt < opt.throttleSec) {
+            const Engine& e = ENGINES[app.ship.engine];
+            app.ship.speed = std::min(e.vmax / 1000.0, app.ship.speed + e.accel / 1000.0 * dt);
+            app.ship.thrusting = true;
+        }
+        if (!app.paused) app.tDays += dt * TIME_SCALES[app.timeIdx] / 86400.0;
+        UpdateBodies(app.B, app.tDays);
+        UpdateShip(app, dt);
+        UpdateCamera(app);
+        if (app.toastTime > 0) app.toastTime -= dt;
+
+        BeginDrawing();
+        ClearBackground({1, 2, 6, 255});
+        DrawStars(app);
+        DrawSunGlowAndDots(app);  // 3D より先に描き、手前の天体や自機で隠れるようにする
+
+        Camera3D dummy = {{0, 0, 0}, {0, 0, -1}, {0, 1, 0}, 60, CAMERA_PERSPECTIVE};
+        BeginMode3D(dummy);
+        if (app.showOrbits) DrawOrbits(app);
+        DrawBodies(app);
+        DrawShipPass(app, dt);
+        EndMode3D();
+
+        DrawMarkers(app);
+        DrawHUD(app);
+
+        frame++;
+        bool quitAfterShot = opt.shot && frame == opt.frames;
+        if (quitAfterShot) SaveScreenshot(opt.shot);
+        if (IsKeyPressed(KEY_F12)) {
+            std::time_t now = std::time(nullptr);
+            char name[64];
+            std::strftime(name, sizeof name, "screenshot_%Y%m%d_%H%M%S.png", std::localtime(&now));
+            SaveScreenshot(name);
+            Toast(app, name);
+        }
+        EndDrawing();
+        if (quitAfterShot) break;
+    }
+
+    UnloadMesh(app.sphere);
+    UnloadMesh(app.ring);
+    UnloadShader(app.shader);
+    if (g_jp) UnloadFont(g_font);
+    CloseWindow();
+    return 0;
+}
