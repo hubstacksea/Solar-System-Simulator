@@ -122,6 +122,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 機首を向ける    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : face target    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
+    X(REAL_TIME_ETA, "実時間で", "real") \
     X(PAD_ON, "コントローラ接続", "Controller connected") \
     X(PAD_OFF, "コントローラ切断", "Controller disconnected")
 
@@ -722,6 +723,9 @@ static PadState ReadPad(App& app) {
     return p;
 }
 
+// 自機の加速・移動に使う経過時間（時間倍率を反映、停止中は 0）
+static double SimDt(const App& app, double dt) { return app.paused ? 0.0 : dt * TIME_SCALES[app.timeIdx]; }
+
 static void HandleInput(App& app, double dt) {
     Ship& s = app.ship;
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
@@ -772,16 +776,17 @@ static void HandleInput(App& app, double dt) {
 
     const Engine& e = ENGINES[s.engine];
     double acc = e.accel / 1000.0, vmax = e.vmax / 1000.0;
-    // スロットル（キーボードは全開、トリガーは押し込み量に比例）
+    // スロットル（キーボードは全開、トリガーは押し込み量に比例）。加減速は時間倍率に従う
+    double sdt = SimDt(app, dt);
     double throttle = std::max(IsKeyDown(KEY_W) ? 1.0 : 0.0, pad.throttle);
     double brake = std::max(IsKeyDown(KEY_S) ? 1.0 : 0.0, pad.brake);
     s.thrusting = false;
     if (throttle > 0 && s.speed < vmax) {
-        s.speed = std::min(vmax, s.speed + acc * throttle * dt);
+        s.speed = std::min(vmax, s.speed + acc * throttle * sdt);
         s.thrusting = true;
     }
     if (brake > 0) {
-        s.speed = std::max(-vmax * 0.25, s.speed - acc * brake * dt);
+        s.speed = std::max(-vmax * 0.25, s.speed - acc * brake * sdt);
         s.thrusting = true;
     }
     if (IsKeyPressed(KEY_X) || pad.stop) s.speed = 0;
@@ -1117,9 +1122,9 @@ static void DrawMarkers(const App& app) {
     const Cam& c = app.cam;
     float R = std::min(105.0f, c.H * 0.16f);
     g_placed = {
-        {0, 0, 482, 158},                                   // 左上パネル
-        {c.W - 340, 0, 340, 112},                           // ターゲット情報
-        {c.W * 0.5f - 290, 0, 580, 96},                     // 方位計
+        {0, 0, 432, 158},                                   // 左上パネル
+        {c.W - 390, 0, 390, 112},                           // ターゲット情報
+        {c.W * 0.5f - 290, 0, 580, 100},                    // 方位計
         {c.W - 2 * R - 44, c.H - 2 * R - 48, 2 * R + 44, 2 * R + 48},  // 速度計
         {0, c.H - 64, c.W, 64},                             // エンジン表示
     };
@@ -1169,7 +1174,8 @@ static void DrawCompass(const App& app) {
     double pitch = std::asin(std::max(-1.0, std::min(1.0, Dot(c.fwd, upRef)))) / DEG;
     double roll = std::atan2(-Dot(c.right, upRef), Dot(c.up, upRef)) / DEG;
 
-    float W = std::min(560.0f, c.W - 40), cx = c.W * 0.5f, y0 = 10, h = 34;
+    // 左右の情報パネル（幅 420 / 380）と重ならない幅にする
+    float W = std::max(240.0f, std::min(560.0f, c.W - 2 * 432)), cx = c.W * 0.5f, y0 = 10, h = 34;
     const double range = 60;  // 表示幅 ±60°
     DrawRectangleRounded({cx - W / 2, y0, W, h}, 0.3f, 6, {0, 10, 25, 150});
     BeginScissorMode((int)(cx - W / 2), (int)y0, (int)W, (int)h + 30);
@@ -1318,7 +1324,7 @@ static void DrawHUD(App& app) {
 
     // 左上パネル
     float x = 14, y = 12, fs = 17, lh = 22;
-    DrawRectangleRounded({6, 6, 470, lh * 6 + 14}, 0.06f, 6, {0, 10, 25, 150});
+    DrawRectangleRounded({6, 6, 420, lh * 6 + 14}, 0.06f, 6, {0, 10, 25, 150});
     char b[256];
     snprintf(b, sizeof b, "%s [%d] %s", T(UI_ENGINE), s.engine + 1, TR(e.jp, e.en));
     Txt(b, x, y, fs + 2, e.flame); y += lh + 2;
@@ -1339,17 +1345,24 @@ static void DrawHUD(App& app) {
     // 右上: ターゲット情報
     const Body& tb = app.B[app.target];
     double tdist = std::max(0.0, Len(tb.pos - sw) - tb.d.radius);
-    float pw = 330, px = c.W - pw - 6;
+    float pw = 380, px = c.W - pw - 6;
+    double scale = TIME_SCALES[app.timeIdx];
+    // 時間倍率をかけている時は、実際に待つ時間も併記
+    auto eta = [&](double simSec) {
+        std::string r = FmtDuration(simSec);
+        if (scale > 1 && std::isfinite(simSec) && r != "---")
+            r += std::string("  (") + T(UI_REAL_TIME_ETA) + " " + FmtDuration(simSec / scale) + ")";
+        return r;
+    };
     DrawRectangleRounded({px, 6, pw, lh * 4 + 14}, 0.06f, 6, {0, 10, 25, 150});
     x = px + 10; y = 12;
     snprintf(b, sizeof b, "%s: %s  (Tab)", T(UI_TARGET), TR(tb.d.jp, tb.d.en));
     Txt(b, x, y, fs + 1, {255, 220, 80, 255}); y += lh;
-    snprintf(b, sizeof b, "%s %s", T(UI_DIST), FmtDist(tdist).c_str());
+    snprintf(b, sizeof b, "%s %s   (%s %s)", T(UI_DIST), FmtDist(tdist).c_str(), T(UI_LIGHT), FmtDuration(tdist / C_KMS).c_str());
     Txt(b, x, y, fs, WHITE); y += lh;
-    snprintf(b, sizeof b, "%s %s   (%s %s)", T(UI_ETA), s.speed > 0 ? FmtDuration(tdist / s.speed).c_str() : "---", T(UI_LIGHT),
-             FmtDuration(tdist / C_KMS).c_str());
+    snprintf(b, sizeof b, "%s %s", T(UI_ETA), s.speed > 0 ? eta(tdist / s.speed).c_str() : "---");
     Txt(b, x, y, fs - 1, {200, 220, 240, 255}); y += lh;
-    snprintf(b, sizeof b, "%s %s", T(UI_ETA_MAX), FmtDuration(tdist / (e.vmax / 1000.0)).c_str());
+    snprintf(b, sizeof b, "%s %s", T(UI_ETA_MAX), eta(tdist / (e.vmax / 1000.0)).c_str());
     Txt(b, x, y, fs - 1, {200, 220, 240, 255});
 
     DrawCompass(app);
@@ -1440,12 +1453,13 @@ int main(int argc, char** argv) {
         HandleInput(app, dt);
         if (opt.shot && frame * dt < opt.throttleSec) {
             const Engine& e = ENGINES[app.ship.engine];
-            app.ship.speed = std::min(e.vmax / 1000.0, app.ship.speed + e.accel / 1000.0 * dt);
+            app.ship.speed = std::min(e.vmax / 1000.0, app.ship.speed + e.accel / 1000.0 * SimDt(app, dt));
             app.ship.thrusting = true;
         }
-        if (!app.paused) app.tDays += dt * TIME_SCALES[app.timeIdx] / 86400.0;
+        double simDt = SimDt(app, dt);
+        app.tDays += simDt / 86400.0;
         UpdateBodies(app.B, app.tDays);
-        UpdateShip(app, dt);
+        UpdateShip(app, simDt);
         UpdateCamera(app);
         if (app.toastTime > 0) app.toastTime -= dt;
 
