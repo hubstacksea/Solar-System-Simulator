@@ -19,6 +19,7 @@
 
 #include "font_loader.h"
 #include "shaders.h"
+#include "ship_model.h"
 #include "solar_data.h"
 
 #ifdef _WIN32
@@ -515,35 +516,47 @@ static V3 ShipFwd(const Ship& s) { return FromF(Vector3RotateByQuaternion({0, 0,
 static V3 ShipUp(const Ship& s) { return FromF(Vector3RotateByQuaternion({0, 1, 0}, s.q)); }
 static V3 ShipRight(const Ship& s) { return FromF(Vector3RotateByQuaternion({1, 0, 0}, s.q)); }
 
-static void DrawShipModel(const Ship& s, double throttleGlow) {
-    // 単位: m。機首は -Z
-    Color hull = {190, 196, 205, 255}, dark = {70, 76, 88, 255}, accent = {220, 90, 60, 255};
-    DrawCylinderEx({0, 0, 12}, {0, 0, -10}, 2.2f, 1.6f, 16, hull);
-    DrawCylinderWiresEx({0, 0, 12}, {0, 0, -10}, 2.2f, 1.6f, 16, dark);
-    DrawCylinderEx({0, 0, -10}, {0, 0, -18}, 1.6f, 0.05f, 16, {225, 228, 235, 255});
-    DrawSphere({0, 1.3f, -7}, 1.1f, {60, 140, 220, 255});
+// 噴射炎の 1 層: 根元が明るく先端へ向かって消える円錐（頂点ごとに色を補間）
+static void GlowCone(Vector3 o, float r0, float len, Color base) {
+    const int segs = 24;
+    rlBegin(RL_TRIANGLES);
+    for (int i = 0; i < segs; i++) {
+        float a0 = 2 * PI * i / segs, a1 = 2 * PI * (i + 1) / segs;
+        rlColor4ub(base.r, base.g, base.b, base.a);
+        rlVertex3f(o.x + cosf(a0) * r0, o.y + sinf(a0) * r0, o.z);
+        rlVertex3f(o.x + cosf(a1) * r0, o.y + sinf(a1) * r0, o.z);
+        rlColor4ub(base.r, base.g, base.b, 0);
+        rlVertex3f(o.x, o.y, o.z + len);
+    }
+    rlEnd();
+}
+
+// 噴射炎: 加算合成のグラデーション円錐を重ねる（単位: m、ノズルは z=+14.4）
+static void DrawExhaust(const Ship& s, double glow) {
+    if (glow < 0.01) return;
+    Color f = ENGINES[s.engine].flame;
+    float t = (float)GetTime();
+    BeginBlendMode(BLEND_ADDITIVE);
+    rlDisableDepthMask();
+    rlDisableBackfaceCulling();
     for (int sgn = -1; sgn <= 1; sgn += 2) {
-        float x = (float)sgn;
-        Vector3 a = {2.0f * x, 0, -3}, b = {12.0f * x, -0.4f, 9}, c = {2.0f * x, 0, 10};
-        DrawTriangle3D(a, b, c, hull);
-        DrawTriangle3D(a, c, b, {150, 155, 165, 255});
-        DrawLine3D(a, b, dark);
-        DrawLine3D(b, c, dark);
-        DrawCylinderEx({11.5f * x, -0.4f, 3}, {11.5f * x, -0.4f, 9}, 0.35f, 0.35f, 6, accent);
-        DrawCylinderEx({3.2f * x, 0, 8}, {3.2f * x, 0, 13.5f}, 1.0f, 1.25f, 12, dark);
-    }
-    DrawTriangle3D({0, 2, 4}, {0, 7.5f, 12}, {0, 2, 12}, hull);
-    DrawTriangle3D({0, 2, 4}, {0, 2, 12}, {0, 7.5f, 12}, {150, 155, 165, 255});
-    if (throttleGlow > 0.01) {
-        Color f = ENGINES[s.engine].flame;
-        BeginBlendMode(BLEND_ADDITIVE);
-        float len = (float)(3 + 9 * throttleGlow);
-        for (int sgn = -1; sgn <= 1; sgn += 2) {
-            DrawCylinderEx({3.2f * sgn, 0, 13.5f}, {3.2f * sgn, 0, 13.5f + len}, 1.0f, 0.05f, 10, f);
-            DrawCylinderEx({3.2f * sgn, 0, 13.5f}, {3.2f * sgn, 0, 13.5f + len * 0.5f}, 0.6f, 0.05f, 10, WHITE);
+        float flick = 1.0f + 0.07f * sinf(t * 43.0f + sgn) + 0.05f * sinf(t * 71.0f);
+        float len = (float)(3.0 + 13.0 * glow) * flick;
+        Vector3 o = {3.35f * sgn, -0.3f, 14.45f};
+        auto a = [&](float k) { return (unsigned char)std::min(255.0, k * (0.3 + 0.7 * glow)); };
+        GlowCone(o, 1.0f, len, {f.r, f.g, f.b, a(110)});
+        GlowCone(o, 0.8f, len * 0.6f, {f.r, f.g, f.b, a(170)});
+        GlowCone(o, 0.55f, len * 0.3f, {255, 245, 230, a(230)});
+        // 衝撃波のリング（マッハダイヤモンド風）
+        for (int k = 1; k <= 3; k++) {
+            float z = len * 0.16f * k, r = 0.5f * (1.0f - 0.22f * k);
+            GlowCone({o.x, o.y, o.z + z - 0.3f}, r, 0.9f, {255, 255, 255, a(90.0f / k)});
         }
-        EndBlendMode();
     }
+    rlDrawRenderBatchActive();
+    rlEnableBackfaceCulling();
+    rlEnableDepthMask();
+    EndBlendMode();
 }
 
 // 実際のフレームバッファサイズで保存する（raylib の TakeScreenshot は DPI スケール時に範囲がずれる）
@@ -561,6 +574,7 @@ struct Options {
     int frames = 90;
     int target = -1;
     int gotoTarget = -1;  // ワープ後に切り替えるターゲット
+    double camYaw = NAN, camPitch = 0, camDist = 60;  // 自機を任意の角度から見る（確認用、度・m）
     bool trace = false;  // 1 秒ごとに自機の状態を標準出力へ（動作確認用）
     bool warp = false, land = false, face = false, autopilot = false, autoEngine = false, cockpit = false, help = false;
     int engine = -1;
@@ -581,6 +595,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--autopilot") o.autopilot = true;
         else if (a == "--trace") o.trace = true;
         else if (a == "--goto") o.gotoTarget = atoi(next());
+        else if (a == "--cam") { o.camYaw = atof(next()); o.camPitch = atof(next()); o.camDist = atof(next()); }
         else if (a == "--auto-engine") o.autopilot = o.autoEngine = true;
         else if (a == "--cockpit") o.cockpit = true;
         else if (a == "--help-overlay") o.help = true;
@@ -614,11 +629,16 @@ struct App {
     std::string toast;
     double toastTime = 0;
     Mesh sphere{}, ring{};
+    Mesh shipMesh{};
+    Material shipMat{};
+    Shader shipShader{};
+    int locSunDir = -1, locSunColor = -1, locFillDir = -1, locFillColor = -1, locEngColor = -1, locEngGlow = -1, locNavBlink = -1;
     Material mat{};
     Shader shader{};
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1;
     std::vector<Vector3> dust;
     double glow = 0;
+    double camYaw = NAN, camPitch = 0, camDist = 60;
 };
 
 static const double TIME_SCALES[] = {1, 10, 60, 600, 3600, 86400, 864000, 8640000, 31557600};
@@ -999,6 +1019,16 @@ static void UpdateCamera(App& app) {
     c.right = ShipRight(s);
     V3 sw = ShipWorld(app);
     c.pos = app.cockpit ? sw + c.up * 0.0025 : sw - c.fwd * 0.055 + c.up * 0.013;
+    if (!std::isnan(app.camYaw)) {
+        // 確認用: 自機の周囲を回る視点（yaw 0 = 真後ろ）
+        double y = app.camYaw * DEG, p = app.camPitch * DEG;
+        V3 f0 = ShipFwd(s), u0 = ShipUp(s), r0 = ShipRight(s);
+        V3 dir = (f0 * -std::cos(y) + r0 * std::sin(y)) * std::cos(p) + u0 * std::sin(p);
+        c.pos = sw + dir * (app.camDist / 1000.0);
+        c.fwd = Norm(-dir);
+        c.right = Norm(Cross(c.fwd, u0));
+        c.up = Cross(c.right, c.fwd);
+    }
     for (const Body& b : app.B) {
         V3 rel = c.pos - b.pos;
         double d = Len(rel);
@@ -1096,6 +1126,37 @@ static void DrawBodies(App& app) {
     }
 }
 
+static bool Occluded(const App& app, V3 from, V3 to, int self);
+
+// 自機の照明: 太陽（天体の影に入ると消える）と、近くの天体からの照り返し
+static void SetShipLighting(App& app, V3 shipWorld) {
+    V3 sun = Norm(app.B[B_SUN].pos - shipWorld);
+    float sunK = Occluded(app, shipWorld, app.B[B_SUN].pos, B_SUN) ? 0.0f : 1.05f;
+    Vector3 sunDir = ToF(sun), sunColor = {sunK, sunK * 0.98f, sunK * 0.94f};
+    // 見かけの大きさが最大の天体（太陽以外）
+    int best = -1;
+    double bestK = 0;
+    for (size_t i = 1; i < app.B.size(); i++) {
+        double d = Len(app.B[i].pos - shipWorld);
+        double k = app.B[i].d.radius / d;
+        if (k > bestK) { bestK = k; best = (int)i; }
+    }
+    Vector3 fillDir = {0, 1, 0}, fillColor = {0, 0, 0};
+    if (best > 0) {
+        const Body& b = app.B[best];
+        V3 toBody = Norm(b.pos - shipWorld);
+        // 天体の昼側がこちらを向いているほど明るい
+        double phase = 0.5 * (1 + Dot(Norm(app.B[B_SUN].pos - b.pos), -toBody));
+        double k = std::min(0.45, bestK * bestK * 1.5) * phase;
+        fillDir = ToF(toBody);
+        fillColor = {(float)(b.d.c1.r * k), (float)(b.d.c1.g * k), (float)(b.d.c1.b * k)};
+    }
+    SetShaderValue(app.shipShader, app.locSunDir, &sunDir, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.shipShader, app.locSunColor, &sunColor, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.shipShader, app.locFillDir, &fillDir, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.shipShader, app.locFillColor, &fillColor, SHADER_UNIFORM_VEC3);
+}
+
 static void DrawShipPass(App& app, double dt) {
     const Cam& c = app.cam;
     const Ship& s = app.ship;
@@ -1120,14 +1181,30 @@ static void DrawShipPass(App& app, double dt) {
     }
 
     if (!app.cockpit) {
-        V3 rel = ShipWorld(app) - c.pos;
+        V3 sw = ShipWorld(app);
+        V3 rel = sw - c.pos;
+        double target = s.thrusting ? 1.0 : (std::fabs(s.speed) > 0 ? 0.25 : 0.0);
+        app.glow += (target - app.glow) * std::min(1.0, dt * 6);
+
+        SetShipLighting(app, sw);
+        Color f = ENGINES[s.engine].flame;
+        Vector3 engColor = {f.r / 255.0f, f.g / 255.0f, f.b / 255.0f};
+        float glow = (float)app.glow;
+        float blink = std::fmod(GetTime(), 1.4) < 0.12 ? 1.0f : 0.0f;  // 航法灯の点滅
+        SetShaderValue(app.shipShader, app.locEngColor, &engColor, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shipShader, app.locEngGlow, &glow, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(app.shipShader, app.locNavBlink, &blink, SHADER_UNIFORM_FLOAT);
+        Matrix model = MatrixMultiply(MatrixMultiply(MatrixScale(0.001f, 0.001f, 0.001f), QuaternionToMatrix(s.q)),
+                                      MatrixTranslate((float)rel.x, (float)rel.y, (float)rel.z));
+        rlDisableBackfaceCulling();  // 薄い翼の裏面も描く（シェーダ側で法線を反転）
+        DrawMesh(app.shipMesh, app.shipMat, model);
+        rlEnableBackfaceCulling();
+
         rlPushMatrix();
         rlTranslatef((float)rel.x, (float)rel.y, (float)rel.z);
         rlMultMatrixf(MatrixToFloat(QuaternionToMatrix(s.q)));
         rlScalef(0.001f, 0.001f, 0.001f);
-        double target = s.thrusting ? 1.0 : (std::fabs(s.speed) > 0 ? 0.25 : 0.0);
-        app.glow += (target - app.glow) * std::min(1.0, dt * 6);
-        DrawShipModel(s, app.glow);
+        DrawExhaust(s, app.glow);
         rlPopMatrix();
     }
     rlDrawRenderBatchActive();
@@ -1273,6 +1350,14 @@ static void DrawMarkers(const App& app) {
         {0, c.H - 64, c.W, 64},                             // エンジン表示
     };
     if (app.autopilot) g_placed.push_back({c.W * 0.5f - 320, c.H - 118, 640, 40});  // 自動操縦表示
+    if (!app.cockpit) {  // 自機の上にラベルを重ねない
+        Vector2 sp;
+        V3 rel = ShipWorld(app) - c.pos;
+        if (Project(c, rel, &sp)) {
+            float r = (float)(0.017 / Len(rel) * c.focal);
+            g_placed.push_back({sp.x - r, sp.y - r * 0.7f, 2 * r, r * 1.5f});
+        }
+    }
     DrawMarker(app, app.target);  // ターゲットを優先して配置
     for (size_t i = 0; i < app.B.size(); i++) {
         const BodyDef& d = app.B[i].d;
@@ -1575,6 +1660,17 @@ int main(int argc, char** argv) {
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
     app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
+    app.shipShader = LoadShaderFromMemory(SHIP_VS, SHIP_FS);
+    app.locSunDir = GetShaderLocation(app.shipShader, "sunDir");
+    app.locSunColor = GetShaderLocation(app.shipShader, "sunColor");
+    app.locFillDir = GetShaderLocation(app.shipShader, "fillDir");
+    app.locFillColor = GetShaderLocation(app.shipShader, "fillColor");
+    app.locEngColor = GetShaderLocation(app.shipShader, "engineColor");
+    app.locEngGlow = GetShaderLocation(app.shipShader, "engineGlow");
+    app.locNavBlink = GetShaderLocation(app.shipShader, "navBlink");
+    app.shipMat = LoadMaterialDefault();
+    app.shipMat.shader = app.shipShader;
+    app.shipMesh = GenShipMesh();
     app.stars = MakeStars();
     for (int i = 0; i < 260; i++)
         app.dust.push_back({GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f});
@@ -1599,6 +1695,7 @@ int main(int argc, char** argv) {
     if (opt.face) FaceTarget(app);
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
     app.cockpit = opt.cockpit;
+    app.camYaw = opt.camYaw; app.camPitch = opt.camPitch; app.camDist = opt.camDist;
     app.autopilot = opt.autopilot;
     app.apAutoEngine = opt.autoEngine;
     app.showHelp = opt.help;
@@ -1662,6 +1759,8 @@ int main(int argc, char** argv) {
 
     UnloadMesh(app.sphere);
     UnloadMesh(app.ring);
+    UnloadMesh(app.shipMesh);
+    UnloadShader(app.shipShader);
     UnloadShader(app.shader);
     if (g_jp) UnloadFont(g_font);
     CloseWindow();
