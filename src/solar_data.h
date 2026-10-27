@@ -5,11 +5,20 @@
 //  - 自転軸: IAU 自転軸の赤経・赤緯
 #pragma once
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 enum BodyKind { KIND_STAR = 0, KIND_ROCKY = 1, KIND_GAS = 2, KIND_EARTH = 3 };
 
 struct Col3 { float r, g, b; };
+
+// 表面模様の種類（シェーダの detail.x。天体ごとの特徴的な地形・模様を描き分ける）
+enum SurfaceStyle {
+    S_GENERIC = 0, S_MOON, S_MERCURY, S_MARS, S_IO, S_EUROPA, S_GANYMEDE, S_CALLISTO, S_ICY, S_IAPETUS,
+    S_PLUTO, S_ENCELADUS, S_TRITON,
+    S_JUPITER = 20, S_SATURN, S_URANUS, S_NEPTUNE, S_VENUS, S_TITAN,
+    S_EARTH = 30, S_SUN = 40
+};
 
 struct BodyDef {
     const char* jp;
@@ -38,6 +47,7 @@ struct BodyDef {
     float bands = 0;
     float atmStrength = 0;
     bool rings = false;
+    int style = S_GENERIC;
 };
 
 inline BodyDef MakePlanet(const char* jp, const char* en, double radius, double flat, double mass,
@@ -183,5 +193,16 @@ inline std::vector<BodyDef> BuildSolarSystem() {
             v[i].moonPhase = std::fmod(i * 137.5, 360.0);
         }
     }
+    static const struct { const char* en; int style; } STYLES[] = {
+        {"Sun", S_SUN}, {"Mercury", S_MERCURY}, {"Venus", S_VENUS}, {"Earth", S_EARTH}, {"Mars", S_MARS},
+        {"Jupiter", S_JUPITER}, {"Saturn", S_SATURN}, {"Uranus", S_URANUS}, {"Neptune", S_NEPTUNE},
+        {"Pluto", S_PLUTO}, {"Moon", S_MOON}, {"Io", S_IO}, {"Europa", S_EUROPA}, {"Ganymede", S_GANYMEDE},
+        {"Callisto", S_CALLISTO}, {"Mimas", S_ICY}, {"Enceladus", S_ENCELADUS}, {"Tethys", S_ICY},
+        {"Dione", S_ICY}, {"Rhea", S_ICY}, {"Titan", S_TITAN}, {"Iapetus", S_IAPETUS}, {"Miranda", S_ICY},
+        {"Ariel", S_ICY}, {"Titania", S_ICY}, {"Oberon", S_ICY}, {"Triton", S_TRITON},
+    };
+    for (BodyDef& d : v)
+        for (const auto& st : STYLES)
+            if (std::strcmp(d.en, st.en) == 0) d.style = st.style;
     return v;
 }

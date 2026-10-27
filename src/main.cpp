@@ -673,7 +673,7 @@ struct App {
     int locSunDir = -1, locSunColor = -1, locFillDir = -1, locFillColor = -1, locEngColor = -1, locEngGlow = -1, locNavBlink = -1;
     Material mat{};
     Shader shader{};
-    int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1;
+    int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
     std::vector<Vector3> dust;
     double glow = 0;
     double camYaw = NAN, camPitch = 0, camDist = 60;
@@ -1218,6 +1218,10 @@ static void DrawBodies(App& app) {
         SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locAtm, &atm, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locParams, params, SHADER_UNIFORM_VEC4);
+        // 模様の細かさは 1 画素の大きさで決める。地球の雲は高度 10〜35 km で消える（地表付近で地面が白く覆われないように）
+        float cloudK = (float)std::min(1.0, std::max(0.0, (alt - d.radius * 0.0015) / (d.radius * 0.004)));
+        float detail[4] = {(float)d.style, (float)(1.0 / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
+        SetShaderValue(app.shader, app.locDetail, detail, SHADER_UNIFORM_VEC4);
         DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
 
         if (d.rings) {
@@ -1817,6 +1821,7 @@ int main(int argc, char** argv) {
     app.locC2 = GetShaderLocation(app.shader, "color2");
     app.locAtm = GetShaderLocation(app.shader, "atmColor");
     app.locParams = GetShaderLocation(app.shader, "params");
+    app.locDetail = GetShaderLocation(app.shader, "detail");
     app.mat = LoadMaterialDefault();
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);

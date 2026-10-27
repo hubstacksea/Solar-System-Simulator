@@ -1,4 +1,7 @@
 // 天体描画用シェーダ (GLSL 330)。テクスチャ無しで手続き的に模様を生成する。
+//  - 近づくほど細かいオクターブを足す（画素より小さい模様は打ち切る）ので、地表付近でも模様が潰れない
+//  - 地形の高さの勾配を解析的に求めて法線を揺らし、山やクレーターの陰影を付ける
+//  - 天体ごとの特徴（月の海、火星の極冠、木星の大赤斑、地球の大陸・雲・夜景など）を detail.x で描き分ける
 #pragma once
 
 static const char* PLANET_VS = R"(
@@ -30,49 +33,371 @@ uniform vec3 color1;
 uniform vec3 color2;
 uniform vec3 atmColor;
 uniform vec4 params;       // x: 種別, y: 縞の数 / 環の基準半径km, z: シード, w: 大気の強さ
+uniform vec4 detail;       // x: 表面模様の種類, y: 1 画素の大きさの係数, z: 時刻（日）, w: 雲の濃さ
+uniform mat4 matNormal;
 out vec4 finalColor;
 
-float hash(vec3 p) {
-    p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
-    p *= 17.0;
-    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+const float PI = 3.14159265;
+float fw;      // 1 画素の大きさ（単位球の長さ）
+float g_ray;   // 新しいクレーターの明るさ（光条）
+
+// ---- 整数ハッシュ（座標が大きくても劣化しないので、地表付近の細かいオクターブでも使える）
+uint hashu(ivec3 c) {
+    uvec3 v = uvec3(c) * uvec3(1597334673u, 3812015801u, 2798796415u);
+    uint n = (v.x ^ v.y ^ v.z) * 1597334673u;
+    n ^= n >> 15; n *= 2246822519u; n ^= n >> 13; n *= 3266489917u; n ^= n >> 16;
+    return n;
 }
-float noise(vec3 x) {
-    vec3 i = floor(x);
-    vec3 f = fract(x);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
-                   mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
-               mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
-                   mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
-}
-float fbm(vec3 p) {
-    float v = 0.0, a = 0.5;
-    for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; }
-    return v;
+float hash1(ivec3 c) { return float(hashu(c) >> 8u) * (1.0 / 16777216.0); }
+
+float vnoise(vec3 x) {
+    vec3 fl = floor(x);
+    ivec3 i = ivec3(fl);
+    vec3 f = x - fl;
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    float a = hash1(i), b = hash1(i + ivec3(1, 0, 0)), c = hash1(i + ivec3(0, 1, 0)), d = hash1(i + ivec3(1, 1, 0));
+    float e = hash1(i + ivec3(0, 0, 1)), g = hash1(i + ivec3(1, 0, 1)), h = hash1(i + ivec3(0, 1, 1)), k = hash1(i + ivec3(1, 1, 1));
+    return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), mix(mix(e, g, u.x), mix(h, k, u.x), u.y), u.z);
 }
 
-// 土星の環の光学的厚さ（おおよそ）
-float ringDensity(float r) {
-    float d = 0.0;
-    if (r < 74658.0) d = 0.0;
-    else if (r < 92000.0) d = 0.22;        // C環
-    else if (r < 117580.0) d = 0.92;       // B環
-    else if (r < 122170.0) d = 0.06;       // カッシーニの間隙
-    else if (r < 133423.0) d = 0.62;       // A環
-    else if (r < 133745.0) d = 0.0;        // エンケの間隙
-    else if (r < 136775.0) d = 0.55;       // A環外側
-    float fine = noise(vec3(r * 0.004, 0.0, 0.0)) * 0.5 + noise(vec3(r * 0.0007, 3.0, 0.0)) * 0.5;
-    return d * (0.65 + 0.35 * fine);
+// 値ノイズと解析的な勾配 (x: 値 0..1, yzw: 勾配)
+vec4 noised(vec3 x) {
+    vec3 fl = floor(x);
+    ivec3 i = ivec3(fl);
+    vec3 w = x - fl;
+    vec3 u = w * w * (3.0 - 2.0 * w);
+    vec3 du = 6.0 * w * (1.0 - w);
+    float a = hash1(i), b = hash1(i + ivec3(1, 0, 0)), c = hash1(i + ivec3(0, 1, 0)), d = hash1(i + ivec3(1, 1, 0));
+    float e = hash1(i + ivec3(0, 0, 1)), f = hash1(i + ivec3(1, 0, 1)), g = hash1(i + ivec3(0, 1, 1)), h = hash1(i + ivec3(1, 1, 1));
+    float k1 = b - a, k2 = c - a, k3 = e - a;
+    float k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f;
+    float k7 = -a + b + c - d + e - f - g + h;
+    float v = a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
+    vec3 dv = du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z,
+                        k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x,
+                        k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y);
+    return vec4(v, dv);
+}
+
+// 周波数 f の模様の重み: 画素より細かくなったら消す
+float lodW(float f) { return 1.0 - smoothstep(0.15, 0.5, f * fw); }
+
+// 近づくほどオクターブが増える fbm（値はおおよそ -1..1）。o はシード（拡大後に足すので精度を落とさない）
+float fbmL(vec3 p, float f, int oct, float gain, vec3 o) {
+    float s = 0.0, a = 1.0;
+    for (int i = 0; i < oct; i++) {
+        float w = lodW(f);
+        if (w <= 0.0) break;
+        s += a * w * (vnoise(p * f + o + float(i) * 7.13) * 2.0 - 1.0);
+        a *= gain; f *= 2.03;
+    }
+    return s;
+}
+
+// 勾配付き fbm (x: 値, yzw: p についての勾配)
+vec4 fbmD(vec3 p, float f, int oct, float gain, vec3 o) {
+    vec4 s = vec4(0.0);
+    float a = 1.0;
+    for (int i = 0; i < oct; i++) {
+        float w = lodW(f);
+        if (w <= 0.0) break;
+        vec4 n = noised(p * f + o + float(i) * 7.13);
+        s += a * w * vec4(n.x * 2.0 - 1.0, n.yzw * 2.0 * f);
+        a *= gain; f *= 2.03;
+    }
+    return s;
+}
+
+// 3D 格子のセルに 1 つずつ置く円形の模様（クレーター・火山・黒点）。無ければ false
+bool cellSpot(vec3 p, float F, float density, vec3 salt, float rmin, float rmax, out vec3 d, out float r, out float rnd) {
+    vec3 q = p * F + salt;
+    vec3 fl = floor(q);
+    ivec3 c = ivec3(fl);
+    vec3 f = q - fl;
+    d = vec3(0.0); r = 1.0; rnd = 0.0;
+    if (hash1(c + ivec3(5, 71, 29)) > density) return false;
+    float sz = hash1(c + ivec3(41, 13, 97));
+    r = mix(rmin, rmax, sz * sz);
+    vec3 ctr = vec3(r * 1.7) + vec3(hash1(c + ivec3(1, 2, 3)), hash1(c + ivec3(4, 5, 6)), hash1(c + ivec3(7, 8, 9))) * (1.0 - 3.4 * r);
+    d = f - ctr;
+    rnd = hash1(c + ivec3(11, 12, 13));
+    return true;
+}
+
+// クレーター 1 層 (x: 高さ[半径単位], yzw: 勾配)。お椀形の凹みと盛り上がった縁
+vec4 craterLayer(vec3 p, float F, float density, vec3 salt) {
+    vec3 d; float r, rnd;
+    if (!cellSpot(p, F, density, salt, 0.08, 0.29, d, r, rnd)) return vec4(0.0);
+    float dist = length(d);
+    float x = dist / r;
+    if (x >= 1.7) return vec4(0.0);
+    float h, dh;
+    if (x < 1.0) { h = x * x - 0.75; dh = 2.0 * x; }
+    else { float t = (x - 1.0) * 3.5; float e = exp(-t * t); h = 0.25 * e; dh = -0.25 * 2.0 * t * 3.5 * e; }
+    float w = lodW(F / (2.0 * r));
+    float depth = 0.4 * r;
+    // 若いクレーターほど明るい（内部と周囲の噴出物）
+    if (rnd > 0.75) g_ray += w * (x < 1.0 ? 0.5 : 0.8 * exp(-(x - 1.0) * 3.0)) * (rnd - 0.75) * 4.0;
+    else if (x < 1.0) g_ray -= w * 0.08;
+    vec3 dir = dist > 1e-6 ? d / dist : vec3(0.0);
+    return w * vec4(h * depth / F, dh / r * depth * dir);
+}
+
+vec4 craters(vec3 p, float density, float F0, vec3 salt) {
+    vec4 s = vec4(0.0);
+    float F = F0;
+    for (int i = 0; i < 16; i++) {
+        if (lodW(F * 1.7) <= 0.0) break;
+        s += craterLayer(p, F, density, salt + float(i) * 31.7);
+        F *= 2.2;
+    }
+    return s;
+}
+
+// 緯度・経度 (lon は -PI..PI)
+vec2 latLon(vec3 p) { return vec2(asin(clamp(p.y, -1.0, 1.0)), atan(p.z, p.x)); }
+float lonDiff(float a, float b) { float d = a - b; return d - 2.0 * PI * floor((d + PI) / (2.0 * PI)); }
+
+// ---------------------------------------------------------------- 岩石・氷天体
+// base: 地表の色, 戻り値: 高さと勾配
+vec4 rocky(vec3 p, int style, vec3 o, out vec3 base) {
+    g_ray = 0.0;
+    float macro = fbmL(p, 2.2, 5, 0.5, o + 3.0);
+    float rough = 1.0, dens = 0.55;
+    float mare = 0.0;
+    if (style == 1 || style == 2) {   // 月・水星: 海（平らで暗い溶岩平原）
+        mare = smoothstep(0.05, 0.25, fbmL(p, 1.3, 4, 0.55, o + 9.0));
+        if (style == 2) mare *= 0.45;
+        dens = mix(0.6, 0.22, mare);
+        rough = mix(1.0, 0.3, mare);
+    }
+    else if (style == 3) { dens = 0.35; rough = 1.3; }   // 火星
+    else if (style == 4) { dens = 0.0; rough = 0.6; }    // イオ: 火山活動でクレーターが無い
+    else if (style == 5) { dens = 0.06; rough = 0.35; }  // エウロパ: 若い氷の表面
+    else if (style == 6) { dens = 0.4; }
+    else if (style == 7) { dens = 0.85; }                // カリスト: クレーターだらけ
+    else if (style == 10) { dens = 0.3; }
+    else if (style == 12) { dens = 0.12; rough = 0.7; }
+
+    // 冥王星のハート（スプートニク平原）は平らでクレーターが無い
+    float heart = 0.0;
+    if (style == 10) {
+        vec3 h0 = normalize(vec3(0.82, 0.30, 0.48)), h1 = normalize(vec3(0.70, 0.12, 0.70));
+        float edge = fbmL(p, 9.0, 4, 0.5, o + 21.0) * 0.012;
+        heart = max(smoothstep(0.955, 0.965, dot(p, h0) + edge), smoothstep(0.935, 0.945, dot(p, h1) + edge));
+        rough *= 1.0 - 0.85 * heart;
+    }
+
+    vec4 T = fbmD(p, 3.0, 26, 0.48, o) * (0.022 * rough);
+    vec4 C = dens > 0.0 ? craters(p, dens * (1.0 - heart), 5.0, o * 0.37) : vec4(0.0);
+    float tone = clamp(0.5 + macro * 0.6 + T.x * 6.0, 0.0, 1.0);
+    vec3 c1 = color1, c2 = color2;
+    base = mix(c2, c1, tone);
+
+    if (style == 1 || style == 2) {
+        base = mix(base, c2 * 0.72, mare * 0.85);
+    } else if (style == 3) {   // 火星: 暗色の地域と極冠
+        float dark = smoothstep(0.0, 0.3, fbmL(p, 1.6, 6, 0.55, o + 15.0));
+        base = mix(base, c2 * 0.7, dark * 0.7);
+        float cap = smoothstep(0.87, 0.9, abs(p.y) + fbmL(p, 8.0, 5, 0.5, o + 4.0) * 0.03);
+        base = mix(base, vec3(0.95, 0.93, 0.90), cap);
+    } else if (style == 4) {   // イオ: 硫黄の斑と火山（黒い火口と赤い噴出物の輪）
+        base = mix(base, vec3(0.98, 0.96, 0.82), smoothstep(0.1, 0.4, macro) * 0.6);
+        base = mix(base, c2, smoothstep(0.0, 0.35, fbmL(p, 4.0, 6, 0.5, o + 17.0)) * 0.7);
+        for (int k = 0; k < 2; k++) {
+            vec3 d; float r, rnd;
+            if (cellSpot(p, 7.0 * float(k + 1), 0.55, o + float(k) * 9.1, 0.12, 0.3, d, r, rnd)) {
+                float x = length(d) / r;
+                base = mix(base, vec3(0.80, 0.30, 0.12), (1.0 - smoothstep(0.4, 1.6, x)) * 0.7 * rnd);
+                base = mix(base, vec3(0.07, 0.05, 0.04), 1.0 - smoothstep(0.15, 0.3, x));
+            }
+        }
+    } else if (style == 5) {   // エウロパ: 赤茶色の筋（リネア）とカオス地形
+        base = mix(c1, c2, smoothstep(0.15, 0.5, macro) * 0.45);
+        float lin = 0.0;
+        for (int k = 0; k < 4; k++) {
+            float f = 2.5 * pow(2.3, float(k));
+            float n = fbmL(p, f, 3, 0.45, o + float(k) * 13.0);
+            float width = 0.012 + fw * f * 0.5;
+            lin = max(lin, (1.0 - smoothstep(0.0, width, abs(n))) * lodW(f * 8.0) * (1.0 - float(k) * 0.18));
+        }
+        base = mix(base, c2 * 0.85, lin * 0.75);
+    } else if (style == 6) {   // ガニメデ: 暗い古い地域と明るい溝状地形
+        float dark = smoothstep(-0.05, 0.15, macro);
+        float groove = sin(dot(p, normalize(vec3(0.3, 1.0, 0.5))) * 140.0 + fbmL(p, 6.0, 3, 0.5, o) * 8.0);
+        base = mix(c1 * (0.92 + 0.08 * groove * lodW(25.0)), c2, dark);
+    } else if (style == 7) {   // カリスト: 暗い表面に明るいクレーター
+        base = mix(c2, c1, tone * 0.45);
+        g_ray *= 2.0;
+    } else if (style == 9) {   // イアペトゥス: 先行半球が真っ黒な二色の衛星
+        float dark = smoothstep(-0.12, 0.12, p.x + fbmL(p, 5.0, 5, 0.5, o) * 0.15);
+        base = mix(c1, c2, dark);
+    } else if (style == 10) {  // 冥王星: 明るいハートと赤黒い赤道帯
+        float band = (1.0 - smoothstep(0.0, 0.35, abs(p.y + 0.05))) * smoothstep(-0.15, 0.2, macro + 0.15);
+        base = mix(base, vec3(0.30, 0.17, 0.12), band * 0.85);
+        base = mix(base, vec3(0.96, 0.93, 0.88), heart);
+    } else if (style == 11) {  // エンケラドゥス: 南極の「虎の縞」
+        float st = sin(dot(p.xz, vec2(0.8, 0.6)) * 36.0 + fbmL(p, 10.0, 3, 0.5, o) * 2.0);
+        float tiger = (1.0 - smoothstep(0.0, 0.25, abs(st) - 0.0)) * (1.0 - smoothstep(-0.86, -0.78, p.y));
+        base = mix(base, vec3(0.55, 0.72, 0.82), tiger * 0.8);
+    } else if (style == 12) {  // トリトン: ピンク色の南極冠
+        base = mix(base, vec3(0.92, 0.80, 0.76), (1.0 - smoothstep(-0.4, -0.2, p.y + macro * 0.15)));
+    }
+    base *= clamp(1.0 + g_ray * 0.5, 0.5, 1.8);
+    return T + C;
+}
+
+// ---------------------------------------------------------------- ガス惑星・厚い大気
+vec3 gas(vec3 p, int style, vec3 o) {
+    vec2 ll = latLon(p);
+    float lat = ll.x, lon = ll.y;
+    float warp = fbmL(p * vec3(1.0, 3.5, 1.0), 2.5, 6, 0.55, o);
+    float y = p.y + warp * 0.035 + fbmL(p * vec3(1.0, 2.0, 1.0), 14.0, 6, 0.5, o + 5.0) * 0.006;
+    float b1 = sin(y * params.y * PI) * 0.5 + 0.5;
+    float b2 = sin(y * params.y * PI * 2.7 + 1.3) * 0.5 + 0.5;
+    vec3 base = mix(color1, color2, b1 * 0.75 + b2 * 0.25);
+    // 細かな乱流（近づくほど細かく）
+    float fine = fbmL(p * vec3(1.0, 2.5, 1.0), 24.0, 16, 0.55, o + 9.0);
+    base *= 1.0 + fine * 0.07;
+
+    if (style == 20) {        // 木星: 茶色の縞・大赤斑・白斑
+        base = mix(base, vec3(0.55, 0.38, 0.27), smoothstep(0.6, 0.95, b1) * 0.45);
+        float la = -22.4 * PI / 180.0;
+        float dl = lonDiff(lon, 1.2) * cos(la);
+        float e = length(vec2(dl / 0.13, (lat - la) / 0.065));
+        float swirl = fbmL(vec3(dl * 8.0, (lat - la) * 14.0, e * 2.0), 3.0, 6, 0.5, o + 2.0);
+        vec3 grs = mix(vec3(0.78, 0.40, 0.26), vec3(0.88, 0.58, 0.42), swirl * 0.5 + 0.5);
+        base = mix(base, grs, 1.0 - smoothstep(0.85, 1.05, e));
+        base = mix(base, vec3(0.95, 0.90, 0.82), smoothstep(0.9, 1.05, e) * (1.0 - smoothstep(1.05, 1.3, e)) * 0.5);
+        for (int k = 0; k < 3; k++) {
+            float lo = -33.0 * PI / 180.0;
+            float d2 = length(vec2(lonDiff(lon, 2.4 + float(k) * 0.55) * cos(lo) / 0.035, (lat - lo) / 0.022));
+            base = mix(base, vec3(0.97, 0.95, 0.92), (1.0 - smoothstep(0.7, 1.0, d2)) * 0.85);
+        }
+    } else if (style == 21) { // 土星: 淡い縞と北極の六角形
+        base = mix(base, color1, 0.25);
+        float colat = acos(clamp(p.y, -1.0, 1.0));
+        float seg = mod(lon + PI / 6.0, PI / 3.0) - PI / 6.0;
+        float hexR = 0.27 / cos(seg);
+        base = mix(base, vec3(0.55, 0.60, 0.62), (1.0 - smoothstep(hexR - 0.01, hexR + 0.01, colat)) * 0.6);
+    } else if (style == 22) { // 天王星: ほぼ一様
+        base = mix(color1, color2, (b1 * 0.75 + b2 * 0.25) * 0.25) * (1.0 + fine * 0.02);
+    } else if (style == 23) { // 海王星: 大暗斑と白い筋雲
+        float la = -20.0 * PI / 180.0;
+        float e = length(vec2(lonDiff(lon, -0.8) * cos(la) / 0.11, (lat - la) / 0.06));
+        base = mix(base, vec3(0.10, 0.17, 0.48), (1.0 - smoothstep(0.8, 1.0, e)) * 0.8);
+        float streak = smoothstep(0.35, 0.6, fbmL(p * vec3(0.6, 6.0, 0.6), 4.0, 6, 0.5, o + 11.0));
+        base = mix(base, vec3(0.92, 0.95, 1.0), streak * 0.6 * smoothstep(0.1, 0.4, abs(p.y)));
+    } else if (style == 24) { // 金星: 雲の V 字模様
+        float wave = sin(lon * 2.0 - abs(lat) * 5.0 + warp * 3.0);
+        base = mix(color2, color1, clamp(0.55 + wave * 0.18 + fine * 0.6, 0.0, 1.0));
+    } else if (style == 25) { // タイタン: 一様なもや、極付近がやや暗い
+        base = mix(color1, color2, smoothstep(0.3, 0.9, abs(p.y)) * 0.6) * (1.0 + fine * 0.03);
+    }
+    return base;
+}
+
+// ---------------------------------------------------------------- 地球
+// base: 地表の色, specMask: 海の反射, lights: 夜景, 戻り値: 高さと勾配
+vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out float lights, out float cloud) {
+    vec4 e = fbmD(p, 1.6, 28, 0.5, o);
+    float el = e.x + 0.04;                       // 海面からの高さ（ノイズ単位）
+    float aa = length(e.yzw) * fw + 1e-6;        // 海岸線を画素幅でなめらかに
+    float land = smoothstep(-aa, aa, el);
+    float lat = abs(p.y);
+    float moist = fbmL(p, 2.5, 6, 0.5, o + 40.0);
+    float temp = 1.0 - pow(lat, 1.5) * 1.25 - max(el, 0.0) * 1.6;
+    float arid = smoothstep(0.12, 0.25, lat) * (1.0 - smoothstep(0.42, 0.55, lat));
+    float dry = clamp(arid * 0.9 - moist * 1.4 + 0.1, 0.0, 1.0);
+
+    vec3 forest = vec3(0.09, 0.24, 0.08), grass = vec3(0.30, 0.40, 0.17), desert = vec3(0.80, 0.67, 0.46);
+    vec3 tundra = vec3(0.42, 0.40, 0.34), rock = vec3(0.42, 0.38, 0.34), snow = vec3(0.94);
+    vec3 lc = mix(forest, grass, smoothstep(-0.15, 0.2, -moist));
+    lc = mix(lc, desert, smoothstep(0.35, 0.6, dry));
+    lc = mix(lc, rock, smoothstep(0.35, 0.6, el) * 0.7);
+    lc = mix(lc, tundra, (1.0 - smoothstep(0.25, 0.45, temp)));
+    lc = mix(lc, snow, (1.0 - smoothstep(0.06, 0.18, temp)));
+    lc *= 0.88 + 0.24 * (fbmL(p, 70.0, 20, 0.5, o + 5.0) * 0.5 + 0.5);   // 細かい地表の模様
+
+    float depth = clamp(-el * 5.0, 0.0, 1.0);
+    vec3 oc = mix(vec3(0.07, 0.36, 0.45), color1 * 0.75, smoothstep(0.0, 0.35, depth));
+    float seaIce = smoothstep(0.90, 0.93, lat + fbmL(p, 12.0, 4, 0.5, o + 8.0) * 0.02);
+    oc = mix(oc, vec3(0.90, 0.93, 0.96), seaIce);
+    base = mix(oc, lc, land);
+    specMask = (1.0 - land) * (1.0 - seaIce);
+
+    // 夜景: 温暖で乾燥していない陸地に集まる
+    lights = 0.0;
+    float pop = land * (1.0 - dry) * smoothstep(0.15, 0.45, temp) * smoothstep(0.0, 0.3, fbmL(p, 5.0, 4, 0.5, o + 11.0) + 0.1);
+    if (pop > 0.0 && ndlG < 0.02) lights = pop * smoothstep(0.05, 0.5, fbmL(p, 40.0, 16, 0.6, o + 13.0));
+
+    // 雲: 経度方向にゆっくり流れる。地表付近では見えなくする
+    cloud = 0.0;
+    float ang = detail.z * 0.15;
+    float cs = cos(ang), sn = sin(ang);
+    vec3 pc = vec3(cs * p.x - sn * p.z, p.y, sn * p.x + cs * p.z);
+    if (detail.w > 0.0) {
+        float w = fbmL(pc, 3.0, 4, 0.5, o + 17.0);
+        float cl = fbmL(pc + w * 0.06, 4.0, 18, 0.52, o + 23.0);
+        float wisp = fbmL(pc, 30.0, 12, 0.55, o + 29.0);
+        cloud = smoothstep(0.15, 0.55, cl + wisp * 0.25 + 0.12 * cos(p.y * PI * 3.0)) * detail.w;
+    }
+
+    float hk = 0.035 * land * (0.3 + 3.0 * max(el, 0.0));
+    // 海面の波（近づいた時だけ現れる細かいうねり）
+    vec4 h = vec4(e.x * hk, e.yzw * hk);
+    if (land < 1.0) h += fbmD(p, 20000.0, 14, 0.55, o + 31.0) * (1.5e-6 * (1.0 - land));
+    return h;
+}
+
+// ---------------------------------------------------------------- 太陽
+vec3 sun(vec3 p, float mu, vec3 o) {
+    float g = fbmL(p, 45.0, 18, 0.55, o);                 // 粒状斑
+    float sg = fbmL(p, 6.0, 4, 0.5, o + 3.0);             // 超粒状斑
+    vec3 c = mix(color2, color1, clamp(0.65 + g * 0.45 + sg * 0.15, 0.0, 1.0));
+    // 黒点（低緯度帯）
+    for (int k = 0; k < 2; k++) {
+        vec3 d; float r, rnd;
+        if (cellSpot(p, 9.0 * float(k + 1), 0.35, o + float(k) * 5.3, 0.06, 0.2, d, r, rnd)) {
+            float x = length(d) / r;
+            float belt = smoothstep(0.08, 0.15, abs(p.y)) * (1.0 - smoothstep(0.45, 0.55, abs(p.y)));
+            c = mix(c, c * 0.55, (1.0 - smoothstep(0.8, 1.0, x)) * belt);
+            c = mix(c, vec3(0.25, 0.10, 0.03), (1.0 - smoothstep(0.35, 0.5, x)) * belt);
+        }
+    }
+    // 白斑（周辺部で目立つ）
+    float fac = smoothstep(0.2, 0.55, fbmL(p, 18.0, 5, 0.5, o + 7.0)) * pow(1.0 - mu, 2.0);
+    c *= 1.0 + fac * 0.5;
+    c *= 0.42 + 0.58 * pow(mu, 0.5);                       // 周辺減光
+    c *= vec3(1.0, 0.94 + 0.06 * mu, 0.82 + 0.18 * mu);    // 縁ほど赤い
+    return c;
 }
 
 void main() {
     int kind = int(params.x + 0.5);
+    int style = int(detail.x + 0.5);
     vec3 V = normalize(-fragWorld);
 
     if (kind == 4) {   // 環
         float rkm = length(fragObj.xz) * params.y;
-        float d = ringDensity(rkm);
+        float d = 0.0;
+        if (rkm < 74658.0) d = 0.0;
+        else if (rkm < 92000.0) d = 0.22;        // C環
+        else if (rkm < 117580.0) d = 0.92;       // B環
+        else if (rkm < 122170.0) d = 0.06;       // カッシーニの間隙
+        else if (rkm < 133423.0) d = 0.62;       // A環
+        else if (rkm < 133745.0) d = 0.0;        // エンケの間隙
+        else if (rkm < 136775.0) d = 0.55;       // A環外側
+        fw = length(fragWorld) * detail.y;
+        // 細い環の筋（近づくほど細かく）
+        float ringlets = 0.0, a = 0.5, f = 0.004;
+        for (int i = 0; i < 9; i++) {
+            float w = lodW(f * params.y);
+            if (w <= 0.0) break;
+            ringlets += a * w * vnoise(vec3(rkm * f, 0.0, float(i) * 3.1));
+            a *= 0.6; f *= 2.7;
+        }
+        d *= 0.55 + 0.6 * ringlets;
         if (d <= 0.002) discard;
         vec3 Lo = normalize(lightDirObj);
         vec3 P = fragObj;
@@ -86,42 +411,57 @@ void main() {
         return;
     }
 
-    vec3 N = normalize(fragNormal);
+    vec3 Ng = normalize(fragNormal);
     vec3 p = normalize(fragObj);
-    float seed = params.z;
-    float mu = max(dot(N, V), 0.0);
+    vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
+    float mu = max(dot(Ng, V), 0.0);
+    fw = max(length(fragWorld) * detail.y / max(mu, 0.25), 1e-8);
 
-    if (kind == 0) {   // 恒星: 粒状斑 + 周辺減光
-        float g = fbm(p * 28.0 + seed);
-        vec3 c = mix(color2, color1, smoothstep(0.2, 0.8, g) * 0.8 + 0.2);
-        c *= 0.45 + 0.55 * pow(mu, 0.45);
-        finalColor = vec4(c, 1.0);
+    if (kind == 0) {
+        finalColor = vec4(sun(p, mu, o), 1.0);
         return;
     }
 
+    vec3 L = normalize(lightDir);
+    float ndlG = dot(Ng, L);
     vec3 base;
-    if (kind == 1) {          // 岩石天体
-        float n = fbm(p * 3.0 + seed);
-        float n2 = fbm(p * 14.0 + seed * 2.0);
-        base = mix(color2, color1, clamp(smoothstep(0.3, 0.7, n) * 0.7 + n2 * 0.4, 0.0, 1.0));
-    } else if (kind == 2) {   // ガス惑星: 縞模様
-        float t = fbm(p * vec3(2.0, 9.0, 2.0) + seed);
-        float b = sin(p.y * params.y * 3.14159 + t * 4.0) * 0.5 + 0.5;
-        base = mix(color1, color2, b);
-    } else {                  // 地球
-        float n = fbm(p * 2.2 + seed);
-        vec3 land = mix(color2, vec3(0.55, 0.47, 0.32), smoothstep(0.5, 0.75, fbm(p * 7.0 + 4.0)));
-        base = (n > 0.53) ? land : color1;
-        float ice = smoothstep(0.86, 0.9, abs(p.y));
-        base = mix(base, vec3(0.93), ice);
-        float cl = fbm(p * 5.0 + vec3(seed * 3.0, 1.0, 2.0));
-        base = mix(base, vec3(1.0), smoothstep(0.55, 0.72, cl) * 0.85);
+    vec4 hgt = vec4(0.0);
+    float specMask = 0.0, lights = 0.0, cloud = 0.0;
+    if (kind == 1) hgt = rocky(p, style, o, base);
+    else if (kind == 2) base = gas(p, style, o);
+    else hgt = earth(p, o, ndlG, base, specMask, lights, cloud);
+
+    // 高さの勾配で法線を揺らす（球面の接線成分だけ使う）
+    vec3 gt = hgt.yzw - p * dot(hgt.yzw, p);
+    vec3 n0 = normalize(mat3(matNormal) * p);
+    vec3 nb = normalize(mat3(matNormal) * normalize(p - gt));
+    vec3 N = normalize(Ng + (nb - n0));
+    float ndl = max(dot(N, L), 0.0) * smoothstep(-0.06, 0.02, ndlG);
+    float muN = max(dot(N, V), 0.05);
+
+    vec3 col;
+    if (kind == 1 && style != 3) {
+        // 大気の無い天体: ランベルトとロンメル・ゼーリガーの中間（満月が縁まで明るく見える）
+        float ls = 2.0 * ndl / (ndl + muN);
+        col = base * (mix(ndl, ls * 0.5, 0.5) * 1.15 + 0.012);
+    } else if (kind == 2) {
+        col = base * (ndl * 1.05 + 0.015) * (0.8 + 0.2 * sqrt(mu));
+    } else {
+        col = base * (ndl * 1.05 + 0.012);
     }
 
-    float ndl = max(dot(N, normalize(lightDir)), 0.0);
-    vec3 col = base * (ndl * 1.05 + 0.015);
+    if (kind == 3) {
+        vec3 H = normalize(L + V);
+        float nh = max(dot(N, H), 0.0);
+        col += vec3(1.0, 0.96, 0.88) * specMask * (pow(nh, 90.0) * 0.6 + pow(nh, 12.0) * 0.04) * step(0.0, ndlG);
+        col += vec3(1.0, 0.72, 0.38) * lights * 1.4 * (1.0 - smoothstep(-0.18, 0.02, ndlG)) * (1.0 - cloud);
+        float cl = max(ndlG, 0.0) * 1.0 + 0.01;
+        col = mix(col, vec3(cl), cloud * 0.92);
+        col = mix(col, atmColor * max(ndlG, 0.0), 0.12 * (1.0 - mu) * params.w);   // 大気による青み
+    }
+
     float rim = pow(1.0 - mu, 3.0) * params.w;
-    col += atmColor * rim * clamp(dot(N, normalize(lightDir)) + 0.25, 0.0, 1.0);
+    col += atmColor * rim * clamp(ndlG + 0.25, 0.0, 1.0);
     finalColor = vec4(col, 1.0);
 }
 )";

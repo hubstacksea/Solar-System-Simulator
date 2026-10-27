@@ -119,6 +119,7 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 ## How it works
 
 - **Body positions**: planets are computed from JPL J2000 mean orbital elements via Kepler's equation (accurate to a few arcminutes). Moons use circular orbits with real radii, periods and inclinations, but their phases do not match their actual positions
+- **Surfaces**: generated procedurally in shaders (no textures). Finer patterns and relief (craters, mountains) appear as you get closer, so surfaces stay detailed even near the ground. Distinct features include lunar maria, Martian polar caps, Io's volcanoes, Europa's lineae, Jupiter's Great Red Spot, Saturn's north polar hexagon, Pluto's heart, and Earth's continents, vegetation, clouds, ocean glint and city lights
 - **Sizes**: equatorial radius and flattening (Jupiter and Saturn are visibly oblate), and Saturn's rings (C ring to A ring, Cassini Division, Encke Gap) drawn at true scale
 - **Reference frame**: the ship moves along with the body whose sphere of influence (SOI) it is in, so even at car speed you are not left behind by Earth
 - **Precision**: positions are stored as doubles and rendered relative to the camera. Each body is drawn at its own scale with its own near/far planes, so a 30 m ship and Neptune 4.5 billion km away can be rendered at the same time
