@@ -112,7 +112,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP3, "W : 加速      S : 減速・後退      X : 停止", "W : accelerate   S : brake/reverse   X : stop") \
     X(HELP4, "1〜7 / マウスホイール : エンジン切替", "1-7 / Mouse wheel : select engine")    \
     X(HELP5, "Tab / Shift+Tab : ターゲット切替", "Tab / Shift+Tab : cycle target")           \
-    X(HELP6, "F : ターゲットへ機首を向ける", "F : face target")                              \
+    X(HELP6, "F : 機首を向ける    T : 自動操縦    Shift+T : 自動操縦(エンジン自動選択)", "F : face target    T : autopilot    Shift+T : autopilot (auto engine)") \
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
     X(HELP8, "右クリック(押している間) : ズーム", "Right mouse (hold) : zoom")               \
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー", "V : view    O : orbits    L : moon markers") \
@@ -120,9 +120,21 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP11, "I : マウス上下反転    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    Ctrl+Q : 終了", "Esc : release/capture mouse    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
-    X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 機首を向ける    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : face target    B : stop") \
+    X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
     X(REAL_TIME_ETA, "実時間で", "real") \
+    X(AP, "自動操縦", "AUTOPILOT") \
+    X(AP_ON, "自動操縦 ON", "Autopilot ON") \
+    X(AP_ON_AUTO, "自動操縦 ON (エンジン自動選択)", "Autopilot ON (auto engine)") \
+    X(AP_OFF, "自動操縦 OFF", "Autopilot OFF") \
+    X(AP_ARRIVED, "到着", "Arrived") \
+    X(AP_AUTO_ENGINE, "エンジン自動", "auto engine") \
+    X(AP_TURN, "旋回中", "turning") \
+    X(AP_ACCEL, "加速中", "accelerating") \
+    X(AP_CRUISE, "巡航中", "cruising") \
+    X(AP_DECEL, "減速中", "decelerating") \
+    X(AP_AVOID, "回避中", "avoiding") \
+    X(AP_REMAIN, "残り", "remaining") \
     X(PAD_ON, "コントローラ接続", "Controller connected") \
     X(PAD_OFF, "コントローラ切断", "Controller disconnected")
 
@@ -548,7 +560,9 @@ struct Options {
     const char* shot = nullptr;
     int frames = 90;
     int target = -1;
-    bool warp = false, land = false, face = false, cockpit = false, help = false;
+    int gotoTarget = -1;  // ワープ後に切り替えるターゲット
+    bool trace = false;  // 1 秒ごとに自機の状態を標準出力へ（動作確認用）
+    bool warp = false, land = false, face = false, autopilot = false, autoEngine = false, cockpit = false, help = false;
     int engine = -1;
     double throttleSec = 0;
     double timeScale = 1;
@@ -564,6 +578,10 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--warp") o.warp = true;
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
+        else if (a == "--autopilot") o.autopilot = true;
+        else if (a == "--trace") o.trace = true;
+        else if (a == "--goto") o.gotoTarget = atoi(next());
+        else if (a == "--auto-engine") o.autopilot = o.autoEngine = true;
         else if (a == "--cockpit") o.cockpit = true;
         else if (a == "--help-overlay") o.help = true;
         else if (a == "--engine") o.engine = atoi(next());
@@ -588,6 +606,11 @@ struct App {
     int pad = -1;                 // 使用中のゲームパッド番号（-1: なし）
     bool padTrigSeen[2] = {false, false};
     bool padZoom = false;
+    // 自動操縦
+    bool autopilot = false;
+    bool apAutoEngine = false;
+    int apPhase = 0;        // UI_AP_TURN 〜 UI_AP_AVOID
+    double apRemain = 0;    // 到着点までの残り距離 km
     std::string toast;
     double toastTime = 0;
     Mesh sphere{}, ring{};
@@ -631,6 +654,7 @@ static void WarpTo(App& app, int ti, bool land) {
     V3 dir = Norm(toSun * 0.6 + side * 0.8 + Y_UP * 0.15);
     app.ship.ref = ti;
     app.ship.speed = 0;
+    app.autopilot = false;
     if (!land) {
         double d = std::max(b.d.radius * 4.0, b.outer * 2.4);
         app.ship.local = dir * d;
@@ -659,7 +683,7 @@ struct PadState {
     double pitch = 0, yaw = 0, roll = 0;  // -1..1
     double throttle = 0, brake = 0;       // 0..1
     bool engineUp = false, engineDown = false, timeUp = false, timeDown = false;
-    bool face = false, stop = false, nextTarget = false, warp = false, land = false, view = false, help = false, zoom = false;
+    bool autopilot = false, stop = false, nextTarget = false, warp = false, land = false, view = false, help = false, zoom = false;
 };
 
 static double StickCurve(double v) {
@@ -712,7 +736,7 @@ static PadState ReadPad(App& app) {
     p.engineDown = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
     p.timeUp = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_FACE_UP);
     p.timeDown = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_FACE_DOWN);
-    p.face = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);       // A / ×
+    p.autopilot = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);  // A / ×
     p.stop = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);      // B / ○
     p.nextTarget = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_LEFT); // X / □
     p.warp = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_FACE_UP);         // Y / △
@@ -745,8 +769,10 @@ static void HandleInput(App& app, double dt) {
     // 回転
     double zoomK = app.cam.fovy / (60 * DEG);
     double pitch = 0, yaw = 0, roll = 0;
+    bool manual = false;  // 手動操作があれば自動操縦を解除する
     if (app.mouseCaptured) {
         Vector2 md = GetMouseDelta();
+        if (Vector2Length(md) > 4) manual = true;
         const double sens = 0.0022 * zoomK;
         yaw -= md.x * sens;
         pitch -= md.y * sens * (app.invertY ? -1 : 1);
@@ -761,11 +787,15 @@ static void HandleInput(App& app, double dt) {
     pitch += pad.pitch * 1.3 * dt * zoomK * (app.invertY ? -1 : 1);
     yaw += pad.yaw * 1.3 * dt * zoomK;
     roll += std::max(-1.0, std::min(1.0, pad.roll)) * 1.6 * dt;
+    if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_A) ||
+        IsKeyDown(KEY_D) || IsKeyDown(KEY_Q) || IsKeyDown(KEY_E) || pad.pitch != 0 || pad.yaw != 0 || pad.roll != 0)
+        manual = true;
     Quaternion r = QuaternionMultiply(QuaternionFromAxisAngle({0, 1, 0}, (float)yaw), QuaternionFromAxisAngle({1, 0, 0}, (float)pitch));
     r = QuaternionMultiply(r, QuaternionFromAxisAngle({0, 0, 1}, (float)roll));
     s.q = QuaternionNormalize(QuaternionMultiply(s.q, r));
 
     // エンジン
+    int engineBefore = s.engine;
     for (int i = 0; i < ENGINE_COUNT; i++)
         if (IsKeyPressed((KeyboardKey)(KEY_ONE + i)) || IsKeyPressed((KeyboardKey)(KEY_KP_1 + i))) s.engine = i;
     float wheel = GetMouseWheelMove();
@@ -773,6 +803,7 @@ static void HandleInput(App& app, double dt) {
     if (wheel < 0) s.engine = std::max(0, s.engine - 1);
     if (pad.engineUp) s.engine = std::min(ENGINE_COUNT - 1, s.engine + 1);
     if (pad.engineDown) s.engine = std::max(0, s.engine - 1);
+    if (s.engine != engineBefore) app.apAutoEngine = false;
 
     const Engine& e = ENGINES[s.engine];
     double acc = e.accel / 1000.0, vmax = e.vmax / 1000.0;
@@ -780,6 +811,11 @@ static void HandleInput(App& app, double dt) {
     double sdt = SimDt(app, dt);
     double throttle = std::max(IsKeyDown(KEY_W) ? 1.0 : 0.0, pad.throttle);
     double brake = std::max(IsKeyDown(KEY_S) ? 1.0 : 0.0, pad.brake);
+    if (throttle > 0 || brake > 0 || IsKeyPressed(KEY_X) || pad.stop) manual = true;
+    if (manual && app.autopilot) {
+        app.autopilot = false;
+        Toast(app, T(UI_AP_OFF));
+    }
     s.thrusting = false;
     if (throttle > 0 && s.speed < vmax) {
         s.speed = std::min(vmax, s.speed + acc * throttle * sdt);
@@ -802,7 +838,17 @@ static void HandleInput(App& app, double dt) {
     int n = (int)app.B.size();
     if (IsKeyPressed(KEY_TAB)) app.target = (app.target + (shift ? n - 1 : 1)) % n;
     if (pad.nextTarget) app.target = (app.target + 1) % n;
-    if (IsKeyPressed(KEY_F) || pad.face) FaceTarget(app);
+    if (IsKeyPressed(KEY_F)) FaceTarget(app);
+    if (IsKeyPressed(KEY_T) || pad.autopilot) {
+        if (app.autopilot) {
+            app.autopilot = false;
+            Toast(app, T(UI_AP_OFF));
+        } else {
+            app.autopilot = true;
+            app.apAutoEngine = shift;
+            Toast(app, T(shift ? UI_AP_ON_AUTO : UI_AP_ON));
+        }
+    }
     if (IsKeyPressed(KEY_G)) WarpTo(app, app.target, shift);
     if (pad.warp || pad.land) WarpTo(app, app.target, pad.land);
 
@@ -827,9 +873,107 @@ static void HandleInput(App& app, double dt) {
     (void)ctrl;
 }
 
+// ---------------------------------------------------------------- 自動操縦
+static double ArrivalDistance(const Body& b) { return std::max(b.d.radius * 3.0, b.outer * 2.2); }
+
+// 機首を desired 方向へ最大 maxAngle だけ回す（ワールド空間での回転）
+static double TurnToward(Ship& s, V3 desired, double maxAngle) {
+    V3 f = ShipFwd(s);
+    desired = Norm(desired);
+    double ang = std::acos(std::max(-1.0, std::min(1.0, Dot(f, desired))));
+    if (ang < 1e-6) return 0;
+    V3 axis = Cross(f, desired);
+    if (Len(axis) < 1e-9) axis = ShipUp(s);  // 真後ろ: 上方向を軸に回る
+    double step = std::min(ang, maxAngle);
+    Quaternion r = QuaternionFromAxisAngle(ToF(Norm(axis)), (float)step);
+    s.q = QuaternionNormalize(QuaternionMultiply(r, s.q));
+    return ang - step;
+}
+
+// 経路上の天体を避けるための経由点（なければ目標そのもの）
+static V3 AvoidancePoint(const App& app, V3 from, V3 to, bool* avoiding) {
+    V3 d = to - from;
+    double L = Len(d);
+    d = d * (1.0 / L);
+    *avoiding = false;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        if ((int)i == app.target) continue;
+        const Body& b = app.B[i];
+        double R = b.outer * 1.5;
+        V3 oc = b.pos - from;
+        double t = Dot(oc, d);
+        if (t <= 0 || t >= L) continue;
+        V3 off = (from + d * t) - b.pos;
+        if (Len(off) >= R) continue;
+        if (Len(oc) < R) {
+            // 天体のすぐ近く: 目標が地平線の下なら、接線方向へ上昇しながら回り込む
+            if (Len(off) >= b.d.radius * 1.02) continue;
+            V3 up = Norm(-oc);
+            V3 tang = d - up * Dot(d, up);
+            if (Len(tang) < 1e-6) tang = Cross(up, Y_UP);
+            *avoiding = true;
+            return from + Norm(Norm(tang) + up * 0.6) * b.d.radius;
+        }
+        V3 side = Len(off) > 1e-6 ? Norm(off) : Norm(Cross(d, Y_UP));
+        *avoiding = true;
+        return b.pos + side * (b.outer * 2.0);
+    }
+    return to;
+}
+
+static void UpdateAutopilot(App& app, double dt) {
+    if (!app.autopilot) return;
+    Ship& s = app.ship;
+    const Body& tb = app.B[app.target];
+    V3 sw = ShipWorld(app);
+    double dist = Len(tb.pos - sw);
+    double remain = dist - ArrivalDistance(tb);
+    app.apRemain = std::max(0.0, remain);
+    if (remain <= 0.001) {
+        s.speed = 0;
+        app.autopilot = false;
+        Toast(app, std::string(T(UI_AP_ARRIVED)) + ": " + TR(tb.d.jp, tb.d.en));
+        return;
+    }
+    double sdt = SimDt(app, dt);
+
+    // エンジン自動選択: 時間倍率込みで実時間 約 60 秒以内に着く最も遅いエンジン
+    if (app.apAutoEngine) {
+        double budget = 60.0 * (app.paused ? 1.0 : TIME_SCALES[app.timeIdx]);
+        int pick = ENGINE_COUNT - 1;
+        for (int i = 0; i < ENGINE_COUNT; i++)
+            if (remain / (ENGINES[i].vmax / 1000.0) <= budget) { pick = i; break; }
+        s.engine = pick;
+    }
+
+    // 旋回（実時間で最大 1.5 rad/s）
+    bool avoiding = false;
+    V3 aim = AvoidancePoint(app, sw, tb.pos, &avoiding);
+    double left = TurnToward(s, aim - sw, 1.5 * dt);
+
+    // 速度: 制動曲線 v = sqrt(2 a d) と最高速度の小さい方。機首が向いていない間は加速しない
+    const Engine& e = ENGINES[s.engine];
+    double acc = e.accel / 1000.0, vmax = e.vmax / 1000.0;
+    double align = std::cos(std::min(left, PI / 2.0));
+    double vBrake = std::sqrt(2 * acc * remain);
+    double vWant = std::min(vmax, vBrake) * (left < 10 * DEG ? 1.0 : std::pow(std::max(0.0, align), 8));
+    double dv = vWant - s.speed;
+    double maxDv = acc * sdt;
+    s.speed += std::max(-maxDv, std::min(maxDv, dv));
+    s.thrusting = std::fabs(dv) > 1e-9 && sdt > 0;
+
+    if (avoiding) app.apPhase = UI_AP_AVOID;
+    else if (left > 10 * DEG) app.apPhase = UI_AP_TURN;
+    else if (vBrake < vmax * 0.999 && s.speed >= vBrake * 0.98) app.apPhase = UI_AP_DECEL;
+    else if (s.speed < vmax * 0.999) app.apPhase = UI_AP_ACCEL;
+    else app.apPhase = UI_AP_CRUISE;
+}
+
 static void UpdateShip(App& app, double dt) {
     Ship& s = app.ship;
-    s.local += ShipFwd(s) * (s.speed * dt);
+    double step = s.speed * dt;
+    if (app.autopilot && step > app.apRemain) step = app.apRemain;  // 大きな時間倍率でも行き過ぎない
+    s.local += ShipFwd(s) * step;
     // 地表との衝突: 最低高度まで押し戻す（速度は維持して地表を滑る）
     for (const Body& b : app.B) {
         V3 rel = ShipWorld(app) - b.pos;
@@ -1128,6 +1272,7 @@ static void DrawMarkers(const App& app) {
         {c.W - 2 * R - 44, c.H - 2 * R - 48, 2 * R + 44, 2 * R + 48},  // 速度計
         {0, c.H - 64, c.W, 64},                             // エンジン表示
     };
+    if (app.autopilot) g_placed.push_back({c.W * 0.5f - 320, c.H - 118, 640, 40});  // 自動操縦表示
     DrawMarker(app, app.target);  // ターゲットを優先して配置
     for (size_t i = 0; i < app.B.size(); i++) {
         const BodyDef& d = app.B[i].d;
@@ -1369,6 +1514,18 @@ static void DrawHUD(App& app) {
     DrawSpeedometer(app);
     DrawEngineBar(app);
 
+    if (app.autopilot) {
+        std::string ap = std::string(T(UI_AP)) + " >> " + TR(tb.d.jp, tb.d.en) + "   " + T((UiId)app.apPhase) + "   " +
+                         T(UI_AP_REMAIN) + " " + FmtDist(app.apRemain);
+        if (app.apAutoEngine) ap += std::string("   [") + T(UI_AP_AUTO_ENGINE) + "]";
+        float tw = TxtW(ap.c_str(), 18);
+        float ax = c.W * 0.5f - tw * 0.5f - 12, ay = c.H - 112;
+        float blink = 0.75f + 0.25f * std::sin((float)GetTime() * 4);
+        DrawRectangleRounded({ax, ay, tw + 24, 28}, 0.4f, 6, {0, 40, 20, 190});
+        DrawRectangleRoundedLinesEx({ax, ay, tw + 24, 28}, 0.4f, 6, 1.5f, Fade({120, 255, 160, 255}, blink));
+        Txt(ap.c_str(), ax + 12, ay + 4, 18, {150, 255, 180, 255});
+    }
+
     Txt(T(UI_HELP_HINT), 12, c.H - 24, 15, {150, 170, 200, 220});
     snprintf(b, sizeof b, "%d FPS", GetFPS());
     Txt(b, 12, c.H - 44, 13, {110, 130, 160, 200});
@@ -1438,9 +1595,12 @@ int main(int argc, char** argv) {
     }
     if (opt.target >= 0 && opt.target < (int)app.B.size()) app.target = opt.target;
     if (opt.warp || opt.land) WarpTo(app, app.target, opt.land);
+    if (opt.gotoTarget >= 0 && opt.gotoTarget < (int)app.B.size()) app.target = opt.gotoTarget;
     if (opt.face) FaceTarget(app);
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
     app.cockpit = opt.cockpit;
+    app.autopilot = opt.autopilot;
+    app.apAutoEngine = opt.autoEngine;
     app.showHelp = opt.help;
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
 
@@ -1451,6 +1611,7 @@ int main(int argc, char** argv) {
         if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) break;
 
         HandleInput(app, dt);
+        UpdateAutopilot(app, dt);
         if (opt.shot && frame * dt < opt.throttleSec) {
             const Engine& e = ENGINES[app.ship.engine];
             app.ship.speed = std::min(e.vmax / 1000.0, app.ship.speed + e.accel / 1000.0 * SimDt(app, dt));
@@ -1479,6 +1640,13 @@ int main(int argc, char** argv) {
         DrawHUD(app);
 
         frame++;
+        if (opt.trace && frame % 60 == 0) {
+            const Body& tb = app.B[app.target];
+            printf("t=%3ds engine=%d speed=%.6g km/s dist=%s ap=%d phase=%s remain=%s\n", frame / 60, app.ship.engine + 1, app.ship.speed,
+                   FmtDist(Len(tb.pos - ShipWorld(app)) - tb.d.radius).c_str(), app.autopilot ? 1 : 0,
+                   app.autopilot ? UI_EN[app.apPhase] : "-", FmtDist(app.apRemain).c_str());
+            fflush(stdout);
+        }
         bool quitAfterShot = opt.shot && frame == opt.frames;
         if (quitAfterShot) SaveScreenshot(opt.shot);
         if (IsKeyPressed(KEY_F12)) {
