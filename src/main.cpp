@@ -119,7 +119,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー", "V : view    O : orbits    L : moon markers") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
     X(HELP11, "I : マウス上下反転    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    F11 : fullscreen    F12 : screenshot") \
-    X(HELP12, "Esc : マウス解放/捕捉    Ctrl+Q : 終了", "Esc : release/capture mouse    Ctrl+Q : quit") \
+    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
@@ -136,6 +136,8 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(AP_DECEL, "減速中", "decelerating") \
     X(AP_AVOID, "回避中", "avoiding") \
     X(AP_REMAIN, "残り", "remaining") \
+    X(LANG_SET, "言語: 日本語", "Language: English") \
+    X(LANG_NO_FONT, "日本語フォントが見つかりません", "Japanese font not found") \
     X(PAD_ON, "コントローラ接続", "Controller connected") \
     X(PAD_OFF, "コントローラ切断", "Controller disconnected")
 
@@ -156,7 +158,8 @@ static const char* UI_EN[] = {
 #undef X
 };
 
-static bool g_jp = false;
+static bool g_jp = false;       // 表示言語（true: 日本語）
+static bool g_jpFont = false;   // 日本語フォントを読み込めたか
 static Font g_font;
 static inline const char* T(UiId id) { return g_jp ? UI_JP[id] : UI_EN[id]; }
 static inline const char* TR(const char* jp, const char* en) { return g_jp ? jp : en; }
@@ -411,11 +414,11 @@ static Matrix BodyMatrix(const Body& b, V3 center, double sEq, double sPol, doub
 
 // ---------------------------------------------------------------- 書式
 static void Txt(const char* s, float x, float y, float size, Color c) {
-    float sp = g_jp ? 0.5f : size / 10;
+    float sp = g_jpFont ? 0.5f : size / 10;
     DrawTextEx(g_font, s, {x + 1, y + 1}, size, sp, {0, 0, 0, (unsigned char)(c.a * 0.8f)});
     DrawTextEx(g_font, s, {x, y}, size, sp, c);
 }
-static float TxtW(const char* s, float size) { return MeasureTextEx(g_font, s, size, g_jp ? 0.5f : size / 10).x; }
+static float TxtW(const char* s, float size) { return MeasureTextEx(g_font, s, size, g_jpFont ? 0.5f : size / 10).x; }
 static void TxtC(const char* s, float cx, float y, float size, Color c) { Txt(s, cx - TxtW(s, size) / 2, y, size, c); }
 
 static std::string Grouped(double v, int decimals) {
@@ -568,6 +571,31 @@ static void SaveScreenshot(const char* path) {
     UnloadImage(img);
 }
 
+// ---------------------------------------------------------------- 設定ファイル（表示言語）
+static std::string ConfigPath() { return std::string(GetApplicationDirectory()) + "solar_voyager.cfg"; }
+
+// 保存されている言語。未設定なら空文字
+static std::string LoadLanguageSetting() {
+    std::string path = ConfigPath();
+    if (!FileExists(path.c_str())) return "";
+    char* text = LoadFileText(path.c_str());
+    if (!text) return "";
+    std::string t = text, lang;
+    UnloadFileText(text);
+    size_t p = t.find("lang=");
+    if (p != std::string::npos) lang = t.substr(p + 5, 2);
+    return lang;
+}
+static void SaveLanguageSetting() {
+    std::string body = std::string("lang=") + (g_jp ? "ja" : "en") + "\n";
+    SaveFileText(ConfigPath().c_str(), (char*)body.c_str());
+}
+
+// 言語を切り替える。日本語フォントが無ければ英語のまま
+static void SetLanguage(bool jp) {
+    g_jp = jp && g_jpFont;
+}
+
 // ---------------------------------------------------------------- 起動オプション（自動スクリーンショット用）
 struct Options {
     const char* shot = nullptr;
@@ -580,6 +608,7 @@ struct Options {
     int engine = -1;
     double throttleSec = 0;
     double timeScale = 1;
+    const char* lang = nullptr;  // "ja" / "en"
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -602,6 +631,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--engine") o.engine = atoi(next());
         else if (a == "--throttle") o.throttleSec = atof(next());
         else if (a == "--timescale") o.timeScale = atof(next());
+        else if (a == "--lang") o.lang = next();
     }
     return o;
 }
@@ -876,6 +906,15 @@ static void HandleInput(App& app, double dt) {
     if (IsKeyPressed(KEY_V) || pad.view) { app.cockpit = !app.cockpit; Toast(app, T(app.cockpit ? UI_VIEW_COCKPIT : UI_VIEW_CHASE)); }
     if (IsKeyPressed(KEY_O)) { app.showOrbits = !app.showOrbits; Toast(app, T(app.showOrbits ? UI_ORBITS_ON : UI_ORBITS_OFF)); }
     if (IsKeyPressed(KEY_L)) { app.showMoonMarkers = !app.showMoonMarkers; Toast(app, T(app.showMoonMarkers ? UI_LABELS_ON : UI_LABELS_OFF)); }
+    if (IsKeyPressed(KEY_J)) {
+        if (!g_jpFont) {
+            Toast(app, T(UI_LANG_NO_FONT));
+        } else {
+            SetLanguage(!g_jp);
+            SaveLanguageSetting();
+            Toast(app, T(UI_LANG_SET));
+        }
+    }
     if (IsKeyPressed(KEY_I)) { app.invertY = !app.invertY; Toast(app, T(app.invertY ? UI_INVERT_ON : UI_INVERT_OFF)); }
     if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
     if (IsKeyPressed(KEY_F11)) ToggleBorderlessWindowed();
@@ -1559,7 +1598,7 @@ static void DrawHUD(App& app) {
     snprintf(b, sizeof b, "%s [%d] %s", T(UI_ENGINE), s.engine + 1, TR(e.jp, e.en));
     Txt(b, x, y, fs + 2, e.flame); y += lh + 2;
     std::string vmaxS = FmtSpeed(e.vmax / 1000.0);
-    snprintf(b, sizeof b, "%s %s m/s%s   %s %s", T(UI_ACCEL), Grouped(e.accel, e.accel < 100 ? 2 : 0).c_str(), g_jp ? "²" : "^2", T(UI_MAXSPD), vmaxS.c_str());
+    snprintf(b, sizeof b, "%s %s m/s%s   %s %s", T(UI_ACCEL), Grouped(e.accel, e.accel < 100 ? 2 : 0).c_str(), g_jpFont ? "²" : "^2", T(UI_MAXSPD), vmaxS.c_str());
     Txt(b, x, y, fs - 1, {190, 205, 225, 255}); y += lh;
     snprintf(b, sizeof b, "%s %s", T(UI_SPEED), FmtSpeed(s.speed).c_str());
     Txt(b, x, y, fs + 1, WHITE); y += lh;
@@ -1646,8 +1685,11 @@ int main(int argc, char** argv) {
     for (int i = 0; i < UI_COUNT; i++) allText += UI_JP[i];
     for (const Body& b : app.B) allText += b.d.jp;
     for (const Engine& e : ENGINES) allText += e.jp;
-    g_jp = fontload::LoadJapaneseFont(allText, 36, &g_font);
-    if (!g_jp) g_font = GetFontDefault();
+    g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
+    if (!g_jpFont) g_font = GetFontDefault();
+    // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）
+    std::string lang = opt.lang ? opt.lang : LoadLanguageSetting();
+    SetLanguage(lang != "en");
 
     app.shader = LoadShaderFromMemory(PLANET_VS, PLANET_FS);
     app.locLight = GetShaderLocation(app.shader, "lightDir");
@@ -1762,7 +1804,7 @@ int main(int argc, char** argv) {
     UnloadMesh(app.shipMesh);
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
-    if (g_jp) UnloadFont(g_font);
+    if (g_jpFont) UnloadFont(g_font);
     CloseWindow();
     return 0;
 }
