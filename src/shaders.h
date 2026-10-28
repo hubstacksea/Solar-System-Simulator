@@ -234,8 +234,8 @@ vec4 rocky(vec3 p, int style, vec3 o, out vec3 base) {
     } else if (style == 7) {   // カリスト: 暗い表面に明るいクレーター
         base = mix(c2, c1, tone * 0.45);
         g_ray *= 2.0;
-    } else if (style == 9) {   // イアペトゥス: 先行半球が真っ黒な二色の衛星
-        float dark = smoothstep(-0.12, 0.12, p.x + fbmL(p, 5.0, 5, 0.5, o) * 0.15);
+    } else if (style == 9) {   // イアペトゥス: 先行半球（西経 90°、本体 +Z 側）が真っ黒な二色の衛星
+        float dark = smoothstep(-0.12, 0.12, p.z + fbmL(p, 5.0, 5, 0.5, o) * 0.15);
         base = mix(c1, c2, dark);
     } else if (style == 10) {  // 冥王星: 明るいハートと赤黒い赤道帯
         float band = (1.0 - smoothstep(0.0, 0.35, abs(p.y + 0.05))) * smoothstep(-0.15, 0.2, macro + 0.15);
@@ -598,7 +598,7 @@ void main() {
     }
 
     // 月食: 地球の大気で曲げられた赤い光がわずかに届く
-    col += base * vec3(0.16, 0.05, 0.02) * eclRed * max(ndlG, 0.0);
+    col += base * vec3(0.32, 0.10, 0.04) * eclRed * max(ndlG, 0.0);
     float rim = pow(1.0 - mu, 3.0) * params.w;
     col += atmColor * rim * clamp(ndlG + 0.25, 0.0, 1.0);
     finalColor = vec4(col, 1.0);

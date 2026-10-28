@@ -1,7 +1,7 @@
 // 太陽系天体データ（実寸）
 //  - 半径: km（赤道半径）、扁平率
 //  - 惑星軌道: JPL "Approximate Positions of the Planets" J2000 平均軌道要素
-//  - 衛星軌道: 円軌道近似（軌道長半径・公転周期・母天体赤道面に対する傾斜角）
+//  - 衛星軌道: 月は簡易月位置公式、ほかは JPL の平均軌道要素（J2000）による円軌道近似
 //  - 自転軸: IAU 自転軸の赤経・赤緯
 #pragma once
 #include <cmath>
@@ -37,6 +37,11 @@ struct BodyDef {
     double moonIncl = 0;    // 傾斜角 deg（eclipticRef なら黄道面基準、それ以外は母天体赤道面基準）
     double moonNode = 0, moonPhase = 0;
     bool eclipticRef = false;
+    // JPL の軌道面を使う衛星: 基準面の極（NaN なら母天体の赤道面）。moonNode は基準面が ICRF 赤道と交わる
+    // 昇交点から測った昇交点経度、moonPhase は J2000 での面内の角度、libA / libB は秤動の振幅 deg
+    bool jpl = false;
+    double framePoleRA = 0, framePoleDec = 0;
+    double libA = 0, libB = 0;
 
     bool inheritPole = false;  // 母天体の自転軸を使う
     double poleRA = 0, poleDec = 90;
@@ -187,11 +192,47 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     v.push_back(MakeMoon("カロン", "Charon", B_PLUTO, 606.0, 1.586e21, 19591, 6.387230, 0.0,
                          KIND_ROCKY, {0.62f, 0.60f, 0.58f}, {0.40f, 0.36f, 0.34f}));
 
-    // 衛星の昇交点・初期位相を決定的に散らす
-    for (size_t i = 0; i < v.size(); i++) {
-        if (v[i].parent > 0) {
-            v[i].moonNode = std::fmod(i * 73.0, 360.0);
-            v[i].moonPhase = std::fmod(i * 137.5, 360.0);
+    // 衛星の軌道（月以外）。軌道面は JPL Solar System Dynamics の平均軌道要素（https://ssd.jpl.nasa.gov/sats/elem/、
+    // J2000）の基準面・傾斜角・昇交点。面内の角度 u = u0 + 360 t / P + A sin(2πt/T) + B cos(2πt/T) は
+    // tools/fit_moon_orbits.py で JPL Horizons の 1980〜2070 年の位置に合わせた値（行末はその最大誤差）。
+    // A, B はミマスとテティスの共鳴による秤動（T = 70.56 年）。円軌道の近似
+    // 基準面の極: 赤経・赤緯（EQ: 母天体の赤道面）。天王星は逆行自転なので公転の向きに合わせて南側の極を使う
+    static const double EQ = NAN;
+    static const struct { const char* en; double a, i, node, ra, dec, u0, P, libA, libB; } ORBITS[] = {
+        {"Phobos", 9375, 1.1, 169.2, 317.7, 52.9, 46.087, 0.3189101, 0.00, 0.00},  // ±2.9°
+        {"Deimos", 23457, 1.8, 54.3, 316.6, 53.5, 205.081, 1.2624408, 0.00, 0.00},  // ±0.4°
+        {"Io", 421800, 0.0, 0.0, 268.1, 64.5, 19.906, 1.7691378, 0.00, 0.00},  // ±0.5°
+        {"Europa", 671100, 0.5, 184.0, 268.1, 64.5, 30.397, 3.5511808, 0.00, 0.00},  // ±1.1°
+        {"Ganymede", 1070400, 0.2, 58.5, 268.2, 64.6, 163.144, 7.1545531, 0.00, 0.00},  // ±0.3°
+        {"Callisto", 1882700, 0.3, 309.1, 268.7, 64.8, 131.402, 16.6890236, 0.00, 0.00},  // ±0.9°
+        {"Mimas", 186000, 1.6, 66.2, 40.6, 83.5, 93.678, 0.9424217, -32.04, 28.42},  // ±2.6°
+        {"Enceladus", 238400, 0.0, 0.0, 40.6, 83.5, 182.278, 1.3702181, 0.00, 0.00},  // ±0.9°
+        {"Tethys", 295000, 1.1, 273.0, 40.6, 83.5, 275.377, 1.8878025, 1.61, -1.33},  // ±0.0°
+        {"Dione", 377700, 0.0, 0.0, 40.6, 83.5, 176.932, 2.7369156, 0.00, 0.00},  // ±0.3°
+        {"Rhea", 527200, 0.3, 133.7, 40.6, 83.5, 278.466, 4.5175027, 0.00, 0.00},  // ±0.1°
+        {"Titan", 1221900, 0.3, 78.6, 36.4, 84.0, 293.055, 15.9454360, 0.00, 0.00},  // ±3.5°
+        {"Iapetus", 3561700, 7.6, 86.5, 288.7, 78.9, 113.793, 79.3308625, 0.00, 0.00},  // ±2.5°
+        {"Miranda", 129846, 4.4, 100.9, 77.31, 15.18, 227.820, 1.4134794, 0.00, 0.00},  // ±2.0°
+        {"Ariel", 190929, 0.0, 0.0, 77.31, 15.18, 203.126, 2.5203792, 0.00, 0.00},  // ±0.2°
+        {"Umbriel", 265986, 0.1, 174.8, 77.31, 15.18, 76.458, 4.1441771, 0.00, 0.00},  // ±0.5°
+        {"Titania", 436298, 0.1, 29.5, 77.31, 15.18, 252.124, 8.7058699, 0.00, 0.00},  // ±0.3°
+        {"Oberon", 583511, 0.1, 76.8, 77.31, 15.18, 275.762, 13.4632373, 0.00, 0.00},  // ±0.3°
+        {"Triton", 354800, 157.3, 177.7, EQ, EQ, 58.444, 5.8768438, 0.00, 0.00},  // ±0.7°
+        {"Charon", 19600, 0.0, 0.0, EQ, EQ, 304.119, 6.3872221, 0.00, 0.00},  // ±0.0°
+    };
+    for (BodyDef& d : v) {
+        for (const auto& o : ORBITS) {
+            if (std::strcmp(d.en, o.en) != 0) continue;
+            d.jpl = true;
+            d.moonA = o.a;
+            d.moonIncl = o.i;
+            d.moonNode = o.node;
+            d.framePoleRA = o.ra;
+            d.framePoleDec = o.dec;
+            d.moonPhase = o.u0;
+            d.moonPeriod = o.P;
+            d.libA = o.libA;
+            d.libB = o.libB;
         }
     }
     static const struct { const char* en; int style; } STYLES[] = {

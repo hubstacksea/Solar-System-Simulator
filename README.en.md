@@ -12,9 +12,10 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 
 | | |
 |---|---|
-| ![Saturn and its rings](docs/screenshots/saturn.jpg) Saturn and its rings | ![City lights of Europe at night](docs/screenshots/earth_night.jpg) City lights of Europe at night |
-| ![Jupiter](docs/screenshots/jupiter.jpg) Jupiter | ![Low flight over the Moon](docs/screenshots/moon.jpg) Low flight over the Moon |
-| ![Warp](docs/screenshots/warp.jpg) Warp effect | |
+| ![Saturn and its rings](docs/screenshots/saturn.jpg) Saturn and its rings (with the rings' shadow on the planet) | ![City lights of Europe at night](docs/screenshots/earth_night.jpg) City lights of Europe at night |
+| ![The Moon's near side](docs/screenshots/moon.jpg) The Moon's near side (real NASA data) | ![Low flight near Tycho](docs/screenshots/moon_surface.jpg) Low flight near Tycho |
+| ![Solar eclipse of 2 August 2027](docs/screenshots/solar_eclipse.jpg) Solar eclipse of 2 August 2027 (the Moon's shadow over North Africa) | ![Total lunar eclipse of 7 September 2025](docs/screenshots/lunar_eclipse.jpg) Total lunar eclipse of 7 September 2025 |
+| ![Jupiter](docs/screenshots/jupiter.jpg) Jupiter | ![Warp](docs/screenshots/warp.jpg) Warp effect |
 
 ## Building
 
@@ -143,7 +144,7 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 
 ## How it works
 
-- **Body positions**: planets are computed from JPL J2000 mean orbital elements via Kepler's equation (accurate to a few arcminutes). The Moon uses a low-precision lunar ephemeris (about 0.3°), so its real position and phase are reproduced, and it always keeps the same face toward Earth. Other moons use circular orbits with real radii, periods and inclinations, but their phases do not match their actual positions
+- **Body positions**: planets are computed from JPL J2000 mean orbital elements via Kepler's equation (accurate to a few arcminutes). The Moon uses a low-precision lunar ephemeris (about 0.3°), so its real position and phase are reproduced, and it always keeps the same face toward Earth. Other moons are placed on circular orbits in the orbital planes from JPL's mean orbital elements, with their positions fitted to JPL Horizons for 1980–2070 (most within 1°, at most a few degrees; Mimas includes its ±43° libration from the resonance with Tethys). Shadows of Jupiter's moons fall on Jupiter at nearly the real times
 - **Surfaces**: everything except Earth and the Moon is generated procedurally in shaders. Finer patterns and relief (craters, mountains) appear as you get closer, so surfaces stay detailed even near the ground. Distinct features include Martian polar caps, Io's volcanoes, Europa's lineae, Jupiter's Great Red Spot, Saturn's north polar hexagon and Pluto's heart
 - **Earth**: built from real NASA data — continents, coastlines, elevation (relief shading), ocean depth (shallow-water color), sea ice and city lights at night (about 10 km resolution, with finer detail filled in procedurally). Its rotation follows Greenwich sidereal time, so the regions in daylight and the lit cities at night match the PC clock. Clouds are procedural
 - **Moon**: real NASA data (LRO color and LOLA elevation, about 3–5 km resolution). Maria, craters and ray systems are where they really are; smaller craters are filled in procedurally

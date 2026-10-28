@@ -293,6 +293,12 @@ static std::vector<Body> InitBodies() {
             V3 e1, e2;
             EquatorBasis(ref, &e1, &e2);
             e2 = Cross(ref, e1);
+            if (d.jpl) {
+                // JPL の基準面（Laplace 面か母天体の赤道面）。昇交点経度は基準面と ICRF 赤道の昇交点から測る
+                if (!std::isnan(d.framePoleRA)) ref = EquToRender(d.framePoleRA, d.framePoleDec);
+                e1 = Norm(Cross(EquToRender(0, 90), ref));
+                e2 = Cross(ref, e1);
+            }
             V3 N = e1 * std::cos(d.moonNode * DEG) + e2 * std::sin(d.moonNode * DEG);
             V3 M = Cross(ref, N);
             b.oN = N;
@@ -324,12 +330,16 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
             }
         } else {
             double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
+            if (d.libA != 0 || d.libB != 0) {   // ミマス・テティスの秤動（周期 70.56 年）
+                double w = 2 * PI * t / (70.56 * 365.25);
+                th += (d.libA * std::sin(w) + d.libB * std::cos(w)) * DEG;
+            }
             b.pos = B[d.parent].pos + (b.oN * std::cos(th) + b.oQ * std::sin(th)) * d.moonA;
         }
         double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
         b.spin = std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
-        if (&b == &B[B_MOON]) {
-            // 自転は公転と同期: 経度 0°（本体 X 軸）を常に地球へ向ける
+        if (d.parent > 0 && d.rotPeriod == 0) {
+            // 衛星の自転は公転と同期: 経度 0°（本体 X 軸）を常に母天体へ向ける
             V3 u = B[d.parent].pos - b.pos;
             b.spin = std::atan2(-Dot(u, b.ez), Dot(u, b.ex));
         }
@@ -727,6 +737,7 @@ struct Options {
     double warpAnimAt = -1;  // 指定秒にワープ演出を開始（確認用）
     bool saveBookmark = false;  // 起動直後の位置をブックマーク（確認用）
     int gotoBookmark = -1;      // 1 秒後にブックマークへワープ（確認用、1〜）
+    bool dumpMoons = false;     // 衛星の母天体からの相対位置を出力して終了（確認用）
     double timeScale = 1;
     const char* lang = nullptr;  // "ja" / "en"
     int quality = -1;            // 0〜2（確認用）
@@ -742,6 +753,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--warp") o.warp = true;
         else if (a == "--warp-anim") o.warpAnimAt = atof(next());
         else if (a == "--save-bookmark") o.saveBookmark = true;
+        else if (a == "--dump-moons") o.dumpMoons = true;
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -2215,6 +2227,19 @@ static void DrawHUD(App& app) {
 // ---------------------------------------------------------------- main
 int main(int argc, char** argv) {
     Options opt = ParseArgs(argc, argv);
+    if (opt.dumpMoons) {
+        // 描画座標（黄道系を並べ替えたもの）のまま、時刻 = 現在 + --hours
+        std::vector<Body> B = InitBodies();
+        double t = (std::time(nullptr) - J2000_UNIX) / 86400.0 + opt.hours / 24.0;
+        UpdateBodies(B, t);
+        printf("t %.6f\n", t);
+        for (const Body& b : B)
+            if (b.d.parent > 0) {
+                V3 r = b.pos - B[b.d.parent].pos;
+                printf("%s %.3f %.3f %.3f\n", b.d.en, r.x, r.y, r.z);
+            }
+        return 0;
+    }
     LoadSettings();
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Solar System Voyager");
