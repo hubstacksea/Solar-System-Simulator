@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Solar System Voyager
+Comment=Fly through the solar system at true scale
+Comment[ja]=実寸の太陽系を飛ぶ 3D 宇宙飛行シミュレータ
+Exec=solar_voyager
+Icon=solar_voyager
+Terminal=false
+Categories=Game;Simulation;
+Keywords=space;solar system;planet;simulator;宇宙;太陽系;惑星;

@@ -40,6 +40,20 @@ cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake -DCMAKE_B
 cmake --build build-win -j
 ```
 
+## パッケージ作成
+
+ビルド後、ビルドフォルダで `cpack` を実行します。
+
+| 対象 | コマンド | 出力 |
+|---|---|---|
+| Windows (7-Zip) | `cd build-win && cpack` | `SolarSystemVoyager-<版>-win64.7z`（展開してそのまま使えるポータブル版） |
+| Linux (.deb / .rpm) | `cd build && cpack` | `solar-voyager_<版>_amd64.deb` / `solar-voyager-<版>-1.x86_64.rpm` |
+
+- Linux 版は `/usr/bin/solar_voyager` に入り、アプリメニュー（ゲーム）にアイコン付きで登録されます。`.rpm` の作成には `rpmbuild` が必要です
+- 片方だけ作る場合: `cpack -G DEB` / `cpack -G RPM`
+- バージョンは `CMakeLists.txt` の `project(... VERSION ...)`、`.deb` の Maintainer 欄は `-DSOLAR_PACKAGE_CONTACT="名前 <メール>"` で指定します
+- exe のファイルアイコンとウィンドウのアイコンは `assets/icon.ico` / `assets/icon.png` です（`python3 tools/make_icon.py` で生成、Pillow が必要）
+
 ## 操作
 
 | キー | 動作 |
@@ -132,15 +146,20 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 `assets/` の画像は `tools/make_earth_assets.py` で NASA のデータから作り、ビルド時に実行ファイルへ埋め込みます（実行時にファイルは不要）。
 
 - 地表の色: NASA Earth Observatory, Blue Marble: Next Generation（2004年4月）
-- 標高・水深: NASA Visible Earth, GEBCO_08 Digital Elevation Model
+- 標高・水深: NOAA NCEI, ETOPO 2022 Global Relief Model（60 秒角・氷床表面、5 分角に間引いて使用）
 - 夜の街明かり: NASA Earth Observatory, Black Marble 2016
 
-いずれも NASA の画像（パブリックドメイン）です。作り直す場合は `python3 tools/make_earth_assets.py <作業フォルダ>`（Pillow が必要、約 15 MB をダウンロード）。
+いずれも商用を含め自由に使用・再配布できるデータです（詳細は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。作り直す場合は `python3 tools/make_earth_assets.py <作業フォルダ>`（Pillow が必要、約 50 MB をダウンロード）。
 
 ## 表示言語（日本語 / English）
 
-- **J キー**でいつでも切り替えられます。選んだ言語は実行ファイルと同じフォルダの `solar_voyager.cfg` に保存され、次回起動時も使われます
+- **J キー**でいつでも切り替えられます。選んだ言語は実行ファイルと同じフォルダの `solar_voyager.cfg` に保存され、次回起動時も使われます（そのフォルダに書き込めない場合、たとえば .deb / .rpm でインストールした時は `~/.config/solar_voyager/solar_voyager.cfg`）
 - 起動時に指定する場合: `solar_voyager --lang en`（または `ja`）。優先順位は「起動オプション > 保存された設定 > 日本語」です
 
 日本語表示には OS の日本語フォント（Windows: メイリオ / 游ゴシック / MS ゴシック、Linux: Noto Sans CJK / IPA など）を自動で探して使います。
 見つからない場合は英語表示に固定されます。`assets/font.ttf` を置くとそれを優先します。
+
+## ライセンス
+
+プログラム（ソースコード・ビルドファイル・ツール・アイコン）は [MIT ライセンス](LICENSE) です。
+地球の画像データ（`assets/earth_*`）は MIT の対象外で、元データの利用条件に従います。同梱ライブラリ（raylib / GLFW, zlib ライセンス）とあわせて [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。

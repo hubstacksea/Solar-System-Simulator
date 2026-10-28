@@ -8,4 +8,5 @@ struct EmbeddedFile {
 };
 
 EmbeddedFile EarthColorJpg();  // 地球の地表の色 (NASA Blue Marble)
-EmbeddedFile EarthDataPng();   // R: 標高・水深, G: 夜景, B: 海陸マスク (NASA GEBCO / Black Marble)
+EmbeddedFile EarthDataPng();   // R: 標高・水深, G: 夜景, B: 海陸マスク (NOAA ETOPO 2022 / NASA Black Marble)
+EmbeddedFile IconPng();        // ウィンドウのアイコン (256px)

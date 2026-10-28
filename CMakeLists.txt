@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SolarSystemVoyager C CXX)
+project(SolarSystemVoyager VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,10 +28,18 @@ if(NOT raylib_FOUND)
 endif()
 
 add_executable(solar_voyager src/main.cpp src/embedded_assets.cpp)
+if(WIN32)
+  # exe のファイルアイコンとバージョン情報
+  enable_language(RC)
+  set(ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.ico")
+  configure_file(packaging/solar_voyager.rc "${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc" @ONLY)
+  target_sources(solar_voyager PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc")
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc" PROPERTIES OBJECT_DEPENDS "${ICON_PATH}")
+endif()
 # assets/ の地球データを実行ファイルに埋め込む
 target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set_source_files_properties(src/embedded_assets.cpp PROPERTIES
-  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png")
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png")
 target_link_libraries(solar_voyager PRIVATE raylib)
 
 if(MINGW)
@@ -45,3 +53,56 @@ elseif(UNIX AND NOT APPLE)
   find_package(OpenGL REQUIRED)
   target_link_libraries(solar_voyager PRIVATE OpenGL::GL m)
 endif()
+
+# ---- インストール / パッケージ (cpack) ------------------------------------
+# Windows: 7z アーカイブ（展開してそのまま使うポータブル版）
+# Linux:   .deb / .rpm（/usr/bin・メニュー登録・アイコン）
+# raylib 自体のインストール（ライブラリ・ヘッダ）は含めず、app コンポーネントだけを梱包する
+if(WIN32)
+  install(TARGETS solar_voyager RUNTIME DESTINATION . COMPONENT app)
+  install(FILES README.md README.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
+else()
+  include(GNUInstallDirs)
+  install(TARGETS solar_voyager RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT app)
+  install(FILES packaging/solar_voyager.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications COMPONENT app)
+  install(FILES assets/icon.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+          RENAME solar_voyager.png COMPONENT app)
+  install(FILES README.md README.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/solar-voyager COMPONENT app)
+endif()
+set(CPACK_INSTALL_CMAKE_PROJECTS "${CMAKE_BINARY_DIR};${PROJECT_NAME};app;/")
+
+set(CPACK_PACKAGE_NAME "solar-voyager")
+set(CPACK_PACKAGE_VENDOR "Solar System Voyager")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "3D solar system flight simulator at true scale")
+set(CPACK_PACKAGE_DESCRIPTION "Fly a ship through the Sun, planets and major moons placed at true size and distance, with positions computed from the PC clock.")
+set(SOLAR_PACKAGE_CONTACT "Solar System Voyager developers" CACHE STRING ".deb の Maintainer 欄（名前 <メール>）")
+set(CPACK_PACKAGE_CONTACT "${SOLAR_PACKAGE_CONTACT}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "SolarSystemVoyager")
+set(CPACK_STRIP_FILES ON)
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+if(WIN32)
+  set(CPACK_GENERATOR "7Z")
+  set(CPACK_PACKAGE_FILE_NAME "SolarSystemVoyager-${PROJECT_VERSION}-win64")
+  set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+else()
+  set(CPACK_GENERATOR "DEB;RPM")
+  set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+  # .deb
+  set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+  set(CPACK_DEBIAN_PACKAGE_SECTION "games")
+  set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+  # GLFW が実行時に dlopen する X11 / GLX は自動検出されないので明示する
+  set(CPACK_DEBIAN_PACKAGE_DEPENDS "libx11-6, libxrandr2, libxi6, libxcursor1, libxinerama1, libglx0")
+  # .rpm
+  set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+  set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+  set(CPACK_RPM_PACKAGE_GROUP "Amusements/Games")
+  set(CPACK_RPM_PACKAGE_AUTOREQ ON)
+  set(CPACK_RPM_PACKAGE_REQUIRES "libX11, libXrandr, libXi, libXcursor, libXinerama, libglvnd-glx")
+  set(CPACK_RPM_SPEC_MORE_DEFINE "%define _build_id_links none")
+  # 既存のシステムディレクトリを rpm の所有物にしない
+  set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+      /usr/share/applications /usr/share/icons /usr/share/icons/hicolor
+      /usr/share/icons/hicolor/256x256 /usr/share/icons/hicolor/256x256/apps /usr/share/doc)
+endif()
+include(CPack)

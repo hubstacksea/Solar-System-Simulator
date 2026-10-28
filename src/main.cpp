@@ -12,10 +12,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <string>
 #include <vector>
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #include "embedded_assets.h"
 #include "font_loader.h"
@@ -574,7 +579,25 @@ static void SaveScreenshot(const char* path) {
 }
 
 // ---------------------------------------------------------------- 設定ファイル（表示言語）
-static std::string ConfigPath() { return std::string(GetApplicationDirectory()) + "solar_voyager.cfg"; }
+// 実行ファイルと同じフォルダ（ポータブル版）。書き込めない場所（/usr/bin 等へインストール）なら
+// Linux は $XDG_CONFIG_HOME/solar_voyager/ (既定 ~/.config/solar_voyager/)
+static std::string ConfigPath() {
+    std::string local = std::string(GetApplicationDirectory()) + "solar_voyager.cfg";
+#ifndef _WIN32
+    if (FileExists(local.c_str()) ? access(local.c_str(), W_OK) == 0 : access(GetApplicationDirectory(), W_OK) == 0)
+        return local;
+    std::string dir;
+    if (const char* x = getenv("XDG_CONFIG_HOME"); x && *x) dir = x;
+    else if (const char* h = getenv("HOME"); h && *h) dir = std::string(h) + "/.config";
+    else return local;
+    mkdir(dir.c_str(), 0700);
+    dir += "/solar_voyager";
+    mkdir(dir.c_str(), 0755);
+    return dir + "/solar_voyager.cfg";
+#else
+    return local;
+#endif
+}
 
 // 保存されている言語。未設定なら空文字
 static std::string LoadLanguageSetting() {
@@ -1855,6 +1878,12 @@ int main(int argc, char** argv) {
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Solar System Voyager");
     SetExitKey(KEY_NULL);
+    {
+        EmbeddedFile f = IconPng();
+        Image icon = LoadImageFromMemory(".png", f.data, (int)f.size);
+        SetWindowIcon(icon);
+        UnloadImage(icon);
+    }
 
     App app;
     app.B = InitBodies();

@@ -312,10 +312,11 @@ float earthClouds(vec3 p, vec3 o, float bias) {
     return smoothstep(0.15 + bias, 0.55 + bias, cl + wisp * 0.25 + 0.12 * cos(p.y * PI * 3.0)) * detail.w;
 }
 
-// 高さコード (0..1) → 標高 m（海は負）
+// 高さコード → m。陸 128..255 = 0..8900 m、海 127..0 = 0..-11000 m（平方根で詰めてある）
 float earthHeightM(float c) {
     float v = c * 255.0;
-    return v >= 127.5 ? (v - 128.0) / 127.0 * 6400.0 : -(127.0 - v) / 127.0 * 8000.0;
+    float t = v >= 127.5 ? (v - 128.0) / 127.0 : (127.0 - v) / 127.0;
+    return v >= 127.5 ? t * t * 8900.0 : -t * t * 11000.0;
 }
 
 // 実データの地球。大陸・標高・夜景は NASA のデータ、テクスチャより細かい部分は手続きで補う
