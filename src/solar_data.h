@@ -30,6 +30,8 @@ struct BodyDef {
 
     // 惑星 (parent == 0): J2000 軌道要素
     double a_au = 0, e = 0, inc = 0, L0 = 0, varpi = 0, node = 0;
+    // 上の要素の 1 世紀あたりの変化（JPL "Approximate Positions of the Planets" 表 1）
+    double da = 0, de = 0, dinc = 0, dL = 0, dvarpi = 0, dnode = 0;
 
     // 衛星: 円軌道
     double moonA = 0;       // 軌道長半径 km
@@ -191,6 +193,25 @@ inline std::vector<BodyDef> BuildSolarSystem() {
 
     v.push_back(MakeMoon("カロン", "Charon", B_PLUTO, 606.0, 1.586e21, 19591, 6.387230, 0.0,
                          KIND_ROCKY, {0.62f, 0.60f, 0.58f}, {0.40f, 0.36f, 0.34f}));
+
+    // 惑星の軌道要素の変化率 /世紀（JPL "Approximate Positions of the Planets" 表 1、1800〜2050 年で有効。
+    // 冥王星は表から外れたため以前の版の値）。地球は地球と月の重心の値
+    static const struct { const char* en; double da, de, dinc, dL, dvarpi, dnode; } RATES[] = {
+        {"Mercury", 0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081},
+        {"Venus", 0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418},
+        {"Earth", 0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0},
+        {"Mars", 0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343},
+        {"Jupiter", -0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106},
+        {"Saturn", -0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794},
+        {"Uranus", -0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589},
+        {"Neptune", 0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664},
+        {"Pluto", -0.00031596, 0.00005170, 0.00004818, 145.20780515, -0.04062942, -0.01183482},
+    };
+    for (BodyDef& d : v)
+        for (const auto& r : RATES)
+            if (std::strcmp(d.en, r.en) == 0) {
+                d.da = r.da; d.de = r.de; d.dinc = r.dinc; d.dL = r.dL; d.dvarpi = r.dvarpi; d.dnode = r.dnode;
+            }
 
     // 衛星の軌道（月以外）。軌道面は JPL Solar System Dynamics の平均軌道要素（https://ssd.jpl.nasa.gov/sats/elem/、
     // J2000）の基準面・傾斜角・昇交点。面内の角度 u = u0 + 360 t / P + A sin(2πt/T) + B cos(2πt/T) は

@@ -124,7 +124,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP6, "F : 機首を向ける    T : 自動操縦    Shift+T : 自動操縦(エンジン自動選択)", "F : face target    T : autopilot    Shift+T : autopilot (auto engine)") \
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
-    X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー", "V : view    O : orbits    L : moon markers") \
+    X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    Y : 日時指定    K : 天文イベント", "V : view    O : orbits    L : moon markers    Y : set date    K : astronomical events") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    Ctrl+Q : quit") \
@@ -160,6 +160,23 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(MUSIC_7, "♪ グリーグ《ペール・ギュント》より「朝」 Musopen Symphony (2012)", "Now playing: Grieg, Peer Gynt: Morning Mood - Musopen Symphony (2012)") \
     X(MUSIC_8, "♪ ベートーヴェン 交響曲第6番「田園」第1楽章 Skidmore College Orchestra (Musopen)", "Now playing: Beethoven, Symphony No. 6 \"Pastoral\", I - Skidmore College Orchestra (Musopen)") \
     X(MUSIC_9, "♪ ドビュッシー「月の光」 ピアノ: Laurens Goedhart (2011, CC BY 3.0)", "Now playing: Debussy, Clair de lune - Laurens Goedhart, piano (2011, CC BY 3.0)") \
+    X(EV_TITLE, "天文イベント", "Astronomical events") \
+    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Esc / K : close") \
+    X(EV_NOTE, "簡易計算のため、時刻は数分〜数十分、日食の位置は数百 km ずれることがあります", "Simplified calculation: times may be off by minutes, solar eclipse locations by a few hundred km") \
+    X(EV_SEARCHING, "計算中…", "Calculating...") \
+    X(EV_NONE, "見つかりませんでした", "No events found") \
+    X(EV_SOLAR_TOTAL, "皆既日食", "Total solar eclipse") \
+    X(EV_SOLAR_ANNULAR, "金環日食", "Annular solar eclipse") \
+    X(EV_SOLAR_PARTIAL, "部分日食", "Partial solar eclipse") \
+    X(EV_LUNAR_TOTAL, "皆既月食", "Total lunar eclipse") \
+    X(EV_LUNAR_PARTIAL, "部分月食", "Partial lunar eclipse") \
+    X(EV_SHADOW, "木星面を%sの影が通過", "Shadow of %s crosses Jupiter") \
+    X(EV_CENTER, "食の中心 %s付近", "centered near %s") \
+    X(EV_GO, "ワープ: %s  %s", "Warp: %s  %s") \
+    X(DATE_TITLE, "日時を指定（UTC）", "Set date and time (UTC)") \
+    X(DATE_KEYS, "数字を入力    Backspace : 1 文字消す    Enter : 決定    Esc / Y : 取消", "Type digits    Backspace : delete    Enter : apply    Esc / Y : cancel") \
+    X(DATE_SET, "日時: %s", "Date: %s") \
+    X(DATE_BAD, "日時が正しくありません（1800〜2200 年）", "Invalid date (years 1800-2200)") \
     X(SOUND_ON, "効果音: オン", "Sound: on") \
     X(SOUND_OFF, "効果音: オフ", "Sound: off") \
     X(SHOT_SAVED, "保存しました: ピクチャ/", "Saved: Pictures/") \
@@ -239,9 +256,14 @@ static V3 PlanetOrbitPoint(const BodyDef& d, double E) {
     return EclToRender(x, y, z);
 }
 
-static V3 PlanetPos(const BodyDef& d, double tDays) {
-    double n = 360.0 / (365.25 * std::pow(d.a_au, 1.5));  // 平均運動 deg/day
-    double M = std::fmod(d.L0 + n * tDays - d.varpi, 360.0) * DEG;
+static V3 PlanetPos(const BodyDef& d0, double tDays) {
+    // 要素を時刻 t の値へ（JPL の変化率。平均経度の変化率が公転の速さ）
+    double T = tDays / 36525.0;
+    BodyDef d = d0;
+    d.a_au += d0.da * T; d.e += d0.de * T; d.inc += d0.dinc * T;
+    d.varpi += d0.dvarpi * T; d.node += d0.dnode * T;
+    double L = d0.L0 + (d0.dL != 0 ? d0.dL * T : 360.0 / (365.25 * std::pow(d0.a_au, 1.5)) * tDays);
+    double M = std::fmod(L - d.varpi, 360.0) * DEG;
     double E = M + d.e * std::sin(M);
     for (int i = 0; i < 8; i++) E -= (E - d.e * std::sin(E) - M) / (1 - d.e * std::cos(E));
     return PlanetOrbitPoint(d, E);
@@ -263,6 +285,9 @@ static V3 MoonGeoPos(double tDays) {
     double r = 6378.137 / sd(par);
     return EclToRender(r * cd(bet) * cd(lam), r * cd(bet) * sd(lam), r * sd(bet));
 }
+
+// 地球の中心。軌道要素は地球と月の重心のものなので、月の位置の分だけずらす（月の質量比 0.0121505）
+static V3 EarthPos(const BodyDef& d, double tDays) { return PlanetPos(d, tDays) - MoonGeoPos(tDays) * 0.0121505; }
 
 static void EquatorBasis(V3 pole, V3* e1, V3* e2) {
     V3 a = Cross(Y_UP, pole);
@@ -319,7 +344,7 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
         if (d.parent < 0) {
             b.pos = V3();
         } else if (d.parent == 0) {
-            b.pos = PlanetPos(d, t);
+            b.pos = &b == &B[B_EARTH] ? EarthPos(d, t) : PlanetPos(d, t);
         } else if (&b == &B[B_MOON]) {
             b.pos = B[d.parent].pos + MoonGeoPos(t);
             // 軌道線は 1 日ごとに、今から 1 公転分の実際の経路で引き直す
@@ -738,6 +763,9 @@ struct Options {
     bool saveBookmark = false;  // 起動直後の位置をブックマーク（確認用）
     int gotoBookmark = -1;      // 1 秒後にブックマークへワープ（確認用、1〜）
     bool dumpMoons = false;     // 衛星の母天体からの相対位置を出力して終了（確認用）
+    bool listEvents = false;    // 天文イベントを出力して終了（確認用）
+    int gotoEvent = -1;         // 1 秒後に天文イベントへワープ（確認用、1〜）
+    bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
     double timeScale = 1;
     const char* lang = nullptr;  // "ja" / "en"
     int quality = -1;            // 0〜2（確認用）
@@ -754,6 +782,10 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--warp-anim") o.warpAnimAt = atof(next());
         else if (a == "--save-bookmark") o.saveBookmark = true;
         else if (a == "--dump-moons") o.dumpMoons = true;
+        else if (a == "--list-events") o.listEvents = true;
+        else if (a == "--show-events") o.showEvents = true;
+        else if (a == "--show-date") o.showDate = true;
+        else if (a == "--goto-event") o.gotoEvent = atoi(next());
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -776,6 +808,15 @@ static Options ParseArgs(int argc, char** argv) {
 }
 
 // ---------------------------------------------------------------- アプリ本体
+// 天文イベント（日食・月食・木星面の衛星の影の通過）
+enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TOTAL, EV_LUNAR_PARTIAL, EV_SHADOW };
+struct AstroEvent {
+    int kind = 0;
+    double t = 0;          // 最大の時刻（J2000 からの日数）
+    int moon = -1;         // 影の通過: 影を落とす衛星
+    double lat = 0, lon = 0;  // 日食: 食の中心（地球の緯度・経度 deg）
+};
+
 struct App {
     std::vector<Body> B;
     std::vector<Star> stars;
@@ -803,6 +844,12 @@ struct App {
     bool warpLand = false, warpJumped = false;
     int warpBookmark = -1;                // ブックマークへのワープ中はその番号
     int nextBookmark = 0;                 // N キーで次に向かうブックマーク
+    bool eventsOpen = false;              // 天文イベント一覧（K キー）
+    std::vector<AstroEvent> events;
+    int eventSel = 0;
+    int warpEvent = -1;                   // イベントへのワープ中はその番号
+    bool dateOpen = false;                // 日時指定（Y キー）
+    std::string dateDigits;               // 入力中の数字（YYYYMMDDhhmm）
     double warpPhase = 0;   // 光の筋の流れ（強さに応じて進む）
     Mesh sphere{}, ring{};
     Mesh shipMesh{};
@@ -990,6 +1037,319 @@ static void ApplyBookmark(App& app, const Bookmark& bm) {
     UpdateReferenceFrame(app);
 }
 
+// ---------------------------------------------------------------- 天文イベント
+// 太陽 → 影を落とす天体 の延長線（影の軸）に対する、相手の天体の中心の位置。
+// along: 影を落とす天体から軸に沿った距離、perp: 軸からの距離（km）
+static void ShadowAxis(V3 sun, V3 caster, V3 target, double* along, double* perp) {
+    V3 u = Norm(caster - sun);
+    V3 d = target - caster;
+    *along = Dot(d, u);
+    *perp = Len(d - u * *along);
+}
+
+// 地球の天体固定座標での緯度・経度 deg
+static void LatLonOf(const Body& b, V3 dir, double* lat, double* lon) {
+    V3 X, Z;
+    BodyFixedAxes(b, &X, &Z);
+    *lat = std::asin(std::max(-1.0, std::min(1.0, Dot(dir, b.pole)))) / DEG;
+    *lon = std::atan2(-Dot(dir, Z), Dot(dir, X)) / DEG;
+}
+
+// 日食・月食の判定に使う量（地球と月だけ計算するので速い）
+struct EclipseGeom { double solarPerp, solarAlong, lunarPerp, lunarAlong; bool newSide; };
+static EclipseGeom EclipseAt(const std::vector<Body>& B, double t) {
+    V3 E = EarthPos(B[B_EARTH].d, t), M = E + MoonGeoPos(t), S;
+    EclipseGeom g;
+    ShadowAxis(S, M, E, &g.solarAlong, &g.solarPerp);   // 月の影と地球
+    ShadowAxis(S, E, M, &g.lunarAlong, &g.lunarPerp);   // 地球の影と月
+    g.newSide = Dot(M - E, S - E) > 0;                   // 月が太陽側（新月の側）
+    return g;
+}
+
+// f(t) の極小を [a, b] で黄金分割探索
+template <class F> static double MinimizeT(F f, double a, double b) {
+    const double r = 0.6180339887;
+    double c = b - (b - a) * r, d = a + (b - a) * r, fc = f(c), fd = f(d);
+    for (int i = 0; i < 40; i++) {
+        if (fc < fd) { b = d; d = c; fd = fc; c = b - (b - a) * r; fc = f(c); }
+        else { a = c; c = d; fc = fd; d = a + (b - a) * r; fd = f(d); }
+    }
+    return (a + b) * 0.5;
+}
+
+// 日食の種類と中心位置（食の最大の時刻 t）
+static bool ClassifySolar(std::vector<Body>& B, double t, AstroEvent* ev) {
+    UpdateBodies(B, t);
+    const double Rs = B[B_SUN].d.radius, Rm = B[B_MOON].d.radius, Re = B[B_EARTH].d.radius;
+    V3 S = B[B_SUN].pos, E = B[B_EARTH].pos, M = B[B_MOON].pos;
+    double along, perp;
+    ShadowAxis(S, M, E, &along, &perp);
+    if (along <= 0) return false;
+    double dSM = Len(M - S);
+    double rPen = Rm + along * (Rs + Rm) / dSM;          // 地球の位置での半影の半径
+    if (perp > Re + rPen) return false;
+    V3 u = Norm(M - S), c = M + u * along;               // 軸上で地球中心に最も近い点
+    V3 hit;
+    if (perp < Re) {                                     // 影の軸が地球に当たる（中心食）
+        double k = std::sqrt(Re * Re - perp * perp);
+        hit = c - u * k;
+        double sSurf = Dot(hit - M, u);
+        double rUmb = Rm - sSurf * (Rs - Rm) / dSM;      // 地表での本影の半径（負なら金環）
+        ev->kind = rUmb > 0 ? EV_SOLAR_TOTAL : EV_SOLAR_ANNULAR;
+    } else {
+        hit = E + Norm(c - E) * Re;
+        ev->kind = EV_SOLAR_PARTIAL;
+    }
+    ev->t = t;
+    LatLonOf(B[B_EARTH], Norm(hit - E), &ev->lat, &ev->lon);
+    return true;
+}
+
+static bool ClassifyLunar(std::vector<Body>& B, double t, AstroEvent* ev) {
+    UpdateBodies(B, t);
+    const double Rs = B[B_SUN].d.radius, Rm = B[B_MOON].d.radius, Re = B[B_EARTH].d.radius;
+    V3 S = B[B_SUN].pos, E = B[B_EARTH].pos, M = B[B_MOON].pos;
+    double along, perp;
+    ShadowAxis(S, E, M, &along, &perp);
+    if (along <= 0) return false;
+    double rUmb = Re * 1.02 - along * (Rs - Re) / Len(E - S);   // 月の位置での本影（大気で 2% 広がる）
+    if (perp - Rm >= rUmb) return false;                        // 半影月食は目立たないので含めない
+    ev->kind = perp + Rm < rUmb ? EV_LUNAR_TOTAL : EV_LUNAR_PARTIAL;
+    ev->t = t;
+    return true;
+}
+
+// t0 から先のイベントを探す: 日食・月食は 3 年分、木星面の影の通過は 4 衛星それぞれ次の 1 回
+static std::vector<AstroEvent> FindEvents(const App& app, double t0) {
+    std::vector<Body> B = app.B;
+    std::vector<AstroEvent> out;
+    const double step = 0.05, span = 3 * 365.25;
+    auto solarF = [&](double t) { EclipseGeom g = EclipseAt(B, t); return g.newSide ? g.solarPerp : 1e12; };
+    auto lunarF = [&](double t) { EclipseGeom g = EclipseAt(B, t); return g.newSide ? 1e12 : g.lunarPerp; };
+    double ps[3] = {solarF(t0 - step), solarF(t0), 0}, pl[3] = {lunarF(t0 - step), lunarF(t0), 0};
+    for (double t = t0; t < t0 + span; t += step) {
+        ps[2] = solarF(t + step);
+        pl[2] = lunarF(t + step);
+        AstroEvent ev;
+        if (ps[1] < ps[0] && ps[1] <= ps[2] && ps[1] < 2.0e4) {
+            double tm = MinimizeT(solarF, t - step, t + step);
+            if (ClassifySolar(B, tm, &ev)) out.push_back(ev);
+        }
+        if (pl[1] < pl[0] && pl[1] <= pl[2] && pl[1] < 2.0e4) {
+            double tm = MinimizeT(lunarF, t - step, t + step);
+            if (ClassifyLunar(B, tm, &ev)) out.push_back(ev);
+        }
+        ps[0] = ps[1]; ps[1] = ps[2];
+        pl[0] = pl[1]; pl[1] = pl[2];
+    }
+    // 木星面の影: 衛星が太陽側にあり、影の軸が木星に当たる時刻
+    const int galilean[4] = {B_MOON + 3, B_MOON + 4, B_MOON + 5, B_MOON + 6};
+    for (int m : galilean) {
+        auto f = [&](double t) {
+            UpdateBodies(B, t);
+            double along, perp;
+            ShadowAxis(B[B_SUN].pos, B[m].pos, B[B_JUPITER].pos, &along, &perp);
+            return along > 0 ? perp : 1e12;
+        };
+        const double st = 0.01;
+        double p0 = f(t0 - st), p1 = f(t0);
+        for (double t = t0; t < t0 + 30; t += st) {
+            double p2 = f(t + st);
+            if (p1 < p0 && p1 <= p2 && p1 < B[B_JUPITER].d.radius) {
+                AstroEvent ev;
+                ev.kind = EV_SHADOW;
+                ev.moon = m;
+                ev.t = MinimizeT(f, t - st, t + st);
+                out.push_back(ev);
+                break;
+            }
+            p0 = p1; p1 = p2;
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
+    return out;
+}
+
+static std::string EventTitle(const App& app, const AstroEvent& ev) {
+    static const UiId K[] = {UI_EV_SOLAR_TOTAL, UI_EV_SOLAR_ANNULAR, UI_EV_SOLAR_PARTIAL, UI_EV_LUNAR_TOTAL, UI_EV_LUNAR_PARTIAL};
+    if (ev.kind != EV_SHADOW) return T(K[ev.kind]);
+    char b[160];
+    snprintf(b, sizeof b, T(UI_EV_SHADOW), TR(app.B[ev.moon].d.jp, app.B[ev.moon].d.en));
+    return b;
+}
+
+static std::string EventDetail(const AstroEvent& ev) {
+    if (ev.kind > EV_SOLAR_PARTIAL) return "";
+    char ll[96], b[160];
+    if (g_jp)
+        snprintf(ll, sizeof ll, "%s%.0f° %s%.0f°", ev.lat >= 0 ? "北緯" : "南緯", std::fabs(ev.lat), ev.lon >= 0 ? "東経" : "西経", std::fabs(ev.lon));
+    else
+        snprintf(ll, sizeof ll, "%.0f°%s %.0f°%s", std::fabs(ev.lat), ev.lat >= 0 ? "N" : "S", std::fabs(ev.lon), ev.lon >= 0 ? "E" : "W");
+    snprintf(b, sizeof b, T(UI_EV_CENTER), ll);
+    return b;
+}
+
+// ワープの瞬間に呼ぶ: イベントの時刻へ移り、よく見える位置に自機を置く
+static void ApplyEvent(App& app, const AstroEvent& ev) {
+    app.tDays = ev.t;
+    UpdateBodies(app.B, app.tDays);
+    const Body& sun = app.B[B_SUN];
+    if (ev.kind <= EV_SOLAR_PARTIAL) {
+        // 食の中心の上空 12,000 km から見下ろす
+        PlaceAt(app, B_EARTH, ev.lat, ev.lon, 12000);
+        app.target = B_EARTH;
+    } else if (ev.kind <= EV_LUNAR_PARTIAL) {
+        // 月を横から見る（地球の影の軸に直交する方向へ 4 半径）
+        const Body& m = app.B[B_MOON];
+        V3 u = Norm(m.pos - sun.pos);
+        V3 side = Norm(Cross(u, m.pole));
+        app.ship.ref = B_MOON;
+        app.ship.speed = 0;
+        app.ship.local = (side * 4.0 - u * 1.0) * m.d.radius;
+        app.ship.q = QuatFromBasis(app.ship.local * -1.0, m.pole);
+        app.target = B_MOON;
+    } else {
+        // 木星面に落ちた影の真上（太陽側）から見下ろす
+        const Body& j = app.B[B_JUPITER];
+        const Body& mo = app.B[ev.moon];
+        V3 u = Norm(mo.pos - sun.pos);
+        double along, perp;
+        ShadowAxis(sun.pos, mo.pos, j.pos, &along, &perp);
+        double R = j.d.radius, k = std::sqrt(std::max(0.0, R * R - perp * perp));
+        V3 spot = mo.pos + u * (along - k) - j.pos;   // 影の中心（木星中心から）
+        app.ship.ref = B_JUPITER;
+        app.ship.speed = 0;
+        app.ship.local = spot - u * (R * 0.9);
+        app.ship.q = QuatFromBasis(u, j.pole);
+        app.target = ev.moon;
+    }
+    UpdateReferenceFrame(app);
+}
+
+// ---------------------------------------------------------------- 日時の指定
+// 年月日 → 1970-01-01 からの日数（グレゴリオ暦）
+static long long DaysFromCivil(int y, int m, int d) {
+    y -= m <= 2;
+    long long era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400);
+    unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (long long)doe - 719468;
+}
+
+// "YYYYMMDD" または "YYYYMMDDhhmm"（UTC）→ J2000 からの日数。不正なら NaN
+static double ParseDateDigits(const std::string& s) {
+    if (s.size() != 8 && s.size() != 12) return NAN;
+    int y = std::stoi(s.substr(0, 4)), mo = std::stoi(s.substr(4, 2)), d = std::stoi(s.substr(6, 2));
+    int h = s.size() == 12 ? std::stoi(s.substr(8, 2)) : 0, mi = s.size() == 12 ? std::stoi(s.substr(10, 2)) : 0;
+    static const int MD[] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (y < 1800 || y > 2200 || mo < 1 || mo > 12 || d < 1 || d > MD[mo - 1] || h > 23 || mi > 59) return NAN;
+    bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    if (mo == 2 && d == 29 && !leap) return NAN;
+    double unixSec = (double)DaysFromCivil(y, mo, d) * 86400.0 + h * 3600.0 + mi * 60.0;
+    return (unixSec - J2000_UNIX) / 86400.0;
+}
+
+// 入力中の数字を "2026-10-28 14:05" の形に（未入力は _）
+static std::string FormatDateDigits(const std::string& dg) {
+    const char* pat = "____-__-__ __:__";
+    std::string out = pat;
+    size_t k = 0;
+    for (size_t i = 0; i < out.size() && k < dg.size(); i++)
+        if (out[i] == '_') out[i] = dg[k++];
+    return out;
+}
+
+static std::string DigitsOfTime(double tDays) {
+    std::string f = FmtDate(tDays);   // "YYYY-MM-DD hh:mm:ss UTC"
+    std::string d;
+    for (size_t i = 0; i < 16 && i < f.size(); i++)
+        if (f[i] >= '0' && f[i] <= '9') d += f[i];
+    return d;
+}
+
+static void StartWarp(App& app, int ti, bool land);
+
+// 一覧・入力欄が開いている間のキー操作。開いていれば true（ほかの操作は止める）
+static bool HandleModalInput(App& app) {
+    if (app.dateOpen) {
+        for (int ch = GetCharPressed(); ch > 0; ch = GetCharPressed())
+            if (ch >= '0' && ch <= '9' && app.dateDigits.size() < 12) app.dateDigits += (char)ch;
+        if (IsKeyPressed(KEY_BACKSPACE) && !app.dateDigits.empty()) app.dateDigits.pop_back();
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_Y)) app.dateOpen = false;
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
+            double t = ParseDateDigits(app.dateDigits);
+            if (std::isnan(t)) {
+                Toast(app, T(UI_DATE_BAD));
+            } else {
+                app.tDays = t;
+                UpdateBodies(app.B, app.tDays);
+                UpdateReferenceFrame(app);
+                app.dateOpen = false;
+                char b[96];
+                snprintf(b, sizeof b, T(UI_DATE_SET), FmtDate(t).c_str());
+                Toast(app, b);
+            }
+        }
+        return true;
+    }
+    if (app.eventsOpen) {
+        int n = (int)app.events.size();
+        if (n > 0) {
+            if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) app.eventSel = (app.eventSel + 1) % n;
+            if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) app.eventSel = (app.eventSel + n - 1) % n;
+        }
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_K)) app.eventsOpen = false;
+        if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && n > 0 && app.warpT < 0) {
+            const AstroEvent& ev = app.events[app.eventSel];
+            int body = ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER;
+            StartWarp(app, body, false);
+            app.warpEvent = app.eventSel;
+            app.eventsOpen = false;
+            std::string when = FmtDate(ev.t).substr(0, 16) + " UTC";
+            char b[256];
+            snprintf(b, sizeof b, T(UI_EV_GO), when.c_str(), EventTitle(app, ev).c_str());
+            Toast(app, b);
+        }
+        return true;
+    }
+    return false;
+}
+
+static void DrawModalPanels(const App& app) {
+    const Cam& c = app.cam;
+    if (app.eventsOpen) {
+        int n = (int)app.events.size();
+        int rows = std::max(1, std::min(n, 14));
+        float w = std::min(c.W - 20, 900.0f), h = 96 + rows * 28.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
+        DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
+        TxtC(T(UI_EV_TITLE), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
+        TxtC(T(UI_EV_KEYS), c.W * 0.5f, y + 40, 15, {170, 200, 230, 255});
+        if (n == 0) TxtC(T(UI_EV_NONE), c.W * 0.5f, y + 72, 18, {215, 228, 245, 255});
+        int first = std::max(0, std::min(app.eventSel - rows / 2, n - rows));
+        for (int i = 0; i < rows && first + i < n; i++) {
+            const AstroEvent& ev = app.events[first + i];
+            float ry = y + 68 + i * 28.0f;
+            bool sel = first + i == app.eventSel;
+            if (sel) DrawRectangle((int)x + 12, (int)ry - 3, (int)w - 24, 26, {60, 90, 140, 200});
+            Color col = sel ? Color{255, 240, 200, 255} : Color{215, 228, 245, 255};
+            Txt((FmtDate(ev.t).substr(0, 16) + " UTC").c_str(), x + 24, ry, 17, col);
+            Txt(EventTitle(app, ev).c_str(), x + 230, ry, 17, col);
+            Txt(EventDetail(ev).c_str(), x + 520, ry, 15, {170, 200, 230, 255});
+        }
+        TxtC(T(UI_EV_NOTE), c.W * 0.5f, y + h - 26, 13, {150, 170, 190, 255});
+    }
+    if (app.dateOpen) {
+        float w = std::min(c.W - 20, 620.0f), h = 150, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        DrawRectangleRounded({x, y, w, h}, 0.06f, 6, {0, 8, 20, 235});
+        DrawRectangleRoundedLinesEx({x, y, w, h}, 0.06f, 6, 1.5f, {90, 130, 180, 255});
+        TxtC(T(UI_DATE_TITLE), c.W * 0.5f, y + 12, 22, {255, 220, 120, 255});
+        TxtC((FormatDateDigits(app.dateDigits) + " UTC").c_str(), c.W * 0.5f, y + 52, 32, {255, 255, 255, 255});
+        TxtC(T(UI_DATE_KEYS), c.W * 0.5f, y + 108, 15, {170, 200, 230, 255});
+    }
+}
+
 static void FaceTarget(App& app) {
     V3 d = app.B[app.target].pos - ShipWorld(app);
     app.ship.q = QuatFromBasis(d, ShipUp(app.ship));
@@ -1037,9 +1397,11 @@ static void UpdateWarp(App& app, double dt) {
         app.ship.thrusting = true;
         if (app.warpT >= WARP_CHARGE) {
             std::vector<Bookmark> bms = app.warpBookmark >= 0 ? LoadBookmarks(app) : std::vector<Bookmark>();
-            if (app.warpBookmark >= 0 && app.warpBookmark < (int)bms.size()) ApplyBookmark(app, bms[app.warpBookmark]);
+            if (app.warpEvent >= 0 && app.warpEvent < (int)app.events.size()) ApplyEvent(app, app.events[app.warpEvent]);
+            else if (app.warpBookmark >= 0 && app.warpBookmark < (int)bms.size()) ApplyBookmark(app, bms[app.warpBookmark]);
             else WarpTo(app, app.warpTarget, app.warpLand);
             app.warpBookmark = -1;
+            app.warpEvent = -1;
             app.warpJumped = true;
         }
     } else if (app.warpT >= WARP_CHARGE + WARP_ARRIVE) {
@@ -1125,6 +1487,17 @@ static void HandleInput(App& app, double dt) {
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
     PadState pad = ReadPad(app);
     app.padZoom = pad.zoom;
+    if (HandleModalInput(app)) return;
+    if (IsKeyPressed(KEY_K)) {
+        app.events = FindEvents(app, app.tDays);
+        app.eventSel = 0;
+        app.eventsOpen = true;
+    }
+    if (IsKeyPressed(KEY_Y)) {
+        app.dateDigits = DigitsOfTime(app.tDays);
+        while (GetCharPressed() > 0) {}   // 押した Y が入力欄に入らないように捨てる
+        app.dateOpen = true;
+    }
 
     if (IsKeyPressed(KEY_ESCAPE)) {
         app.mouseCaptured = !app.mouseCaptured;
@@ -2215,24 +2588,36 @@ static void DrawHUD(App& app) {
 
     if (app.showHelp) {
         const int lines = UI_HELP15 - UI_HELP1 + 1;
-        float w = std::min(c.W - 20, 860.0f), h = 44 + lines * 26.0f, hx = (c.W - w) / 2, hy = (c.H - h) / 2;
+        float w = std::min(c.W - 20, 980.0f), h = 44 + lines * 26.0f, hx = (c.W - w) / 2, hy = (c.H - h) / 2;
         DrawRectangleRounded({hx, hy, w, h}, 0.04f, 6, {0, 8, 20, 225});
         DrawRectangleRoundedLinesEx({hx, hy, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
         TxtC(T(UI_HELP_TITLE), c.W * 0.5f, hy + 10, 22, {255, 220, 120, 255});
         for (int i = 0; i < lines; i++)
             Txt(T((UiId)(UI_HELP1 + i)), hx + 24, hy + 44 + i * 26.0f, i >= 12 ? 15 : 17, i >= 12 ? Color{170, 220, 190, 255} : Color{215, 228, 245, 255});
     }
+    DrawModalPanels(app);
 }
 
 // ---------------------------------------------------------------- main
 int main(int argc, char** argv) {
     Options opt = ParseArgs(argc, argv);
+    if (opt.listEvents) {
+        App tmp;
+        tmp.B = InitBodies();
+        double t = (std::time(nullptr) - J2000_UNIX) / 86400.0 + opt.hours / 24.0;
+        UpdateBodies(tmp.B, t);
+        for (const AstroEvent& ev : FindEvents(tmp, t))
+            printf("%s  %-34s %s\n", FmtDate(ev.t).c_str(), EventTitle(tmp, ev).c_str(), EventDetail(ev).c_str());
+        return 0;
+    }
     if (opt.dumpMoons) {
         // 描画座標（黄道系を並べ替えたもの）のまま、時刻 = 現在 + --hours
         std::vector<Body> B = InitBodies();
         double t = (std::time(nullptr) - J2000_UNIX) / 86400.0 + opt.hours / 24.0;
         UpdateBodies(B, t);
         printf("t %.6f\n", t);
+        for (const Body& b : B)
+            if (b.d.parent == 0) printf("P %s %.1f %.1f %.1f\n", b.d.en, b.pos.x, b.pos.y, b.pos.z);
         for (const Body& b : B)
             if (b.d.parent > 0) {
                 V3 r = b.pos - B[b.d.parent].pos;
@@ -2331,6 +2716,15 @@ int main(int argc, char** argv) {
     app.autopilot = opt.autopilot;
     app.apAutoEngine = opt.autoEngine;
     app.showHelp = opt.help;
+    if (opt.showEvents) {
+        app.events = FindEvents(app, app.tDays);
+        app.eventSel = 5;
+        app.eventsOpen = true;
+    }
+    if (opt.showDate) {
+        app.dateDigits = DigitsOfTime(app.tDays).substr(0, 9);
+        app.dateOpen = true;
+    }
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
 
     int frame = 0;
@@ -2342,6 +2736,14 @@ int main(int argc, char** argv) {
         HandleInput(app, dt);
         if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) StartWarp(app, app.target, opt.land);
         if (opt.saveBookmark && frame == 1) SaveBookmark(app);
+        if (opt.gotoEvent > 0 && frame == 60) {
+            app.events = FindEvents(app, app.tDays);
+            if (opt.gotoEvent <= (int)app.events.size()) {
+                const AstroEvent& ev = app.events[opt.gotoEvent - 1];
+                StartWarp(app, ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER, false);
+                app.warpEvent = opt.gotoEvent - 1;
+            }
+        }
         if (opt.gotoBookmark > 0 && frame == 60) {
             std::vector<Bookmark> bms = LoadBookmarks(app);
             if (opt.gotoBookmark <= (int)bms.size()) {
