@@ -8,6 +8,14 @@
 - 描画エンジン: [raylib 5.5](https://www.raylib.com/)（OpenGL 3.3）
 - 対応: Linux (gcc) / Windows (MinGW-w64)
 
+![日本上空から見た昼の地球](docs/screenshots/earth_day.jpg)
+
+| | |
+|---|---|
+| ![土星と環](docs/screenshots/saturn.jpg) 土星と環 | ![夜のヨーロッパの街明かり](docs/screenshots/earth_night.jpg) 夜のヨーロッパの街明かり |
+| ![木星](docs/screenshots/jupiter.jpg) 木星 | ![月面の低空飛行](docs/screenshots/moon.jpg) 月面の低空飛行 |
+| ![ワープ](docs/screenshots/warp.jpg) ワープ演出 | |
+
 ## ビルド
 
 CMake が raylib 5.5 のソースを自動取得して静的リンクします（初回のみネット接続が必要）。

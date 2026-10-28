@@ -8,6 +8,14 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 - Rendering engine: [raylib 5.5](https://www.raylib.com/) (OpenGL 3.3)
 - Platforms: Linux (gcc) / Windows (MinGW-w64)
 
+![Daytime Earth seen from above Japan](docs/screenshots/earth_day.jpg)
+
+| | |
+|---|---|
+| ![Saturn and its rings](docs/screenshots/saturn.jpg) Saturn and its rings | ![City lights of Europe at night](docs/screenshots/earth_night.jpg) City lights of Europe at night |
+| ![Jupiter](docs/screenshots/jupiter.jpg) Jupiter | ![Low flight over the Moon](docs/screenshots/moon.jpg) Low flight over the Moon |
+| ![Warp](docs/screenshots/warp.jpg) Warp effect | |
+
 ## Building
 
 CMake downloads the raylib 5.5 source automatically and links it statically (network access is needed on the first build only).
