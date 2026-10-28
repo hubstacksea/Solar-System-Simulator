@@ -2,7 +2,7 @@
 
 [日本語](README.md) | **English**
 
-A 3D space flight simulator with the Sun, planets and major moons placed at **true size and true distance**.
+A 3D space flight simulator with the Sun, planets, major moons, dwarf planets, asteroids and a comet placed at **true size and true distance**.
 Body positions are computed from the PC clock (UTC); at 1x time scale they orbit and rotate in real time.
 
 - Rendering engine: [raylib 5.5](https://www.raylib.com/) (OpenGL 3.3)
@@ -16,6 +16,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![The Moon's near side](docs/screenshots/moon.jpg) The Moon's near side (real NASA data) | ![Low flight near Tycho](docs/screenshots/moon_surface.jpg) Low flight near Tycho |
 | ![Solar eclipse of 2 August 2027](docs/screenshots/solar_eclipse.jpg) Solar eclipse of 2 August 2027 (the Moon's shadow over North Africa) | ![Total lunar eclipse of 7 September 2025](docs/screenshots/lunar_eclipse.jpg) Total lunar eclipse of 7 September 2025 |
 | ![Jupiter](docs/screenshots/jupiter.jpg) Jupiter | ![Warp](docs/screenshots/warp.jpg) Warp effect |
+| ![Constellation lines and names](docs/screenshots/constellations.jpg) The real starry sky with constellation lines (C key) | ![Halley's Comet on 9 February 1986](docs/screenshots/halley.jpg) Halley's Comet on 9 February 1986 (perihelion) |
 
 ## Building
 
@@ -80,6 +81,7 @@ After building, run `cpack` in the build directory.
 | Right mouse button (hold) | Zoom |
 | V | Chase view / cockpit view |
 | O / L | Orbit lines / moon markers |
+| C | Constellations (off → lines → lines and names) |
 | [ / ] | Time scale (x1 real time to 1 year per second). Affects both orbits/rotation of the bodies and the ship's acceleration and movement |
 | P / Backspace | Pause time / sync to current time at x1 |
 | Y | Set the date and time (UTC; type the digits and press Enter) |
@@ -139,6 +141,7 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 
 ## On-screen display
 
+- **Starry sky**: the background stars are the real stars of the Hipparcos catalogue (about 41,000, down to magnitude 8), with their real brightness and colors (color index). Press C to show the lines of the 88 constellations, and the names of the constellations and of the main stars (about 100 brighter than magnitude 2.6)
 - **Speedometer** (bottom right): analog gauge whose full scale is the current engine's top speed, plus a digital readout
 - **Heading indicator** (top center): near a body (within 30 times its radius), heading, pitch and roll with that body's rotation axis as north. Farther away, ecliptic longitude and latitude. The yellow ▲ marks the target's bearing
 - **Body markers**: name and distance to the surface for the Sun and every planet. Off-screen bodies are shown as arrows at the screen edge. Moons are shown when near their parent
@@ -147,10 +150,12 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 ## How it works
 
 - **Body positions**: planets are computed from JPL J2000 mean orbital elements and their rates via Kepler's equation (within 0.15° of JPL Horizons through 2046, the inner planets within 0.01°). The Moon uses a low-precision lunar ephemeris (about 0.3°), so its real position and phase are reproduced, and it always keeps the same face toward Earth. Other moons are placed on circular orbits in the orbital planes from JPL's mean orbital elements, with their positions fitted to JPL Horizons for 1980–2070 (most within 1°, at most a few degrees; Mimas includes its ±43° libration from the resonance with Tethys). Shadows of Jupiter's moons fall on Jupiter at nearly the real times
+- **Dwarf planets, asteroids and comets**: Ceres, Vesta, Eris and Halley's Comet. Their orbital elements and rates, in the same form as the planets', are fitted to JPL Horizons positions for 1980–2070 (direction seen from the Sun within 0.6°)
+- **Comet tails**: inside 4 AU from the Sun, Halley's Comet grows a coma (the glow around the nucleus) and tails that get longer and brighter closer to the Sun. The blue ion tail points straight away from the Sun, the yellowish dust tail curves back along the orbit. Set the date with Y to 1986-02-09 (last perihelion) or 2061-07-28 (next) to see them
 - **Surfaces**: everything except Earth and the Moon is generated procedurally in shaders. Finer patterns and relief (craters, mountains) appear as you get closer, so surfaces stay detailed even near the ground. Distinct features include Martian polar caps, Io's volcanoes, Europa's lineae, Jupiter's Great Red Spot, Saturn's north polar hexagon and Pluto's heart
 - **Earth**: built from real NASA data — continents, coastlines, elevation (relief shading), ocean depth (shallow-water color), sea ice and city lights at night (about 10 km resolution, with finer detail filled in procedurally). Its rotation follows Greenwich sidereal time, so the regions in daylight and the lit cities at night match the PC clock. Clouds are procedural
 - **Moon**: real NASA data (LRO color and LOLA elevation, about 3–5 km resolution). Maria, craters and ray systems are where they really are; smaller craters are filled in procedurally
-- **Music**: plays a piece for the nearest body: Holst's *The Planets* for the planets (the parent planet's movement near its moons), Grieg's "Morning Mood" for the Sun, the first movement of Beethoven's "Pastoral" Symphony for Earth and Debussy's "Clair de lune" for the Moon. It gets louder as you approach and fades out at the edge of the sphere of influence (1 AU for the Sun). Tracks crossfade when they change and resume where they left off when you return. Nothing plays near Pluto (the later Pluto movement by another composer is still under copyright)
+- **Music**: plays a piece for the nearest body: Holst's *The Planets* for the planets (the parent planet's movement near its moons), Grieg's "Morning Mood" for the Sun, the first movement of Beethoven's "Pastoral" Symphony for Earth and Debussy's "Clair de lune" for the Moon. It gets louder as you approach and fades out at the edge of the sphere of influence (1 AU for the Sun). Tracks crossfade when they change and resume where they left off when you return. Nothing plays near Pluto (the later Pluto movement by another composer is still under copyright), nor near the dwarf planets, asteroids and comets
 - **Astronomical events**: from the K-key list you can warp, at the right moment, to a solar eclipse (12,000 km above the center of the eclipse), a lunar eclipse (beside the Moon) or a moon's shadow crossing Jupiter (right above the shadow). Times are computed with simplified formulas and are typically within about 15 minutes of the real eclipses; the center of a solar eclipse is within a few hundred km
 - **Shadows**: solar eclipses (the Moon's shadow on Earth), lunar eclipses (a copper-red Moon), shadows of Jupiter's moons and the shadow of Saturn's rings, with umbra and penumbra from the Sun's real size
 - **Sizes**: equatorial radius and flattening (Jupiter and Saturn are visibly oblate), and Saturn's rings (C ring to A ring, Cassini Division, Encke Gap) drawn at true scale
@@ -159,7 +164,7 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 - **Minimum altitude**: because of floating-point precision, you cannot descend below 1/100,000 of a body's radius (minimum 30 m) — about 64 m on Earth
 - No physics (gravity etc.) is simulated. The ship flies arcade-style in the direction of its nose
 
-## Earth and Moon data, music
+## Earth and Moon data, starry sky, music
 
 The images in `assets/` are made from NASA / NOAA data by `tools/make_earth_assets.py` and `tools/make_moon_assets.py` and embedded into the executable at build time (no files needed at run time).
 
@@ -167,6 +172,7 @@ The images in `assets/` are made from NASA / NOAA data by `tools/make_earth_asse
 - Elevation and ocean depth: NOAA NCEI, ETOPO 2022 Global Relief Model (60 arc-second, ice surface, subsampled to 5 arc-minutes)
 - City lights: NASA Earth Observatory, Black Marble 2016
 - Moon color and elevation: NASA's Scientific Visualization Studio, CGI Moon Kit (LROC WAC / LOLA)
+- Starry sky: stars from the Hipparcos catalogue (ESA), and the lines, names and star names of the 88 constellations, from [d3-celestial](https://github.com/ofrohn/d3-celestial) (Olaf Frohn, BSD 3-Clause), converted by `tools/make_sky_assets.py`
 - Music (Holst, *The Planets*): Mercury by the U.S. Air Force Band (2013, arranged by the band); the other six movements by the London Symphony Orchestra conducted by Holst, recorded 1922–23 (Columbia). Public domain
 - Music (Sun, Earth): Grieg, "Morning Mood" by the Musopen Symphony; Beethoven, "Pastoral" Symphony, 1st movement by the Skidmore College Orchestra. Both public domain recordings provided by Musopen
 - Music (Moon): Debussy, "Clair de lune", Laurens Goedhart, piano (2011). CC BY 3.0
@@ -177,7 +183,7 @@ All of them may be used and redistributed freely, including commercially (see [T
 ## Display language (日本語 / English)
 
 - Press the **J key** at any time to switch. The chosen language is saved in `solar_voyager.cfg` and used on the next launch
-- `solar_voyager.cfg` stores the language, quality, sound setting and bookmarks. It lives next to the executable (if that folder is not writable, e.g. when installed from the .deb / .rpm, in `~/.config/solar_voyager/solar_voyager.cfg`)
+- `solar_voyager.cfg` stores the language, quality, sound setting, constellation display and bookmarks. It lives next to the executable (if that folder is not writable, e.g. when installed from the .deb / .rpm, in `~/.config/solar_voyager/solar_voyager.cfg`)
 - To choose at startup: `solar_voyager --lang en` (or `ja`). Priority is: command-line option > saved setting > Japanese
 
 For Japanese text, the program automatically searches for an OS Japanese font (Windows: Meiryo / Yu Gothic / MS Gothic, Linux: Noto Sans CJK / IPA, etc.).
@@ -186,4 +192,4 @@ If none is found, the display is fixed to English. A font placed at `assets/font
 ## License
 
 The program (source code, build files, tools and icon) is under the [MIT License](LICENSE).
-The Earth and Moon image data (`assets/earth_*`, `assets/moon_*`) and the music (`assets/music`) are not covered by it and follow the terms of its sources. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which also lists the bundled libraries (raylib / GLFW, zlib license).
+The Earth and Moon image data (`assets/earth_*`, `assets/moon_*`), the sky data (`assets/stars.bin`, `assets/sky.txt`) and the music (`assets/music`) are not covered by it and follow the terms of its sources. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which also lists the bundled libraries (raylib / GLFW, zlib license).

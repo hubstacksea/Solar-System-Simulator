@@ -10,6 +10,7 @@
 #include "rlgl.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -101,6 +102,9 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(ORBITS_OFF, "軌道表示 OFF", "Orbits OFF")                                              \
     X(LABELS_ON, "衛星マーカー ON", "Moon markers ON")                                       \
     X(LABELS_OFF, "衛星マーカー OFF", "Moon markers OFF")                                    \
+    X(SKY_OFF, "星座 OFF", "Constellations OFF")                                            \
+    X(SKY_LINES, "星座線", "Constellation lines")                                           \
+    X(SKY_NAMES, "星座線と名前", "Constellation lines & names")                             \
     X(INVERT_ON, "マウス上下反転 ON", "Invert mouse ON")                                     \
     X(INVERT_OFF, "マウス上下反転 OFF", "Invert mouse OFF")                                  \
     X(TIME_RESET, "現在時刻・等倍に同期", "Synced to current time")                          \
@@ -124,7 +128,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP6, "F : 機首を向ける    T : 自動操縦    Shift+T : 自動操縦(エンジン自動選択)", "F : face target    T : autopilot    Shift+T : autopilot (auto engine)") \
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
-    X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    Y : 日時指定    K : 天文イベント", "V : view    O : orbits    L : moon markers    Y : set date    K : astronomical events") \
+    X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : 天文イベント", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : astronomical events") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    Ctrl+Q : quit") \
@@ -263,9 +267,14 @@ static V3 PlanetPos(const BodyDef& d0, double tDays) {
     d.a_au += d0.da * T; d.e += d0.de * T; d.inc += d0.dinc * T;
     d.varpi += d0.dvarpi * T; d.node += d0.dnode * T;
     double L = d0.L0 + (d0.dL != 0 ? d0.dL * T : 360.0 / (365.25 * std::pow(d0.a_au, 1.5)) * tDays);
-    double M = std::fmod(L - d.varpi, 360.0) * DEG;
-    double E = M + d.e * std::sin(M);
-    for (int i = 0; i < 8; i++) E -= (E - d.e * std::sin(E) - M) / (1 - d.e * std::cos(E));
+    double M = std::remainder(L - d.varpi, 360.0) * DEG;  // -π〜π
+    // ケプラー方程式（ハレー彗星の e = 0.97 でも収束する初期値）
+    double E = M + 0.85 * d.e * (M >= 0 ? 1 : -1);
+    for (int i = 0; i < 50; i++) {
+        double dE = (E - d.e * std::sin(E) - M) / (1 - d.e * std::cos(E));
+        E -= dE;
+        if (std::fabs(dE) < 1e-12) break;
+    }
     return PlanetOrbitPoint(d, E);
 }
 
@@ -582,32 +591,75 @@ static std::string FmtDate(double tDays) {
 }
 
 // ---------------------------------------------------------------- 背景の星
-struct Star { V3 dir; Color col; float size; };
-static std::vector<Star> MakeStars() {
-    std::vector<Star> s;
-    SetRandomSeed(12345);
-    auto rnd = [] { return GetRandomValue(0, 1000000) / 1000000.0; };
-    auto gauss = [&] { double u = std::max(rnd(), 1e-9), v = rnd(); return std::sqrt(-2 * std::log(u)) * std::cos(2 * PI * v); };
-    V3 gp = EquToRender(192.85948, 27.12825), gc = EquToRender(266.405, -28.936);  // 銀河北極・銀河中心
-    gc = Norm(gc - gp * Dot(gc, gp));
-    V3 gc2 = Cross(gp, gc);
-    for (int i = 0; i < 7000; i++) {
-        V3 d;
-        if (i % 2 == 0) {
-            double z = rnd() * 2 - 1, a = rnd() * 2 * PI, r = std::sqrt(1 - z * z);
-            d = V3(r * std::cos(a), z, r * std::sin(a));
-        } else {
-            double l = (i % 6 == 1) ? gauss() * 0.6 : rnd() * 2 * PI;
-            double bb = gauss() * (i % 6 == 1 ? 0.06 : 0.12);
-            d = (gc * std::cos(l) + gc2 * std::sin(l)) * std::cos(bb) + gp * std::sin(bb);
-        }
-        double m = std::pow(rnd(), 5.0);
-        double tint = rnd();
-        unsigned char a = (unsigned char)(50 + 205 * std::min(1.0, m * 3 + 0.15));
-        Color c = tint < 0.15 ? Color{180, 200, 255, a} : tint < 0.3 ? Color{255, 225, 190, a} : Color{240, 240, 255, a};
-        s.push_back({Norm(d), c, (float)(m > 0.3 ? 1.6 : m > 0.08 ? 1.1 : 0.0)});
+// ヒッパルコス星表の 8 等級までの恒星と、88 星座の線・名前（tools/make_sky_assets.py で作った埋め込みデータ）
+struct Star { V3 dir; Color col; float size; float mag; };  // size 0 は 1 ピクセルの点。明るい順に並ぶ
+struct Constellation { V3 label; std::string jp, en; std::vector<std::vector<V3>> lines; };
+struct StarName { V3 dir; float mag; std::string jp, en; };
+struct Sky {
+    std::vector<Star> stars;
+    std::vector<Constellation> cons;
+    std::vector<StarName> names;
+};
+
+// 色指数 B-V → 見た目の色（青白い星〜赤い星。白に寄せて淡くする）
+static Color StarColor(double bv, unsigned char a) {
+    static const double T[][4] = {{-0.4, 155, 178, 255}, {0.0, 200, 214, 255}, {0.4, 248, 246, 255},
+                                  {0.8, 255, 236, 214}, {1.2, 255, 212, 160}, {1.6, 255, 190, 128}, {2.2, 255, 170, 100}};
+    const int n = sizeof T / sizeof T[0];
+    bv = std::max(T[0][0], std::min(T[n - 1][0], bv));
+    int i = 0;
+    while (i < n - 2 && bv > T[i + 1][0]) i++;
+    double f = (bv - T[i][0]) / (T[i + 1][0] - T[i][0]), rgb[3];
+    for (int k = 0; k < 3; k++) rgb[k] = (T[i][k + 1] + (T[i + 1][k + 1] - T[i][k + 1]) * f) * 0.7 + 255 * 0.3;
+    return {(unsigned char)rgb[0], (unsigned char)rgb[1], (unsigned char)rgb[2], a};
+}
+
+static Sky LoadSky() {
+    Sky sky;
+    EmbeddedFile sb = StarsBin();
+    uint32_t n = 0;
+    if (sb.size >= 4) std::memcpy(&n, sb.data, 4);
+    n = (uint32_t)std::min<size_t>(n, (sb.size - 4) / 12);
+    sky.stars.reserve(n);
+    for (uint32_t i = 0; i < n; i++) {
+        const unsigned char* p = sb.data + 4 + 12 * (size_t)i;
+        float ra, dec;
+        int16_t mag100, bv1000;
+        std::memcpy(&ra, p, 4);
+        std::memcpy(&dec, p + 4, 4);
+        std::memcpy(&mag100, p + 8, 2);
+        std::memcpy(&bv1000, p + 10, 2);
+        float mag = mag100 / 100.0f;
+        // 4.5 等より明るい星は円で、暗い星は 1 ピクセルの点の濃さで明るさを表す
+        float size = mag < 4.5f ? std::min(3.2f, 1.0f + (4.5f - mag) * 0.38f) : 0.0f;
+        float a = mag < 5.0f ? 255.0f : std::max(30.0f, 235.0f - (mag - 5.0f) * 65.0f);
+        sky.stars.push_back({EquToRender(ra, dec), StarColor(bv1000 / 1000.0, (unsigned char)a), size, mag});
     }
-    return s;
+
+    EmbeddedFile st = SkyTxt();
+    std::string text((const char*)st.data, st.size);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t eol = text.find('\n', pos);
+        if (eol == std::string::npos) eol = text.size();
+        std::vector<std::string> f;
+        for (size_t q = pos; q <= eol;) {
+            size_t tab = std::min(text.find('\t', q), eol);
+            f.push_back(text.substr(q, tab - q));
+            q = tab + 1;
+        }
+        pos = eol + 1;
+        if (f[0] == "C" && f.size() >= 5) {
+            sky.cons.push_back({EquToRender(atof(f[1].c_str()), atof(f[2].c_str())), f[3], f[4], {}});
+        } else if (f[0] == "L" && !sky.cons.empty()) {
+            std::vector<V3> line;
+            for (size_t k = 1; k + 1 < f.size(); k += 2) line.push_back(EquToRender(atof(f[k].c_str()), atof(f[k + 1].c_str())));
+            sky.cons.back().lines.push_back(line);
+        } else if (f[0] == "S" && f.size() >= 6) {
+            sky.names.push_back({EquToRender(atof(f[1].c_str()), atof(f[2].c_str())), (float)atof(f[3].c_str()), f[4], f[5]});
+        }
+    }
+    return sky;
 }
 
 // ---------------------------------------------------------------- 自機
@@ -769,6 +821,7 @@ struct Options {
     double timeScale = 1;
     const char* lang = nullptr;  // "ja" / "en"
     int quality = -1;            // 0〜2（確認用）
+    int sky = -1;                // 星座の表示 0〜2（確認用）
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -801,6 +854,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--timescale") o.timeScale = atof(next());
         else if (a == "--lang") o.lang = next();
         else if (a == "--quality") o.quality = atoi(next());
+        else if (a == "--sky") o.sky = atoi(next());
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
@@ -819,7 +873,8 @@ struct AstroEvent {
 
 struct App {
     std::vector<Body> B;
-    std::vector<Star> stars;
+    Sky sky;
+    int skyMode = 0;  // 0: 星のみ, 1: 星座線, 2: 星座線と名前
     Ship ship;
     Cam cam;
     double tDays = 0;
@@ -1600,6 +1655,11 @@ static void HandleInput(App& app, double dt) {
     // 表示
     if (IsKeyPressed(KEY_V) || pad.view) { app.cockpit = !app.cockpit; Toast(app, T(app.cockpit ? UI_VIEW_COCKPIT : UI_VIEW_CHASE)); }
     if (IsKeyPressed(KEY_O)) { app.showOrbits = !app.showOrbits; Toast(app, T(app.showOrbits ? UI_ORBITS_ON : UI_ORBITS_OFF)); }
+    if (IsKeyPressed(KEY_C)) {
+        app.skyMode = (app.skyMode + 1) % 3;
+        Toast(app, T((UiId)(UI_SKY_OFF + app.skyMode)));
+        SetSetting("sky", std::to_string(app.skyMode));
+    }
     if (IsKeyPressed(KEY_L)) { app.showMoonMarkers = !app.showMoonMarkers; Toast(app, T(app.showMoonMarkers ? UI_LABELS_ON : UI_LABELS_OFF)); }
     if (IsKeyPressed(KEY_J)) {
         if (!g_jpFont) {
@@ -1846,6 +1906,98 @@ static void DrawOrbits(App& app) {
     rlEnableDepthTest();
 }
 
+// 彗星のコマと尾。太陽から 4 AU より内側で現れ、近いほど長く明るい（見た目の演出で、長さは実際の尾と同じ桁）
+//  - イオンの尾: 太陽と反対方向へまっすぐ伸びる青い尾
+//  - ダストの尾: 公転の向きと逆側へ曲がる、幅の広い黄白色の尾
+// 天体より先に加算合成で描くので、手前の天体には隠れる
+static void DrawCometTails(const App& app) {
+    const Cam& c = app.cam;
+    SetPassProjection(c, 0.01, 1e11);
+    rlDisableDepthTest();
+    rlDisableBackfaceCulling();
+    BeginBlendMode(BLEND_ADDITIVE);
+    for (const Body& b : app.B) {
+        if (!b.d.comet) continue;
+        double r = Len(b.pos) / AU_KM;
+        double act = std::max(0.0, std::min(1.0, (4.0 - r) / 3.0));
+        act = act * act * (3 - 2 * act);
+        if (act <= 0) continue;
+        double len = 2.0e7 * act * std::min(2.5, 1.0 / r);  // km
+        V3 anti = Norm(b.pos);                                 // 太陽と反対の向き
+        V3 vel = Norm(PlanetPos(b.d, app.tDays + 0.01) - PlanetPos(b.d, app.tDays));
+        V3 lag = Norm(vel * -1.0 - anti * Dot(vel * -1.0, anti));  // 公転の後ろ側（反太陽方向に垂直な成分）
+        V3 rel0 = b.pos - c.pos;
+
+        // 中心線に沿った帯（中心が明るく縁は透明）。軌道面とそれに垂直な面の 2 枚を十字に重ね、どの向きから見ても
+        // 厚みが見えるようにする（カメラに向けると、尾の近くで帯がねじれて筋になる）。w0 / w1: 根元と先端の半幅 km
+        V3 normal = Norm(Cross(anti, lag));
+        auto sheet = [&](auto point, int k, double w0, double w1, Vector3 col, double alpha) {
+            const int N = 64;
+            auto vtx = [&](V3 q, unsigned char aa) {
+                rlColor4ub((unsigned char)(col.x * 255), (unsigned char)(col.y * 255), (unsigned char)(col.z * 255), aa);
+                rlVertex3f((float)q.x, (float)q.y, (float)q.z);
+            };
+            rlBegin(RL_TRIANGLES);
+            V3 pl, pc, pr;
+            unsigned char pa = 0;
+            for (int i = 0; i <= N; i++) {
+                double u = (double)i / N;
+                V3 p = point(u), t = Norm(point(std::min(1.0, u + 0.01)) - point(std::max(0.0, u - 0.01)));
+                V3 side = k == 0 ? Norm(Cross(normal, t)) : normal;
+                double w = (w0 + (w1 - w0) * u) * (k == 0 ? 1.0 : 0.5);
+                V3 C = p - c.pos, L = C + side * w, R = C - side * w;
+                unsigned char a = (unsigned char)(255 * alpha * act * std::pow(1 - u, 1.6) * std::min(1.0, u * 12));
+                if (i > 0) {
+                    vtx(pl, 0); vtx(pc, pa); vtx(C, a);
+                    vtx(pl, 0); vtx(C, a); vtx(L, 0);
+                    vtx(pc, pa); vtx(pr, 0); vtx(R, 0);
+                    vtx(pc, pa); vtx(R, 0); vtx(C, a);
+                }
+                pl = L; pc = C; pr = R; pa = a;
+            }
+            rlEnd();
+        };
+        auto ion = [&](double u) { return b.pos + anti * (len * u); };
+        auto dust = [&](double u) { return b.pos + anti * (len * 0.6 * u) + lag * (len * 0.35 * u * u); };
+        for (int k = 0; k < 2; k++) {
+            sheet(ion, k, 2e4, len * 0.03, Vector3{0.45f, 0.65f, 1.0f}, 0.55);
+            sheet(dust, k, 4e4, len * 0.12, Vector3{1.0f, 0.88f, 0.68f}, 0.45);
+        }
+
+        // コマ: 核を中心に、カメラを向く円（中心が明るい）。内側に入ったら薄くする
+        double comaR = 3e5 * act * std::min(2.0, 1.0 / r);
+        double dist = Len(rel0);
+        double inside = std::min(1.0, dist / comaR);
+        V3 ax = Norm(Cross(c.fwd, c.up)), ay = c.up;
+        if (Len(rel0) > 1e-9) {
+            V3 vdir = Norm(rel0);
+            ax = Norm(Cross(vdir, c.up));
+            if (Len(Cross(vdir, c.up)) < 1e-6) ax = c.right;
+            ay = Cross(ax, vdir);
+        }
+        const int SEG = 32;
+        const double ringR[3] = {0, 0.3, 1.0};
+        const double ringA[3] = {0.9, 0.35, 0};
+        rlBegin(RL_TRIANGLES);
+        for (int ring = 0; ring < 2; ring++)
+            for (int j = 0; j < SEG; j++) {
+                double a0 = 2 * PI * j / SEG, a1 = 2 * PI * (j + 1) / SEG;
+                auto pt = [&](int rr, double ang) {
+                    V3 q = rel0 + (ax * std::cos(ang) + ay * std::sin(ang)) * (comaR * ringR[rr]);
+                    rlColor4ub(220, 235, 255, (unsigned char)(255 * ringA[rr] * act * inside));
+                    rlVertex3f((float)q.x, (float)q.y, (float)q.z);
+                };
+                pt(ring, a0); pt(ring + 1, a0); pt(ring + 1, a1);
+                pt(ring, a0); pt(ring + 1, a1); pt(ring, a1);
+            }
+        rlEnd();
+    }
+    rlDrawRenderBatchActive();
+    EndBlendMode();
+    rlEnableBackfaceCulling();
+    rlEnableDepthTest();
+}
+
 // 埋め込みの地球データをテクスチャにする（経度方向は繰り返し、緯度方向は端で止める）
 static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext) {
     Image img = LoadImageFromMemory(ext, f.data, (int)f.size);
@@ -1879,7 +2031,7 @@ static void LoadMoonTextures(App& app) {
 }
 
 // ---------------------------------------------------------------- 音楽の選曲
-// 一番近い天体（表面までの距離）の曲。月以外の衛星は母惑星の曲。冥王星とカロンは無音
+// 一番近い天体（表面までの距離）の曲。月以外の衛星は母惑星の曲。冥王星とカロン・準惑星・小惑星・彗星は無音
 // （冥王星の曲は後年の別の作曲者の作品で著作権が残っている）
 static int MusicTrackOf(const App& app, int body) {
     if (body == B_MOON) return 9;
@@ -2128,10 +2280,20 @@ static void DrawShipPass(App& app, double dt) {
 // ---------------------------------------------------------------- 描画: 2D
 static void DrawStars(const App& app) {
     const Cam& c = app.cam;
-    for (const Star& st : app.stars) {
+    if (app.skyMode > 0) {
+        // 星座線は星より奥に、暗く細く描く
+        const Color lc = {90, 130, 200, 120};
+        for (const Constellation& con : app.sky.cons)
+            for (const std::vector<V3>& line : con.lines)
+                for (size_t i = 0; i + 1 < line.size(); i++) {
+                    Vector2 p, q;
+                    if (Project(c, line[i], &p) && Project(c, line[i + 1], &q)) DrawLineEx(p, q, 1.2f, lc);
+                }
+    }
+    for (const Star& st : app.sky.stars) {
         Vector2 p;
         if (!Project(c, st.dir, &p)) continue;
-        if (p.x < 0 || p.y < 0 || p.x >= c.W || p.y >= c.H) continue;
+        if (p.x < -4 || p.y < -4 || p.x >= c.W + 4 || p.y >= c.H + 4) continue;
         if (st.size > 0) DrawCircleV(p, st.size, st.col);
         else DrawPixelV(p, st.col);
     }
@@ -2150,6 +2312,23 @@ static bool Occluded(const App& app, V3 from, V3 to, int self) {
         if (Len(oc - d * t) < app.B[i].d.radius) return true;
     }
     return false;
+}
+
+// 星座名と恒星の名前。画質を下げてもにじまないよう、縮小描画の後に重ねる（天体に隠れる名前は出さない）
+static void DrawSkyLabels(const App& app) {
+    if (app.skyMode != 2) return;
+    const Cam& c = app.cam;
+    auto hidden = [&](V3 dir) { return Occluded(app, c.pos, c.pos + dir * 1e13, -1); };
+    for (const Constellation& con : app.sky.cons) {
+        Vector2 p;
+        if (Project(c, con.label, &p) && p.x > -200 && p.x < c.W + 200 && p.y > 0 && p.y < c.H && !hidden(con.label))
+            TxtC(TR(con.jp.c_str(), con.en.c_str()), p.x, p.y - 8, 15, {120, 160, 225, 190});
+    }
+    for (const StarName& n : app.sky.names) {
+        Vector2 p;
+        if (Project(c, n.dir, &p) && p.x > -100 && p.x < c.W && p.y > 0 && p.y < c.H && !hidden(n.dir))
+            Txt(TR(n.jp.c_str(), n.en.c_str()), p.x + 6, p.y - 6, 13, {225, 215, 180, 190});
+    }
 }
 
 static void DrawSunGlowAndDots(const App& app) {
@@ -2457,8 +2636,9 @@ static void DrawWarpEffect(const App& app) {
     // 星の光の筋（画面中央から外へ伸びる）
     if (wi > 0.01) {
         float len = (float)(1.6 * wi);
-        for (size_t i = 0; i < app.stars.size(); i++) {
-            const Star& st = app.stars[i];
+        for (size_t i = 0; i < app.sky.stars.size(); i++) {
+            const Star& st = app.sky.stars[i];
+            if (st.mag > 6.5f) break;              // 暗い星は描かない（明るい順に並んでいる）
             if (st.size <= 0 && i % 2) continue;  // 暗い星は半分に間引く（画面が白飛びしないように）
             Vector2 p;
             if (!Project(c, st.dir, &p)) continue;
@@ -2638,12 +2818,15 @@ int main(int argc, char** argv) {
 
     App app;
     app.B = InitBodies();
+    app.sky = LoadSky();
 
     // フォント
     std::string allText = "°²·×〜";
     for (int i = 0; i < UI_COUNT; i++) allText += UI_JP[i];
     for (const Body& b : app.B) allText += b.d.jp;
     for (const Engine& e : ENGINES) allText += e.jp;
+    for (const Constellation& c : app.sky.cons) allText += c.jp;
+    for (const StarName& n : app.sky.names) allText += n.jp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
     // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）
@@ -2653,6 +2836,8 @@ int main(int argc, char** argv) {
     std::string q = GetSetting("quality");
     if (!q.empty()) app.quality = std::max(0, std::min(2, atoi(q.c_str())));
     if (opt.quality >= 0) app.quality = std::min(2, opt.quality);
+    app.skyMode = std::max(0, std::min(2, atoi(GetSetting("sky").c_str())));
+    if (opt.sky >= 0) app.skyMode = std::min(2, opt.sky);
     // 効果音（自動スクリーンショットでは鳴らさない）
     if (!opt.shot) {
         sfx::Init(GetSetting("sound") == "0");
@@ -2687,7 +2872,6 @@ int main(int argc, char** argv) {
     app.shipMat = LoadMaterialDefault();
     app.shipMat.shader = app.shipShader;
     app.shipMesh = GenShipMesh();
-    app.stars = MakeStars();
     for (int i = 0; i < 260; i++)
         app.dust.push_back({GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f});
 
@@ -2781,7 +2965,6 @@ int main(int argc, char** argv) {
             int w = std::max(1, (int)(GetScreenWidth() * rk)), h = std::max(1, (int)(GetScreenHeight() * rk));
             if (app.lowRes.texture.width != w || app.lowRes.texture.height != h) {
                 if (app.lowRes.id) UnloadRenderTexture(app.lowRes);
-    sfx::Shutdown();
                 app.lowRes = LoadRenderTexture(w, h);
                 SetTextureFilter(app.lowRes.texture, TEXTURE_FILTER_BILINEAR);
             }
@@ -2797,6 +2980,7 @@ int main(int argc, char** argv) {
         Camera3D dummy = {{0, 0, 0}, {0, 0, -1}, {0, 1, 0}, 60, CAMERA_PERSPECTIVE};
         BeginMode3D(dummy);
         if (app.showOrbits) DrawOrbits(app);
+        DrawCometTails(app);
         DrawBodies(app);
         DrawShipPass(app, dt);
         EndMode3D();
@@ -2812,6 +2996,7 @@ int main(int argc, char** argv) {
             rlEnableColorBlend();
         }
 
+        DrawSkyLabels(app);
         if (app.warpT < 0) DrawMarkers(app);
         DrawWarpEffect(app);
         DrawHUD(app);

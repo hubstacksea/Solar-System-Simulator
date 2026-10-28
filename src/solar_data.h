@@ -55,6 +55,7 @@ struct BodyDef {
     float bands = 0;
     float atmStrength = 0;
     bool rings = false;
+    bool comet = false;        // 太陽に近づくとコマと尾が出る
     int style = S_GENERIC;
 };
 
@@ -193,6 +194,42 @@ inline std::vector<BodyDef> BuildSolarSystem() {
 
     v.push_back(MakeMoon("カロン", "Charon", B_PLUTO, 606.0, 1.586e21, 19591, 6.387230, 0.0,
                          KIND_ROCKY, {0.62f, 0.60f, 0.58f}, {0.40f, 0.36f, 0.34f}));
+
+    // ---- 準惑星・小惑星・彗星（衛星より後ろに置き、衛星の番号を変えない） ----
+    // 軌道要素と変化率は tools/fit_small_bodies.py で JPL Horizons の 1980〜2070 年の位置に合わせた値
+    // （行末は太陽から見た方向の最大誤差）。自転軸が分かっていないエリスとハレー彗星は黄道北極に近い向きで代用
+    static const struct { const char* en; double a, e, i, L, varpi, node, da, de, di, dL, dvarpi, dnode; } SMALL[] = {
+        {"Ceres", 2.76734676, 0.07783857, 10.593635, 160.766441, 153.247620, 80.544086,
+         -0.00007500, -0.00055623, -0.012593, 7819.405235, 1.628721, -1.476294},  // ±0.59°
+        {"Vesta", 2.36159616, 0.08954289, 7.137310, 234.427570, 254.275234, 103.951720,
+         0.00022280, -0.00051393, 0.005442, 9918.850838, 1.353349, -0.860247},  // ±0.36°
+        {"Eris", 67.81708613, 0.43784850, 44.091072, 20.381545, 187.667891, 35.915724,
+         -0.14049099, -0.00135515, 0.005773, 64.644283, -0.093700, 0.081563},  // ±0.005°
+        {"Halley", 17.87123378, 0.96704123, 162.236665, 237.311611, 171.040354, 59.046541,
+         -0.03386758, -0.00036089, -0.293216, 478.708185, 1.661520, 0.992647},  // ±0.24°
+    };
+    //                       名前                          半径    扁平率  質量
+    //                       自転軸RA  Dec   自転周期[日]
+    v.push_back(MakePlanet("ケレス", "Ceres", 482.1, 0.075, 9.384e20, 0, 0, 0, 0, 0, 0,
+                           291.42, 66.76, 0.37809,
+                           KIND_ROCKY, {0.46f, 0.45f, 0.43f}, {0.30f, 0.29f, 0.28f}));
+    v.push_back(MakePlanet("ベスタ", "Vesta", 286.3, 0.22, 2.59e20, 0, 0, 0, 0, 0, 0,
+                           309.03, 42.24, 0.22259,
+                           KIND_ROCKY, {0.66f, 0.62f, 0.56f}, {0.42f, 0.39f, 0.35f}));
+    v.push_back(MakePlanet("エリス", "Eris", 1163, 0.0, 1.647e22, 0, 0, 0, 0, 0, 0,
+                           270.0, 66.56, 15.786,
+                           KIND_ROCKY, {0.95f, 0.94f, 0.92f}, {0.78f, 0.77f, 0.76f}));
+    BodyDef halley = MakePlanet("ハレー彗星", "Halley", 5.5, 0.0, 2.2e14, 0, 0, 0, 0, 0, 0,
+                                270.0, 66.56, 2.2,
+                                KIND_ROCKY, {0.24f, 0.22f, 0.20f}, {0.12f, 0.11f, 0.10f});
+    halley.comet = true;
+    v.push_back(halley);
+    for (BodyDef& d : v)
+        for (const auto& o : SMALL)
+            if (std::strcmp(d.en, o.en) == 0) {
+                d.a_au = o.a; d.e = o.e; d.inc = o.i; d.L0 = o.L; d.varpi = o.varpi; d.node = o.node;
+                d.da = o.da; d.de = o.de; d.dinc = o.di; d.dL = o.dL; d.dvarpi = o.dvarpi; d.dnode = o.dnode;
+            }
 
     // 惑星の軌道要素の変化率 /世紀（JPL "Approximate Positions of the Planets" 表 1、1800〜2050 年で有効。
     // 冥王星は表から外れたため以前の版の値）。地球は地球と月の重心の値
