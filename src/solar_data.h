@@ -15,7 +15,7 @@ struct Col3 { float r, g, b; };
 // 表面模様の種類（シェーダの detail.x。天体ごとの特徴的な地形・模様を描き分ける）
 enum SurfaceStyle {
     S_GENERIC = 0, S_MOON, S_MERCURY, S_MARS, S_IO, S_EUROPA, S_GANYMEDE, S_CALLISTO, S_ICY, S_IAPETUS,
-    S_PLUTO, S_ENCELADUS, S_TRITON,
+    S_PLUTO, S_ENCELADUS, S_TRITON, S_MOON_TEX,
     S_JUPITER = 20, S_SATURN, S_URANUS, S_NEPTUNE, S_VENUS, S_TITAN,
     S_EARTH = 30, S_EARTH_TEX = 31, S_SUN = 40
 };

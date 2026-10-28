@@ -83,7 +83,10 @@ After building, run `cpack` in the build directory.
 | P / Backspace | Pause time / sync to current time at x1 |
 | I | Invert mouse Y |
 | J | Switch language (日本語 / English) |
-| F11 / F12 | Fullscreen / screenshot |
+| B / N | Bookmark the current spot / warp to bookmarks in turn (up to 9; position and orientation are stored relative to the rotating body) |
+| M | Sound effects on/off (engine and warp) |
+| F9 | Quality High → Low → Medium (use Low if it runs slowly: 3D at 60% resolution with less detail) |
+| F11 / F12 | Fullscreen / screenshot (saved to `SolarSystemVoyager` in your Pictures folder) |
 | Esc | Release / capture the mouse |
 | Ctrl+Q | Quit |
 
@@ -140,28 +143,32 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 
 ## How it works
 
-- **Body positions**: planets are computed from JPL J2000 mean orbital elements via Kepler's equation (accurate to a few arcminutes). Moons use circular orbits with real radii, periods and inclinations, but their phases do not match their actual positions
-- **Surfaces**: everything except Earth is generated procedurally in shaders. Finer patterns and relief (craters, mountains) appear as you get closer, so surfaces stay detailed even near the ground. Distinct features include lunar maria, Martian polar caps, Io's volcanoes, Europa's lineae, Jupiter's Great Red Spot, Saturn's north polar hexagon and Pluto's heart
+- **Body positions**: planets are computed from JPL J2000 mean orbital elements via Kepler's equation (accurate to a few arcminutes). The Moon uses a low-precision lunar ephemeris (about 0.3°), so its real position and phase are reproduced, and it always keeps the same face toward Earth. Other moons use circular orbits with real radii, periods and inclinations, but their phases do not match their actual positions
+- **Surfaces**: everything except Earth and the Moon is generated procedurally in shaders. Finer patterns and relief (craters, mountains) appear as you get closer, so surfaces stay detailed even near the ground. Distinct features include Martian polar caps, Io's volcanoes, Europa's lineae, Jupiter's Great Red Spot, Saturn's north polar hexagon and Pluto's heart
 - **Earth**: built from real NASA data — continents, coastlines, elevation (relief shading), ocean depth (shallow-water color), sea ice and city lights at night (about 10 km resolution, with finer detail filled in procedurally). Its rotation follows Greenwich sidereal time, so the regions in daylight and the lit cities at night match the PC clock. Clouds are procedural
+- **Moon**: real NASA data (LRO color and LOLA elevation, about 3–5 km resolution). Maria, craters and ray systems are where they really are; smaller craters are filled in procedurally
+- **Shadows**: solar eclipses (the Moon's shadow on Earth), lunar eclipses (a copper-red Moon), shadows of Jupiter's moons and the shadow of Saturn's rings, with umbra and penumbra from the Sun's real size
 - **Sizes**: equatorial radius and flattening (Jupiter and Saturn are visibly oblate), and Saturn's rings (C ring to A ring, Cassini Division, Encke Gap) drawn at true scale
 - **Reference frame**: the ship moves along with the body whose sphere of influence (SOI) it is in, so even at car speed you are not left behind by Earth
 - **Precision**: positions are stored as doubles and rendered relative to the camera. Each body is drawn at its own scale with its own near/far planes, so a 30 m ship and Neptune 4.5 billion km away can be rendered at the same time
 - **Minimum altitude**: because of floating-point precision, you cannot descend below 1/100,000 of a body's radius (minimum 30 m) — about 64 m on Earth
 - No physics (gravity etc.) is simulated. The ship flies arcade-style in the direction of its nose
 
-## Earth data
+## Earth and Moon data
 
-The images in `assets/` are made from NASA data by `tools/make_earth_assets.py` and embedded into the executable at build time (no files needed at run time).
+The images in `assets/` are made from NASA / NOAA data by `tools/make_earth_assets.py` and `tools/make_moon_assets.py` and embedded into the executable at build time (no files needed at run time).
 
 - Surface color: NASA Earth Observatory, Blue Marble: Next Generation (April 2004)
 - Elevation and ocean depth: NOAA NCEI, ETOPO 2022 Global Relief Model (60 arc-second, ice surface, subsampled to 5 arc-minutes)
 - City lights: NASA Earth Observatory, Black Marble 2016
+- Moon color and elevation: NASA's Scientific Visualization Studio, CGI Moon Kit (LROC WAC / LOLA)
 
-All of them may be used and redistributed freely, including commercially (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). To regenerate them: `python3 tools/make_earth_assets.py <work dir>` (requires Pillow; downloads about 50 MB).
+All of them may be used and redistributed freely, including commercially (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). To regenerate them: `python3 tools/make_earth_assets.py <work dir>` (downloads about 50 MB) and `python3 tools/make_moon_assets.py <work dir>` (about 45 MB). Both require Pillow.
 
 ## Display language (日本語 / English)
 
-- Press the **J key** at any time to switch. The chosen language is saved in `solar_voyager.cfg` next to the executable and used on the next launch (if that folder is not writable, e.g. when installed from the .deb / .rpm, it goes to `~/.config/solar_voyager/solar_voyager.cfg`)
+- Press the **J key** at any time to switch. The chosen language is saved in `solar_voyager.cfg` and used on the next launch
+- `solar_voyager.cfg` stores the language, quality, sound setting and bookmarks. It lives next to the executable (if that folder is not writable, e.g. when installed from the .deb / .rpm, in `~/.config/solar_voyager/solar_voyager.cfg`)
 - To choose at startup: `solar_voyager --lang en` (or `ja`). Priority is: command-line option > saved setting > Japanese
 
 For Japanese text, the program automatically searches for an OS Japanese font (Windows: Meiryo / Yu Gothic / MS Gothic, Linux: Noto Sans CJK / IPA, etc.).
@@ -170,4 +177,4 @@ If none is found, the display is fixed to English. A font placed at `assets/font
 ## License
 
 The program (source code, build files, tools and icon) is under the [MIT License](LICENSE).
-The Earth image data (`assets/earth_*`) is not covered by it and follows the terms of its sources. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which also lists the bundled libraries (raylib / GLFW, zlib license).
+The Earth and Moon image data (`assets/earth_*`, `assets/moon_*`) is not covered by it and follows the terms of its sources. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which also lists the bundled libraries (raylib / GLFW, zlib license).

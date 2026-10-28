@@ -28,15 +28,18 @@ in vec3 fragObj;
 in vec3 fragNormal;
 in vec3 fragWorld;
 uniform vec3 lightDir;     // ワールド空間（カメラ相対）での太陽方向
-uniform vec3 lightDirObj;  // 環の座標系での太陽方向
+uniform vec3 lightDirObj;  // 本体（自転込み）/ 環の座標系での太陽方向
+uniform vec4 occ[4];       // 影を落とす天体: xyz 中心（fragWorld と同じ座標）, w 半径（負なら大気あり）
+uniform int occN;
+uniform float sunAng;      // 太陽の視半径 rad
 uniform vec3 color1;
 uniform vec3 color2;
 uniform vec3 atmColor;
 uniform vec4 params;       // x: 種別, y: 縞の数 / 環の基準半径km, z: シード, w: 大気の強さ
 uniform vec4 detail;       // x: 表面模様の種類, y: 1 画素の大きさの係数, z: 時刻（日）, w: 雲の濃さ
 uniform mat4 matNormal;
-uniform sampler2D texture0;  // 地球: 地表の色 (Blue Marble)
-uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷
+uniform sampler2D texture0;  // 地球・月: 地表の色 (Blue Marble / LROC)
+uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷 / 月: R 標高上位, A 下位
 out vec4 finalColor;
 
 const float PI = 3.14159265;
@@ -373,6 +376,72 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     return h;
 }
 
+// 土星の環の密度（中心からの距離 km）
+float ringDensity(float rkm) {
+    if (rkm < 74658.0) return 0.0;
+    if (rkm < 92000.0) return 0.22;     // C環
+    if (rkm < 117580.0) return 0.92;    // B環
+    if (rkm < 122170.0) return 0.06;    // カッシーニの間隙
+    if (rkm < 133423.0) return 0.62;    // A環
+    if (rkm < 133745.0) return 0.0;     // エンケの間隙
+    if (rkm < 136775.0) return 0.55;    // A環外側
+    return 0.0;
+}
+
+// 他の天体の影（日食・月食・衛星の影）。太陽の視半径を考えて本影と半影を分ける
+// red: 大気のある天体の本影の深さ（月食の赤銅色に使う）
+float occShadow(vec3 P, vec3 L, out float red) {
+    float lit = 1.0;
+    red = 0.0;
+    for (int i = 0; i < occN; i++) {
+        vec3 v = occ[i].xyz - P;
+        float t = dot(v, L);
+        if (t <= 0.0) continue;
+        float sep = length(v - L * t) / t;   // 太陽の中心と天体の中心の角距離
+        float ao = abs(occ[i].w) / t;        // 天体の視半径
+        float cover = min(1.0, ao * ao / (sunAng * sunAng));
+        float k = smoothstep(abs(ao - sunAng), ao + sunAng, sep);
+        lit *= mix(1.0 - cover, 1.0, k);
+        if (occ[i].w < 0.0) red = max(red, (1.0 - k) * cover);
+    }
+    return lit;
+}
+
+// 実データの月。色は LROC、標高は LOLA。テクスチャより細かいクレーターは手続きで補う
+float moonHeightM(vec4 t) { return (t.r * 255.0 * 256.0 + t.a * 255.0) * 0.5 - 10000.0; }
+
+vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
+    g_ray = 0.0;
+    // 本体座標: X 軸が経度 0°（地球を向く側）、Y 軸が北極、東経は -Z 方向
+    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lon = atan(-p.z, p.x);
+    vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
+    vec2 dx = dFdx(uv), dy = dFdy(uv);
+    dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
+    vec3 tc = pow(textureGrad(texture0, uv, dx, dy).rgb, vec3(1.3)) * 1.25;   // 海と高地の明暗差を少し強調
+
+    vec2 texel = vec2(1.0 / 2048.0, 1.0 / 1024.0);
+    vec2 st = max(texel, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
+    float hE = moonHeightM(textureGrad(texture1, uv + vec2(st.x, 0.0), dx, dy));
+    float hW = moonHeightM(textureGrad(texture1, uv - vec2(st.x, 0.0), dx, dy));
+    float hN = moonHeightM(textureGrad(texture1, uv - vec2(0.0, st.y), dx, dy));
+    float hS = moonHeightM(textureGrad(texture1, uv + vec2(0.0, st.y), dx, dy));
+    float hm = moonHeightM(textureGrad(texture1, uv, dx, dy));
+    const float R = 1737400.0, EXAG = 1.5;
+    float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R * EXAG;
+    float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R * EXAG;
+    vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
+    vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
+    vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
+
+    // 海（暗い所）はクレーターが少なく平ら
+    float dark = 1.0 - smoothstep(0.12, 0.3, dot(tc, vec3(0.333)));
+    vec4 C = craters(p, mix(0.55, 0.2, dark), 260.0, o * 0.37);
+    vec4 T = fbmD(p, 600.0, 20, 0.48, o) * (mix(0.004, 0.0015, dark) / 260.0);
+    base = tc * (0.92 + 0.16 * (fbmL(p, 900.0, 16, 0.5, o + 5.0) * 0.5 + 0.5)) * (1.0 + g_ray * 0.35);
+    return vec4(hm / R * EXAG, grad) + C + T;
+}
+
 // base: 地表の色, specMask: 海の反射, lights: 夜景, 戻り値: 高さと勾配
 vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out float lights, out float cloud) {
     vec4 e = fbmD(p, 1.6, 28, 0.5, o);
@@ -445,14 +514,7 @@ void main() {
 
     if (kind == 4) {   // 環
         float rkm = length(fragObj.xz) * params.y;
-        float d = 0.0;
-        if (rkm < 74658.0) d = 0.0;
-        else if (rkm < 92000.0) d = 0.22;        // C環
-        else if (rkm < 117580.0) d = 0.92;       // B環
-        else if (rkm < 122170.0) d = 0.06;       // カッシーニの間隙
-        else if (rkm < 133423.0) d = 0.62;       // A環
-        else if (rkm < 133745.0) d = 0.0;        // エンケの間隙
-        else if (rkm < 136775.0) d = 0.55;       // A環外側
+        float d = ringDensity(rkm);
         fw = length(fragWorld) * detail.y;
         // 細い環の筋（近づくほど細かく）
         float ringlets = 0.0, a = 0.5, f = 0.004;
@@ -489,10 +551,19 @@ void main() {
 
     vec3 L = normalize(lightDir);
     float ndlG = dot(Ng, L);
+    float eclRed;
+    float sh = occShadow(fragWorld, L, eclRed);
+    if (style == 21) {   // 土星: 環の影
+        vec3 Lo = normalize(lightDirObj);
+        if (abs(Lo.y) > 1e-4 && p.y * Lo.y < 0.0) {
+            vec3 q = p - Lo * (p.y / Lo.y);
+            sh *= 1.0 - 0.85 * clamp(ringDensity(length(q.xz) * 60268.0), 0.0, 1.0);
+        }
+    }
     vec3 base;
     vec4 hgt = vec4(0.0);
     float specMask = 0.0, lights = 0.0, cloud = 0.0;
-    if (kind == 1) hgt = rocky(p, style, o, base);
+    if (kind == 1) hgt = style == 13 ? moonTex(p, o, base) : rocky(p, style, o, base);
     else if (kind == 2) base = gas(p, style, o);
     else if (style == 31) hgt = earthTex(p, o, ndlG, base, specMask, lights, cloud);
     else hgt = earth(p, o, ndlG, base, specMask, lights, cloud);
@@ -502,7 +573,7 @@ void main() {
     vec3 n0 = normalize(mat3(matNormal) * p);
     vec3 nb = normalize(mat3(matNormal) * normalize(p - gt));
     vec3 N = normalize(Ng + (nb - n0));
-    float ndl = max(dot(N, L), 0.0) * smoothstep(-0.06, 0.02, ndlG);
+    float ndl = max(dot(N, L), 0.0) * smoothstep(-0.06, 0.02, ndlG) * sh;
     float muN = max(dot(N, V), 0.05);
 
     vec3 col;
@@ -519,13 +590,15 @@ void main() {
     if (kind == 3) {
         vec3 H = normalize(L + V);
         float nh = max(dot(N, H), 0.0);
-        col += vec3(1.0, 0.96, 0.88) * specMask * (pow(nh, 90.0) * 0.6 + pow(nh, 12.0) * 0.04) * step(0.0, ndlG);
+        col += vec3(1.0, 0.96, 0.88) * specMask * (pow(nh, 90.0) * 0.6 + pow(nh, 12.0) * 0.04) * step(0.0, ndlG) * sh;
         col += vec3(1.0, 0.72, 0.38) * lights * 1.4 * (1.0 - smoothstep(-0.18, 0.02, ndlG)) * (1.0 - cloud);
-        float cl = max(ndlG, 0.0) * 1.0 + 0.01;
+        float cl = max(ndlG, 0.0) * sh + 0.01;
         col = mix(col, vec3(cl), cloud * 0.92);
         col = mix(col, atmColor * max(ndlG, 0.0), 0.12 * (1.0 - mu) * params.w);   // 大気による青み
     }
 
+    // 月食: 地球の大気で曲げられた赤い光がわずかに届く
+    col += base * vec3(0.16, 0.05, 0.02) * eclRed * max(ndlG, 0.0);
     float rim = pow(1.0 - mu, 3.0) * params.w;
     col += atmColor * rim * clamp(ndlG + 0.25, 0.0, 1.0);
     finalColor = vec4(col, 1.0);

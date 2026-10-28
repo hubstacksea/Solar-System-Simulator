@@ -22,8 +22,12 @@
 
 INCBIN(g_earth_color_jpg, "earth_color.jpg")
 INCBIN(g_earth_data_png, "earth_data.png")
+INCBIN(g_moon_color_jpg, "moon_color.jpg")
+INCBIN(g_moon_data_png, "moon_data.png")
 INCBIN(g_icon_png, "icon.png")
 
 EmbeddedFile EarthColorJpg() { return {g_earth_color_jpg, (size_t)(g_earth_color_jpg_end - g_earth_color_jpg)}; }
 EmbeddedFile EarthDataPng() { return {g_earth_data_png, (size_t)(g_earth_data_png_end - g_earth_data_png)}; }
+EmbeddedFile MoonColorJpg() { return {g_moon_color_jpg, (size_t)(g_moon_color_jpg_end - g_moon_color_jpg)}; }
+EmbeddedFile MoonDataPng() { return {g_moon_data_png, (size_t)(g_moon_data_png_end - g_moon_data_png)}; }
 EmbeddedFile IconPng() { return {g_icon_png, (size_t)(g_icon_png_end - g_icon_png)}; }

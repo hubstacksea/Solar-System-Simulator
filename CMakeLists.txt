@@ -27,24 +27,26 @@ if(NOT raylib_FOUND)
   FetchContent_MakeAvailable(raylib)
 endif()
 
-add_executable(solar_voyager src/main.cpp src/embedded_assets.cpp)
+add_executable(solar_voyager src/main.cpp src/embedded_assets.cpp src/platform_paths.cpp)
 if(WIN32)
   # exe のファイルアイコンとバージョン情報
   enable_language(RC)
   set(ICON_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.ico")
+  set(MANIFEST_PATH "${CMAKE_CURRENT_SOURCE_DIR}/packaging/solar_voyager.manifest")
   configure_file(packaging/solar_voyager.rc "${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc" @ONLY)
   target_sources(solar_voyager PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc")
-  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc" PROPERTIES OBJECT_DEPENDS "${ICON_PATH}")
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc" PROPERTIES OBJECT_DEPENDS "${ICON_PATH};${MANIFEST_PATH}")
 endif()
 # assets/ の地球データを実行ファイルに埋め込む
 target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set_source_files_properties(src/embedded_assets.cpp PROPERTIES
-  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png")
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png")
 target_link_libraries(solar_voyager PRIVATE raylib)
 
 if(MINGW)
   # DLL 不要の単体 exe にする
   target_link_options(solar_voyager PRIVATE -static -static-libgcc -static-libstdc++)
+  target_link_libraries(solar_voyager PRIVATE shell32 ole32)   # ピクチャフォルダの取得
   option(SOLAR_CONSOLE "Windows でコンソールウィンドウを表示する" OFF)
   if(NOT SOLAR_CONSOLE)
     set_target_properties(solar_voyager PROPERTIES WIN32_EXECUTABLE TRUE)

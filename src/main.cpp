@@ -24,9 +24,11 @@
 
 #include "embedded_assets.h"
 #include "font_loader.h"
+#include "platform_paths.h"
 #include "shaders.h"
 #include "ship_model.h"
 #include "solar_data.h"
+#include "sound.h"
 
 #ifdef _WIN32
 #define SIM_GLAPI __stdcall
@@ -121,11 +123,11 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP5, "Tab / Shift+Tab : ターゲット切替", "Tab / Shift+Tab : cycle target")           \
     X(HELP6, "F : 機首を向ける    T : 自動操縦    Shift+T : 自動操縦(エンジン自動選択)", "F : face target    T : autopilot    Shift+T : autopilot (auto engine)") \
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
-    X(HELP8, "右クリック(押している間) : ズーム", "Right mouse (hold) : zoom")               \
+    X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー", "V : view    O : orbits    L : moon markers") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
-    X(HELP11, "I : マウス上下反転    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    F11 : fullscreen    F12 : screenshot") \
-    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    Ctrl+Q : quit") \
+    X(HELP11, "I : マウス上下反転    M : 効果音    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    F11 : fullscreen    F12 : screenshot") \
+    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
@@ -143,6 +145,17 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(AP_AVOID, "回避中", "avoiding") \
     X(AP_REMAIN, "残り", "remaining") \
     X(LANG_SET, "言語: 日本語", "Language: English") \
+    X(BM_SAVED, "ブックマーク %d を保存: %s", "Bookmark %d saved: %s") \
+    X(BM_GO, "ブックマーク %d へワープ: %s", "Warp to bookmark %d: %s") \
+    X(BM_NONE, "ブックマークがありません（B キーで保存）", "No bookmarks (press B to save)") \
+    X(SOUND_ON, "効果音: オン", "Sound: on") \
+    X(SOUND_OFF, "効果音: オフ", "Sound: off") \
+    X(SHOT_SAVED, "保存しました: ピクチャ/", "Saved: Pictures/") \
+    X(SHOT_SAVED_CWD, "保存しました: ", "Saved: ") \
+    X(SHOT_FAILED, "保存できませんでした: ", "Could not save: ") \
+    X(QUALITY_0, "画質: 低（解像度 60%・細部を省略）", "Quality: Low (60% resolution, less detail)") \
+    X(QUALITY_1, "画質: 中（細部を省略）", "Quality: Medium (less detail)") \
+    X(QUALITY_2, "画質: 高", "Quality: High") \
     X(LANG_NO_FONT, "日本語フォントが見つかりません", "Japanese font not found") \
     X(PAD_ON, "コントローラ接続", "Controller connected") \
     X(PAD_OFF, "コントローラ切断", "Controller disconnected")
@@ -200,6 +213,7 @@ struct Body {
     double soi = 1e300;   // 基準系切替に使う影響圏半径
     double outer = 0;     // 描画上の最大半径（環を含む）
     std::vector<V3> orbit;  // 母天体相対の軌道点
+    double orbitT = -1e9;   // 軌道線を計算した時刻（月）
 };
 
 static V3 PlanetOrbitPoint(const BodyDef& d, double E) {
@@ -219,6 +233,23 @@ static V3 PlanetPos(const BodyDef& d, double tDays) {
     double E = M + d.e * std::sin(M);
     for (int i = 0; i < 8; i++) E -= (E - d.e * std::sin(E) - M) / (1 - d.e * std::cos(E));
     return PlanetOrbitPoint(d, E);
+}
+
+// 月の地心位置 km（J2000 黄道系→描画座標）。Astronomical Almanac の簡易式（精度 約 0.3°）
+static V3 MoonGeoPos(double tDays) {
+    double T = tDays / 36525.0;
+    auto sd = [](double deg) { return std::sin(deg * DEG); };
+    auto cd = [](double deg) { return std::cos(deg * DEG); };
+    double lam = 218.32 + 481267.881 * T + 6.29 * sd(135.0 + 477198.87 * T) - 1.27 * sd(259.3 - 413335.36 * T) +
+                 0.66 * sd(235.7 + 890534.22 * T) + 0.21 * sd(269.9 + 954397.74 * T) -
+                 0.19 * sd(357.5 + 35999.05 * T) - 0.11 * sd(186.5 + 966404.03 * T);
+    double bet = 5.13 * sd(93.3 + 483202.02 * T) + 0.28 * sd(228.2 + 960400.89 * T) -
+                 0.28 * sd(318.3 + 6003.15 * T) - 0.17 * sd(217.6 - 407332.21 * T);
+    double par = 0.9508 + 0.0518 * cd(135.0 + 477198.87 * T) + 0.0095 * cd(259.3 - 413335.36 * T) +
+                 0.0078 * cd(235.7 + 890534.22 * T) + 0.0028 * cd(269.9 + 954397.74 * T);
+    lam -= 1.396971 * T;  // 日付の分点 → J2000 分点（歳差）
+    double r = 6378.137 / sd(par);
+    return EclToRender(r * cd(bet) * cd(lam), r * cd(bet) * sd(lam), r * sd(bet));
 }
 
 static void EquatorBasis(V3 pole, V3* e1, V3* e2) {
@@ -271,12 +302,25 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
             b.pos = V3();
         } else if (d.parent == 0) {
             b.pos = PlanetPos(d, t);
+        } else if (&b == &B[B_MOON]) {
+            b.pos = B[d.parent].pos + MoonGeoPos(t);
+            // 軌道線は 1 日ごとに、今から 1 公転分の実際の経路で引き直す
+            if (std::fabs(t - b.orbitT) > 1.0) {
+                b.orbitT = t;
+                for (size_t k = 0; k < b.orbit.size(); k++)
+                    b.orbit[k] = MoonGeoPos(t + d.moonPeriod * k / (b.orbit.size() - 1));
+            }
         } else {
             double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
             b.pos = B[d.parent].pos + (b.oN * std::cos(th) + b.oQ * std::sin(th)) * d.moonA;
         }
         double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
         b.spin = std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
+        if (&b == &B[B_MOON]) {
+            // 自転は公転と同期: 経度 0°（本体 X 軸）を常に地球へ向ける
+            V3 u = B[d.parent].pos - b.pos;
+            b.spin = std::atan2(-Dot(u, b.ez), Dot(u, b.ex));
+        }
     }
 }
 
@@ -285,6 +329,12 @@ static double SurfaceRadius(const Body& b, V3 dir) {
     double a = b.d.radius, c = a * (1 - b.d.flattening);
     double y = Dot(dir, b.pole);
     return 1.0 / std::sqrt((1 - y * y) / (a * a) + y * y / (c * c));
+}
+// 点 p（ワールド座標）から楕円体表面までの距離（高度）
+static double SurfaceDist(const Body& b, V3 p) {
+    V3 rel = p - b.pos;
+    double d = Len(rel);
+    return d > 0 ? d - SurfaceRadius(b, rel * (1.0 / d)) : -b.d.radius;
 }
 static double MinAltitude(const Body& b) { return std::max(0.03, b.d.radius * 1e-5); }
 
@@ -570,12 +620,13 @@ static void DrawExhaust(const Ship& s, double glow) {
 }
 
 // 実際のフレームバッファサイズで保存する（raylib の TakeScreenshot は DPI スケール時に範囲がずれる）
-static void SaveScreenshot(const char* path) {
+static bool SaveScreenshot(const char* path) {
     rlDrawRenderBatchActive();
     int w = GetRenderWidth(), h = GetRenderHeight();
     Image img = {rlReadScreenPixels(w, h), w, h, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
-    ExportImage(img, path);
+    bool ok = ExportImage(img, path);
     UnloadImage(img);
+    return ok;
 }
 
 // ---------------------------------------------------------------- 設定ファイル（表示言語）
@@ -599,20 +650,47 @@ static std::string ConfigPath() {
 #endif
 }
 
-// 保存されている言語。未設定なら空文字
-static std::string LoadLanguageSetting() {
+// 設定は "キー=値" の行で保存する（lang, quality, ブックマーク bm1〜bm9）
+static std::vector<std::pair<std::string, std::string>> g_cfg;
+
+static void LoadSettings() {
+    g_cfg.clear();
     std::string path = ConfigPath();
-    if (!FileExists(path.c_str())) return "";
+    if (!FileExists(path.c_str())) return;
     char* text = LoadFileText(path.c_str());
-    if (!text) return "";
-    std::string t = text, lang;
+    if (!text) return;
+    std::string t = text;
     UnloadFileText(text);
-    size_t p = t.find("lang=");
-    if (p != std::string::npos) lang = t.substr(p + 5, 2);
-    return lang;
+    size_t pos = 0;
+    while (pos < t.size()) {
+        size_t e = t.find('\n', pos);
+        if (e == std::string::npos) e = t.size();
+        std::string line = t.substr(pos, e - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        size_t eq = line.find('=');
+        if (eq != std::string::npos) g_cfg.push_back({line.substr(0, eq), line.substr(eq + 1)});
+        pos = e + 1;
+    }
 }
-static void SaveLanguageSetting() {
-    std::string body = std::string("lang=") + (g_jp ? "ja" : "en") + "\n";
+// 未設定なら空文字
+static std::string GetSetting(const std::string& key) {
+    for (auto& kv : g_cfg)
+        if (kv.first == key) return kv.second;
+    return "";
+}
+// 空文字ならキーを消す
+static void SetSetting(const std::string& key, const std::string& value) {
+    for (size_t i = 0; i < g_cfg.size(); i++)
+        if (g_cfg[i].first == key) {
+            if (value.empty()) g_cfg.erase(g_cfg.begin() + i);
+            else g_cfg[i].second = value;
+            return;
+        }
+    if (!value.empty()) g_cfg.push_back({key, value});
+}
+static void SaveSettings() {
+    std::string body;
+    for (auto& kv : g_cfg) body += kv.first + "=" + kv.second + "\n";
     SaveFileText(ConfigPath().c_str(), (char*)body.c_str());
 }
 
@@ -635,8 +713,11 @@ struct Options {
     int engine = -1;
     double throttleSec = 0;
     double warpAnimAt = -1;  // 指定秒にワープ演出を開始（確認用）
+    bool saveBookmark = false;  // 起動直後の位置をブックマーク（確認用）
+    int gotoBookmark = -1;      // 1 秒後にブックマークへワープ（確認用、1〜）
     double timeScale = 1;
     const char* lang = nullptr;  // "ja" / "en"
+    int quality = -1;            // 0〜2（確認用）
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -648,6 +729,8 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--target") o.target = atoi(next());
         else if (a == "--warp") o.warp = true;
         else if (a == "--warp-anim") o.warpAnimAt = atof(next());
+        else if (a == "--save-bookmark") o.saveBookmark = true;
+        else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
         else if (a == "--autopilot") o.autopilot = true;
@@ -661,6 +744,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--throttle") o.throttleSec = atof(next());
         else if (a == "--timescale") o.timeScale = atof(next());
         else if (a == "--lang") o.lang = next();
+        else if (a == "--quality") o.quality = atoi(next());
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
@@ -693,6 +777,8 @@ struct App {
     double warpT = -1;      // 演出開始からの実時間 秒（-1: 停止中）
     int warpTarget = 0;
     bool warpLand = false, warpJumped = false;
+    int warpBookmark = -1;                // ブックマークへのワープ中はその番号
+    int nextBookmark = 0;                 // N キーで次に向かうブックマーク
     double warpPhase = 0;   // 光の筋の流れ（強さに応じて進む）
     Mesh sphere{}, ring{};
     Mesh shipMesh{};
@@ -703,7 +789,12 @@ struct App {
     Shader shader{};
     Texture2D earthColor{}, earthData{};  // 地球の実データ（読めなければ手続き生成で描く）
     bool earthTex = false;
+    Texture2D moonColor{}, moonData{};    // 月の実データ
+    bool moonTex = false;
+    int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
+    RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
+    int locOcc = -1, locOccN = -1, locSunAng = -1;
     std::vector<Vector3> dust;
     double glow = 0;
     double camYaw = NAN, camPitch = 0, camDist = 60;
@@ -781,6 +872,100 @@ static void PlaceAt(App& app, int ti, double lat, double lon, double altKm) {
     UpdateReferenceFrame(app);
 }
 
+// ---------------------------------------------------------------- ブックマーク
+// 天体に固定した座標（自転と一緒に回る）で位置と向きを保存する。設定ファイルの bm1〜bm9
+// 形式: 天体の英語名,位置 xyz km,機首 xyz,上 xyz
+static const int MAX_BOOKMARKS = 9;
+
+static void BodyFixedAxes(const Body& b, V3* X, V3* Z) {
+    double cs = std::cos(b.spin), sn = std::sin(b.spin);
+    *X = b.ex * cs - b.ez * sn;
+    *Z = b.ex * sn + b.ez * cs;
+}
+
+struct Bookmark {
+    int body = -1;
+    V3 pos, fwd, up;   // 天体固定座標
+};
+
+static bool ParseBookmark(const App& app, const std::string& v, Bookmark* bm) {
+    size_t c = v.find(',');
+    if (c == std::string::npos) return false;
+    std::string name = v.substr(0, c);
+    for (size_t i = 0; i < app.B.size(); i++)
+        if (name == app.B[i].d.en) bm->body = (int)i;
+    double a[9];
+    if (bm->body < 0 || sscanf(v.c_str() + c + 1, "%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &a[0], &a[1], &a[2], &a[3], &a[4], &a[5],
+                               &a[6], &a[7], &a[8]) != 9)
+        return false;
+    bm->pos = V3(a[0], a[1], a[2]);
+    bm->fwd = V3(a[3], a[4], a[5]);
+    bm->up = V3(a[6], a[7], a[8]);
+    return true;
+}
+
+static std::vector<Bookmark> LoadBookmarks(const App& app) {
+    std::vector<Bookmark> v;
+    for (int i = 1; i <= MAX_BOOKMARKS; i++) {
+        Bookmark bm;
+        if (ParseBookmark(app, GetSetting("bm" + std::to_string(i)), &bm)) v.push_back(bm);
+    }
+    return v;
+}
+
+static std::string BookmarkLabel(const App& app, const Bookmark& bm) {
+    const Body& b = app.B[bm.body];
+    double r = Len(bm.pos);
+    V3 dir = bm.pos * (1.0 / r);
+    double alt = r - SurfaceRadius(b, b.ex * dir.x + b.pole * dir.y + b.ez * dir.z);  // 楕円体は自転に依らない
+    char buf[160];
+    snprintf(buf, sizeof buf, "%s  %s %.1f°  %s %.1f°  %s", TR(b.d.jp, b.d.en), dir.y >= 0 ? "N" : "S",
+             std::fabs(std::asin(std::max(-1.0, std::min(1.0, dir.y))) / DEG), std::atan2(-dir.z, dir.x) >= 0 ? "E" : "W",
+             std::fabs(std::atan2(-dir.z, dir.x) / DEG), FmtDist(std::max(0.0, alt)).c_str());
+    return buf;
+}
+
+static void SaveBookmark(App& app) {
+    std::vector<Bookmark> v = LoadBookmarks(app);
+    const Body& b = app.B[app.ship.ref];
+    V3 X, Z;
+    BodyFixedAxes(b, &X, &Z);
+    auto toFixed = [&](V3 w) { return V3(Dot(w, X), Dot(w, b.pole), Dot(w, Z)); };
+    Bookmark bm{app.ship.ref, toFixed(app.ship.local), toFixed(ShipFwd(app.ship)), toFixed(ShipUp(app.ship))};
+    if ((int)v.size() >= MAX_BOOKMARKS) v.erase(v.begin());   // いっぱいなら一番古いものを消す
+    v.push_back(bm);
+    for (int i = 1; i <= MAX_BOOKMARKS; i++) {
+        std::string val;
+        if (i <= (int)v.size()) {
+            const Bookmark& m = v[i - 1];
+            char buf[400];
+            snprintf(buf, sizeof buf, "%s,%.6f,%.6f,%.6f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f", app.B[m.body].d.en, m.pos.x, m.pos.y, m.pos.z,
+                     m.fwd.x, m.fwd.y, m.fwd.z, m.up.x, m.up.y, m.up.z);
+            val = buf;
+        }
+        SetSetting("bm" + std::to_string(i), val);
+    }
+    SaveSettings();
+    app.nextBookmark = 0;
+    char msg[256];
+    snprintf(msg, sizeof msg, T(UI_BM_SAVED), (int)v.size(), BookmarkLabel(app, bm).c_str());
+    Toast(app, msg);
+}
+
+// ワープの瞬間に呼ぶ: ブックマークの位置・向きへ移す
+static void ApplyBookmark(App& app, const Bookmark& bm) {
+    const Body& b = app.B[bm.body];
+    V3 X, Z;
+    BodyFixedAxes(b, &X, &Z);
+    auto toWorld = [&](V3 f) { return X * f.x + b.pole * f.y + Z * f.z; };
+    app.ship.ref = bm.body;
+    app.ship.speed = 0;
+    app.ship.local = toWorld(bm.pos);
+    app.ship.q = QuatFromBasis(toWorld(bm.fwd), toWorld(bm.up));
+    app.target = bm.body;
+    UpdateReferenceFrame(app);
+}
+
 static void FaceTarget(App& app) {
     V3 d = app.B[app.target].pos - ShipWorld(app);
     app.ship.q = QuatFromBasis(d, ShipUp(app.ship));
@@ -792,6 +977,7 @@ static const double WARP_CHARGE = 0.9, WARP_ARRIVE = 0.8;  // 実時間 秒
 
 static void StartWarp(App& app, int ti, bool land) {
     if (app.warpT >= 0) return;
+    sfx::Warp();
     app.warpT = 0;
     app.warpTarget = ti;
     app.warpLand = land;
@@ -826,7 +1012,10 @@ static void UpdateWarp(App& app, double dt) {
         TurnToward(app.ship, d, 3.0 * dt);
         app.ship.thrusting = true;
         if (app.warpT >= WARP_CHARGE) {
-            WarpTo(app, app.warpTarget, app.warpLand);
+            std::vector<Bookmark> bms = app.warpBookmark >= 0 ? LoadBookmarks(app) : std::vector<Bookmark>();
+            if (app.warpBookmark >= 0 && app.warpBookmark < (int)bms.size()) ApplyBookmark(app, bms[app.warpBookmark]);
+            else WarpTo(app, app.warpTarget, app.warpLand);
+            app.warpBookmark = -1;
             app.warpJumped = true;
         }
     } else if (app.warpT >= WARP_CHARGE + WARP_ARRIVE) {
@@ -1020,9 +1209,37 @@ static void HandleInput(App& app, double dt) {
             Toast(app, T(UI_LANG_NO_FONT));
         } else {
             SetLanguage(!g_jp);
-            SaveLanguageSetting();
+            SetSetting("lang", g_jp ? "ja" : "en");
+            SaveSettings();
             Toast(app, T(UI_LANG_SET));
         }
+    }
+    if (IsKeyPressed(KEY_M)) {
+        sfx::SetMuted(!sfx::g.muted);
+        SetSetting("sound", sfx::g.muted ? "0" : "1");
+        SaveSettings();
+        Toast(app, T(sfx::g.muted ? UI_SOUND_OFF : UI_SOUND_ON));
+    }
+    if (IsKeyPressed(KEY_B)) SaveBookmark(app);
+    if (IsKeyPressed(KEY_N) && app.warpT < 0) {
+        std::vector<Bookmark> bms = LoadBookmarks(app);
+        if (bms.empty()) {
+            Toast(app, T(UI_BM_NONE));
+        } else {
+            int i = app.nextBookmark % (int)bms.size();
+            app.nextBookmark = i + 1;
+            StartWarp(app, bms[i].body, false);
+            app.warpBookmark = i;
+            char msg[256];
+            snprintf(msg, sizeof msg, T(UI_BM_GO), i + 1, BookmarkLabel(app, bms[i]).c_str());
+            Toast(app, msg);
+        }
+    }
+    if (IsKeyPressed(KEY_F9)) {
+        app.quality = (app.quality + 1) % 3;
+        SetSetting("quality", std::to_string(app.quality));
+        SaveSettings();
+        Toast(app, T((UiId)(UI_QUALITY_0 + app.quality)));
     }
     if (IsKeyPressed(KEY_I)) { app.invertY = !app.invertY; Toast(app, T(app.invertY ? UI_INVERT_ON : UI_INVERT_OFF)); }
     if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
@@ -1250,9 +1467,55 @@ static void LoadEarthTextures(App& app) {
         TraceLog(LOG_WARNING, "Earth textures unavailable, using procedural surface");
         return;
     }
-    // シェーダの texture0 / texture1 に割り当てる（地球以外の天体では使わない）
-    app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.earthColor;
-    app.mat.maps[MATERIAL_MAP_SPECULAR].texture = app.earthData;
+}
+
+static void LoadMoonTextures(App& app) {
+    app.moonColor = LoadEmbeddedTexture(MoonColorJpg(), ".jpg");
+    app.moonData = LoadEmbeddedTexture(MoonDataPng(), ".png");
+    app.moonTex = app.moonColor.id && app.moonData.id;
+    if (!app.moonTex) TraceLog(LOG_WARNING, "Moon textures unavailable, using procedural surface");
+}
+
+// 画質ごとの描画解像度と模様の細かさ（1 画素の大きさに掛ける。大きいほど細部を省いて軽くなる）
+static const float QUALITY_SCALE[3] = {0.6f, 1.0f, 1.0f};
+static const float QUALITY_DETAIL[3] = {2.5f, 1.8f, 1.0f};
+
+// 天体 i に影を落としうる天体（母天体・兄弟の衛星・自分の衛星）を最大 4 つシェーダへ渡す
+static void SetOccluders(App& app, int i, double s) {
+    const Body& b = app.B[i];
+    float data[16] = {0};
+    int n = 0;
+    if (i != B_SUN) {
+        V3 L = Norm(app.B[B_SUN].pos - b.pos);
+        double sunAng = app.B[B_SUN].d.radius / Len(app.B[B_SUN].pos - b.pos);
+        struct Cand { int j; double k; };
+        std::vector<Cand> cands;
+        for (size_t j = 1; j < app.B.size(); j++) {
+            const Body& o = app.B[j];
+            if ((int)j == i) continue;
+            bool related = o.d.parent == i || (b.d.parent > 0 && ((int)j == b.d.parent || o.d.parent == b.d.parent));
+            if (!related) continue;
+            V3 v = o.pos - b.pos;
+            double t = Dot(v, L);
+            if (t <= 0) continue;
+            double perp = Len(v - L * t), reach = o.d.radius + b.outer + t * sunAng;
+            if (perp < reach) cands.push_back({(int)j, perp / reach});
+        }
+        std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& c) { return a.k < c.k; });
+        for (const Cand& cd : cands) {
+            if (n == 4) break;
+            const Body& o = app.B[cd.j];
+            V3 cp = (o.pos - app.cam.pos) * s;
+            bool atm = o.d.kind == KIND_EARTH;   // 大気で赤い光が回り込む（月食）
+            data[n * 4 + 0] = (float)cp.x; data[n * 4 + 1] = (float)cp.y; data[n * 4 + 2] = (float)cp.z;
+            data[n * 4 + 3] = (float)(o.d.radius * s) * (atm ? -1.0f : 1.0f);
+            n++;
+        }
+        float sa = (float)sunAng;
+        SetShaderValue(app.shader, app.locSunAng, &sa, SHADER_UNIFORM_FLOAT);
+    }
+    if (n > 0) SetShaderValueV(app.shader, app.locOcc, data, SHADER_UNIFORM_VEC4, n);
+    SetShaderValue(app.shader, app.locOccN, &n, SHADER_UNIFORM_INT);
 }
 
 static void DrawBodies(App& app) {
@@ -1291,15 +1554,32 @@ static void DrawBodies(App& app) {
         float atmK = (float)std::min(1.0, std::max(0.0, alt / (d.radius * 0.05)));
         float params[4] = {(float)d.kind, d.bands, (float)(it.i * 7.31), d.atmStrength * atmK};
         SetShaderValue(app.shader, app.locLight, &lf, SHADER_UNIFORM_VEC3);
-        SetShaderValue(app.shader, app.locLightObj, &lo, SHADER_UNIFORM_VEC3);
+        // 本体の描画では自転込みの座標系での太陽方向（環の影に使う）
+        {
+            double cw = std::cos(b.spin), sw = std::sin(b.spin);
+            V3 X = b.ex * cw - b.ez * sw, Z = b.ex * sw + b.ez * cw;
+            Vector3 ls = ToF(V3(Dot(L, X), Dot(L, b.pole), Dot(L, Z)));
+            SetShaderValue(app.shader, app.locLightObj, &ls, SHADER_UNIFORM_VEC3);
+        }
+        SetOccluders(app, it.i, s);
         SetShaderValue(app.shader, app.locC1, &c1, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locAtm, &atm, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locParams, params, SHADER_UNIFORM_VEC4);
         // 模様の細かさは 1 画素の大きさで決める。地球の雲は高度 10〜35 km で消える（地表付近で地面が白く覆われないように）
         float cloudK = (float)std::min(1.0, std::max(0.0, (alt - d.radius * 0.0015) / (d.radius * 0.004)));
-        int style = (d.style == S_EARTH && app.earthTex) ? S_EARTH_TEX : d.style;
-        float detail[4] = {(float)style, (float)(1.0 / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
+        int style = d.style;
+        // 実データのある天体はシェーダの texture0 / texture1 に割り当てる
+        if (d.style == S_EARTH && app.earthTex) {
+            style = S_EARTH_TEX;
+            app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.earthColor;
+            app.mat.maps[MATERIAL_MAP_SPECULAR].texture = app.earthData;
+        } else if (d.style == S_MOON && app.moonTex) {
+            style = S_MOON_TEX;
+            app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.moonColor;
+            app.mat.maps[MATERIAL_MAP_SPECULAR].texture = app.moonData;
+        }
+        float detail[4] = {(float)style, (float)(QUALITY_DETAIL[app.quality] / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
         SetShaderValue(app.shader, app.locDetail, detail, SHADER_UNIFORM_VEC4);
         DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
 
@@ -1309,6 +1589,7 @@ static void DrawBodies(App& app) {
             SetShaderValue(app.shader, app.locC1, &rc1, SHADER_UNIFORM_VEC3);
             SetShaderValue(app.shader, app.locC2, &rc2, SHADER_UNIFORM_VEC3);
             SetShaderValue(app.shader, app.locParams, rp, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locLightObj, &lo, SHADER_UNIFORM_VEC3);
             rlDisableBackfaceCulling();
             DrawMesh(app.ring, app.mat, BodyMatrix(b, rel * s, d.radius * s, d.radius * s, 0));
             rlEnableBackfaceCulling();
@@ -1475,7 +1756,7 @@ static void DrawMarker(const App& app, int idx) {
     const Body& b = app.B[idx];
     V3 rel = b.pos - c.pos;
     double dist = Len(rel);
-    double surf = dist - b.d.radius;
+    double surf = SurfaceDist(b, c.pos);
     bool isTarget = idx == app.target;
     Color col = isTarget ? Color{255, 220, 80, 255} : BodyColor(b, 1.1f);
     std::string label = std::string(TR(b.d.jp, b.d.en)) + "  " + FmtDist(std::max(0.0, surf));
@@ -1815,7 +2096,7 @@ static void DrawHUD(App& app) {
 
     // 右上: ターゲット情報
     const Body& tb = app.B[app.target];
-    double tdist = std::max(0.0, Len(tb.pos - sw) - tb.d.radius);
+    double tdist = std::max(0.0, SurfaceDist(tb, sw));
     float pw = 380, px = c.W - pw - 6;
     double scale = TIME_SCALES[app.timeIdx];
     // 時間倍率をかけている時は、実際に待つ時間も併記
@@ -1875,6 +2156,7 @@ static void DrawHUD(App& app) {
 // ---------------------------------------------------------------- main
 int main(int argc, char** argv) {
     Options opt = ParseArgs(argc, argv);
+    LoadSettings();
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Solar System Voyager");
     SetExitKey(KEY_NULL);
@@ -1896,8 +2178,14 @@ int main(int argc, char** argv) {
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
     // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）
-    std::string lang = opt.lang ? opt.lang : LoadLanguageSetting();
+    std::string lang = opt.lang ? opt.lang : GetSetting("lang");
     SetLanguage(lang != "en");
+    // 画質: 起動オプション > 保存された設定 > 高
+    std::string q = GetSetting("quality");
+    if (!q.empty()) app.quality = std::max(0, std::min(2, atoi(q.c_str())));
+    if (opt.quality >= 0) app.quality = std::min(2, opt.quality);
+    // 効果音（自動スクリーンショットでは鳴らさない）
+    if (!opt.shot) sfx::Init(GetSetting("sound") == "0");
 
     app.shader = LoadShaderFromMemory(PLANET_VS, PLANET_FS);
     app.locLight = GetShaderLocation(app.shader, "lightDir");
@@ -1907,8 +2195,12 @@ int main(int argc, char** argv) {
     app.locAtm = GetShaderLocation(app.shader, "atmColor");
     app.locParams = GetShaderLocation(app.shader, "params");
     app.locDetail = GetShaderLocation(app.shader, "detail");
+    app.locOcc = GetShaderLocation(app.shader, "occ");
+    app.locOccN = GetShaderLocation(app.shader, "occN");
+    app.locSunAng = GetShaderLocation(app.shader, "sunAng");
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
+    LoadMoonTextures(app);
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
     app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
@@ -1962,6 +2254,14 @@ int main(int argc, char** argv) {
 
         HandleInput(app, dt);
         if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) StartWarp(app, app.target, opt.land);
+        if (opt.saveBookmark && frame == 1) SaveBookmark(app);
+        if (opt.gotoBookmark > 0 && frame == 60) {
+            std::vector<Bookmark> bms = LoadBookmarks(app);
+            if (opt.gotoBookmark <= (int)bms.size()) {
+                StartWarp(app, bms[opt.gotoBookmark - 1].body, false);
+                app.warpBookmark = opt.gotoBookmark - 1;
+            }
+        }
         UpdateWarp(app, dt);
         UpdateAutopilot(app, dt);
         if (opt.shot && frame * dt < opt.throttleSec) {
@@ -1973,10 +2273,28 @@ int main(int argc, char** argv) {
         app.tDays += simDt / 86400.0;
         UpdateBodies(app.B, app.tDays);
         UpdateShip(app, simDt);
+        sfx::Update(app.ship.engine, app.ship.thrusting && app.warpT < 0,
+                    std::fabs(app.ship.speed) * 1000.0 / ENGINES[app.ship.engine].vmax);
         UpdateCamera(app);
         if (app.toastTime > 0) app.toastTime -= dt;
 
         BeginDrawing();
+        // 画質「低」: 星空と 3D を縮小バッファに描いて拡大する（HUD は等倍）
+        bool lowRes = QUALITY_SCALE[app.quality] < 1.0f;
+        float rk = QUALITY_SCALE[app.quality] * GetRenderWidth() / std::max(1, GetScreenWidth());
+        if (lowRes) {
+            int w = std::max(1, (int)(GetScreenWidth() * rk)), h = std::max(1, (int)(GetScreenHeight() * rk));
+            if (app.lowRes.texture.width != w || app.lowRes.texture.height != h) {
+                if (app.lowRes.id) UnloadRenderTexture(app.lowRes);
+    sfx::Shutdown();
+                app.lowRes = LoadRenderTexture(w, h);
+                SetTextureFilter(app.lowRes.texture, TEXTURE_FILTER_BILINEAR);
+            }
+            BeginTextureMode(app.lowRes);
+            // rlPushMatrix は rlgl 内部の変換行列を使い続けて毎フレーム縮小が重なるので、modelview に直接掛ける
+            rlLoadIdentity();
+            rlScalef(rk, rk, 1);
+        }
         ClearBackground({1, 2, 6, 255});
         DrawStars(app);
         DrawSunGlowAndDots(app);  // 3D より先に描き、手前の天体や自機で隠れるようにする
@@ -1987,6 +2305,17 @@ int main(int argc, char** argv) {
         DrawBodies(app);
         DrawShipPass(app, dt);
         EndMode3D();
+        if (lowRes) {
+            EndTextureMode();
+            // 半透明の描画でバッファのアルファが下がっているので、ブレンドせずにそのまま写す
+            Texture2D t = app.lowRes.texture;
+            rlDrawRenderBatchActive();
+            rlDisableColorBlend();
+            DrawTexturePro(t, {0, 0, (float)t.width, -(float)t.height}, {0, 0, (float)GetScreenWidth(), (float)GetScreenHeight()},
+                           {0, 0}, 0, WHITE);
+            rlDrawRenderBatchActive();
+            rlEnableColorBlend();
+        }
 
         if (app.warpT < 0) DrawMarkers(app);
         DrawWarpEffect(app);
@@ -1996,7 +2325,7 @@ int main(int argc, char** argv) {
         if (opt.trace && frame % 60 == 0) {
             const Body& tb = app.B[app.target];
             printf("t=%3ds engine=%d speed=%.6g km/s dist=%s ap=%d phase=%s remain=%s\n", frame / 60, app.ship.engine + 1, app.ship.speed,
-                   FmtDist(Len(tb.pos - ShipWorld(app)) - tb.d.radius).c_str(), app.autopilot ? 1 : 0,
+                   FmtDist(SurfaceDist(tb, ShipWorld(app))).c_str(), app.autopilot ? 1 : 0,
                    app.autopilot ? UI_EN[app.apPhase] : "-", FmtDist(app.apRemain).c_str());
             fflush(stdout);
         }
@@ -2006,8 +2335,13 @@ int main(int argc, char** argv) {
             std::time_t now = std::time(nullptr);
             char name[64];
             std::strftime(name, sizeof name, "screenshot_%Y%m%d_%H%M%S.png", std::localtime(&now));
-            SaveScreenshot(name);
-            Toast(app, name);
+            // ピクチャ/SolarSystemVoyager に保存。できなければカレントフォルダ
+            std::string dir = ScreenshotDir();
+            std::string msg;
+            if (!dir.empty() && SaveScreenshot((dir + name).c_str())) msg = std::string(T(UI_SHOT_SAVED)) + "SolarSystemVoyager/" + name;
+            else if (SaveScreenshot(name)) msg = std::string(T(UI_SHOT_SAVED_CWD)) + name;
+            else msg = std::string(T(UI_SHOT_FAILED)) + name;
+            Toast(app, msg.c_str());
         }
         EndDrawing();
         if (quitAfterShot) break;
@@ -2019,6 +2353,9 @@ int main(int argc, char** argv) {
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
     if (app.earthTex) { UnloadTexture(app.earthColor); UnloadTexture(app.earthData); }
+    if (app.moonTex) { UnloadTexture(app.moonColor); UnloadTexture(app.moonData); }
+    if (app.lowRes.id) UnloadRenderTexture(app.lowRes);
+    sfx::Shutdown();
     if (g_jpFont) UnloadFont(g_font);
     CloseWindow();
     return 0;
