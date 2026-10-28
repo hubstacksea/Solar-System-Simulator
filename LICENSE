@@ -23,5 +23,6 @@ SOFTWARE.
 -------------------------------------------------------------------------------
 The MIT License above covers the source code, build files, tools and the
 application icon (assets/icon.*). The Earth and Moon images assets/earth_*
-and assets/moon_* (also embedded in the executable) are derived from
-third-party data and are NOT covered by it; see THIRD_PARTY_NOTICES.md.
+and assets/moon_* and the music in assets/music (also embedded in the
+executable) are derived from third-party material and are NOT covered by it;
+see THIRD_PARTY_NOTICES.md.

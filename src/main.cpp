@@ -126,7 +126,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー", "V : view    O : orbits    L : moon markers") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
-    X(HELP11, "I : マウス上下反転    M : 効果音    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    F11 : fullscreen    F12 : screenshot") \
+    X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
@@ -148,6 +148,18 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(BM_SAVED, "ブックマーク %d を保存: %s", "Bookmark %d saved: %s") \
     X(BM_GO, "ブックマーク %d へワープ: %s", "Warp to bookmark %d: %s") \
     X(BM_NONE, "ブックマークがありません（B キーで保存）", "No bookmarks (press B to save)") \
+    X(MUSIC_ON, "音楽: オン", "Music: on") \
+    X(MUSIC_OFF, "音楽: オフ", "Music: off") \
+    X(MUSIC_0, "♪ ホルスト《惑星》より「水星、翼のある使者」 米空軍軍楽隊 (2013)", "Now playing: Holst, The Planets: Mercury, the Winged Messenger - U.S. Air Force Band (2013)") \
+    X(MUSIC_1, "♪ ホルスト《惑星》より「金星、平和をもたらす者」 ホルスト指揮 ロンドン響 (1923)", "Now playing: Holst, The Planets: Venus, the Bringer of Peace - LSO, cond. Holst (1923)") \
+    X(MUSIC_2, "♪ ホルスト《惑星》より「火星、戦争をもたらす者」 ホルスト指揮 ロンドン響 (1922)", "Now playing: Holst, The Planets: Mars, the Bringer of War - LSO, cond. Holst (1922)") \
+    X(MUSIC_3, "♪ ホルスト《惑星》より「木星、快楽をもたらす者」 ホルスト指揮 ロンドン響 (1923)", "Now playing: Holst, The Planets: Jupiter, the Bringer of Jollity - LSO, cond. Holst (1923)") \
+    X(MUSIC_4, "♪ ホルスト《惑星》より「土星、老いをもたらす者」 ホルスト指揮 ロンドン響 (1923)", "Now playing: Holst, The Planets: Saturn, the Bringer of Old Age - LSO, cond. Holst (1923)") \
+    X(MUSIC_5, "♪ ホルスト《惑星》より「天王星、魔術師」 ホルスト指揮 ロンドン響 (1923)", "Now playing: Holst, The Planets: Uranus, the Magician - LSO, cond. Holst (1923)") \
+    X(MUSIC_6, "♪ ホルスト《惑星》より「海王星、神秘主義者」 ホルスト指揮 ロンドン響 (1923)", "Now playing: Holst, The Planets: Neptune, the Mystic - LSO, cond. Holst (1923)") \
+    X(MUSIC_7, "♪ グリーグ《ペール・ギュント》より「朝」 Musopen Symphony (2012)", "Now playing: Grieg, Peer Gynt: Morning Mood - Musopen Symphony (2012)") \
+    X(MUSIC_8, "♪ ベートーヴェン 交響曲第6番「田園」第1楽章 Skidmore College Orchestra (Musopen)", "Now playing: Beethoven, Symphony No. 6 \"Pastoral\", I - Skidmore College Orchestra (Musopen)") \
+    X(MUSIC_9, "♪ ドビュッシー「月の光」 ピアノ: Laurens Goedhart (2011, CC BY 3.0)", "Now playing: Debussy, Clair de lune - Laurens Goedhart, piano (2011, CC BY 3.0)") \
     X(SOUND_ON, "効果音: オン", "Sound: on") \
     X(SOUND_OFF, "効果音: オフ", "Sound: off") \
     X(SHOT_SAVED, "保存しました: ピクチャ/", "Saved: Pictures/") \
@@ -1214,7 +1226,12 @@ static void HandleInput(App& app, double dt) {
             Toast(app, T(UI_LANG_SET));
         }
     }
-    if (IsKeyPressed(KEY_M)) {
+    if (IsKeyPressed(KEY_M) && shift) {
+        sfx::MusicSetOff(!sfx::gm.off);
+        SetSetting("music", sfx::gm.off ? "0" : "1");
+        SaveSettings();
+        Toast(app, T(sfx::gm.off ? UI_MUSIC_OFF : UI_MUSIC_ON));
+    } else if (IsKeyPressed(KEY_M)) {
         sfx::SetMuted(!sfx::g.muted);
         SetSetting("sound", sfx::g.muted ? "0" : "1");
         SaveSettings();
@@ -1474,6 +1491,48 @@ static void LoadMoonTextures(App& app) {
     app.moonData = LoadEmbeddedTexture(MoonDataPng(), ".png");
     app.moonTex = app.moonColor.id && app.moonData.id;
     if (!app.moonTex) TraceLog(LOG_WARNING, "Moon textures unavailable, using procedural surface");
+}
+
+// ---------------------------------------------------------------- 音楽の選曲
+// 一番近い天体（表面までの距離）の曲。月以外の衛星は母惑星の曲。冥王星とカロンは無音
+// （冥王星の曲は後年の別の作曲者の作品で著作権が残っている）
+static int MusicTrackOf(const App& app, int body) {
+    if (body == B_MOON) return 9;
+    if (app.B[body].d.parent > 0) body = app.B[body].d.parent;
+    switch (body) {
+        case B_SUN: return 7;
+        case B_EARTH: return 8;
+        case B_MERCURY: return 0;
+        case B_VENUS: return 1;
+        case B_MARS: return 2;
+        case B_JUPITER: return 3;
+        case B_SATURN: return 4;
+        case B_URANUS: return 5;
+        case B_NEPTUNE: return 6;
+        default: return -1;
+    }
+}
+
+// 音量: ワープの到着点（半径の約 3 倍）付近まで最大、影響圏の端で 0（対数で滑らかに減らす）
+static void ChooseMusic(const App& app, int* track, float* vol) {
+    V3 sw = ShipWorld(app);
+    int nearest = -1;
+    double best = 1e300;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        double d = SurfaceDist(app.B[i], sw);
+        if (d < best) { best = d; nearest = (int)i; }
+    }
+    *track = nearest >= 0 ? MusicTrackOf(app, nearest) : -1;
+    *vol = 0;
+    if (*track < 0) return;
+    // 音量の基準は曲の天体（月以外の衛星の近くでは母惑星）
+    int planet = (nearest != B_MOON && app.B[nearest].d.parent > 0) ? app.B[nearest].d.parent : nearest;
+    const Body& p = app.B[planet];
+    double D = Len(p.pos - sw), nearD = ArrivalDistance(p) * 1.5;
+    double farD = planet == B_SUN ? AU_KM : std::max(p.soi, nearD * 20);   // 太陽は影響圏が無限なので 1 AU で消す
+    double k = D <= nearD ? 1.0 : 1.0 - std::log(D / nearD) / std::log(farD / nearD);
+    k = std::max(0.0, std::min(1.0, k));
+    *vol = (float)std::pow(k, 1.5);
 }
 
 // 画質ごとの描画解像度と模様の細かさ（1 画素の大きさに掛ける。大きいほど細部を省いて軽くなる）
@@ -2185,7 +2244,10 @@ int main(int argc, char** argv) {
     if (!q.empty()) app.quality = std::max(0, std::min(2, atoi(q.c_str())));
     if (opt.quality >= 0) app.quality = std::min(2, opt.quality);
     // 効果音（自動スクリーンショットでは鳴らさない）
-    if (!opt.shot) sfx::Init(GetSetting("sound") == "0");
+    if (!opt.shot) {
+        sfx::Init(GetSetting("sound") == "0");
+        sfx::MusicInit(GetSetting("music") == "0");
+    }
 
     app.shader = LoadShaderFromMemory(PLANET_VS, PLANET_FS);
     app.locLight = GetShaderLocation(app.shader, "lightDir");
@@ -2275,6 +2337,12 @@ int main(int argc, char** argv) {
         UpdateShip(app, simDt);
         sfx::Update(app.ship.engine, app.ship.thrusting && app.warpT < 0,
                     std::fabs(app.ship.speed) * 1000.0 / ENGINES[app.ship.engine].vmax);
+        {
+            int track;
+            float vol;
+            ChooseMusic(app, &track, &vol);
+            if (sfx::MusicUpdate(track, vol, (float)dt)) Toast(app, T((UiId)(UI_MUSIC_0 + track)));
+        }
         UpdateCamera(app);
         if (app.toastTime > 0) app.toastTime -= dt;
 
@@ -2324,9 +2392,12 @@ int main(int argc, char** argv) {
         frame++;
         if (opt.trace && frame % 60 == 0) {
             const Body& tb = app.B[app.target];
-            printf("t=%3ds engine=%d speed=%.6g km/s dist=%s ap=%d phase=%s remain=%s\n", frame / 60, app.ship.engine + 1, app.ship.speed,
+            int mt;
+            float mv;
+            ChooseMusic(app, &mt, &mv);
+            printf("t=%3ds engine=%d speed=%.6g km/s dist=%s ap=%d phase=%s remain=%s music=%d vol=%.2f\n", frame / 60, app.ship.engine + 1, app.ship.speed,
                    FmtDist(SurfaceDist(tb, ShipWorld(app))).c_str(), app.autopilot ? 1 : 0,
-                   app.autopilot ? UI_EN[app.apPhase] : "-", FmtDist(app.apRemain).c_str());
+                   app.autopilot ? UI_EN[app.apPhase] : "-", FmtDist(app.apRemain).c_str(), mt, mv);
             fflush(stdout);
         }
         bool quitAfterShot = opt.shot && frame == opt.frames;

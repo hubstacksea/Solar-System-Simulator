@@ -25,9 +25,29 @@ INCBIN(g_earth_data_png, "earth_data.png")
 INCBIN(g_moon_color_jpg, "moon_color.jpg")
 INCBIN(g_moon_data_png, "moon_data.png")
 INCBIN(g_icon_png, "icon.png")
+INCBIN(g_music_mercury, "music/holst_mercury.ogg")
+INCBIN(g_music_venus, "music/holst_venus.ogg")
+INCBIN(g_music_mars, "music/holst_mars.ogg")
+INCBIN(g_music_jupiter, "music/holst_jupiter.ogg")
+INCBIN(g_music_saturn, "music/holst_saturn.ogg")
+INCBIN(g_music_uranus, "music/holst_uranus.ogg")
+INCBIN(g_music_neptune, "music/holst_neptune.ogg")
+INCBIN(g_music_sun, "music/grieg_morning.ogg")
+INCBIN(g_music_earth, "music/beethoven_pastoral1.ogg")
+INCBIN(g_music_moon, "music/debussy_clair_de_lune.ogg")
 
 EmbeddedFile EarthColorJpg() { return {g_earth_color_jpg, (size_t)(g_earth_color_jpg_end - g_earth_color_jpg)}; }
 EmbeddedFile EarthDataPng() { return {g_earth_data_png, (size_t)(g_earth_data_png_end - g_earth_data_png)}; }
 EmbeddedFile MoonColorJpg() { return {g_moon_color_jpg, (size_t)(g_moon_color_jpg_end - g_moon_color_jpg)}; }
 EmbeddedFile MoonDataPng() { return {g_moon_data_png, (size_t)(g_moon_data_png_end - g_moon_data_png)}; }
 EmbeddedFile IconPng() { return {g_icon_png, (size_t)(g_icon_png_end - g_icon_png)}; }
+EmbeddedFile MusicOgg(int i) {
+    static const unsigned char* const B[MUSIC_COUNT] = {g_music_mercury, g_music_venus, g_music_mars, g_music_jupiter,
+                                                        g_music_saturn, g_music_uranus, g_music_neptune,
+                                                        g_music_sun, g_music_earth, g_music_moon};
+    static const unsigned char* const E[MUSIC_COUNT] = {g_music_mercury_end, g_music_venus_end, g_music_mars_end, g_music_jupiter_end,
+                                                        g_music_saturn_end, g_music_uranus_end, g_music_neptune_end,
+                                                        g_music_sun_end, g_music_earth_end, g_music_moon_end};
+    if (i < 0 || i >= MUSIC_COUNT) return {nullptr, 0};
+    return {B[i], (size_t)(E[i] - B[i])};
+}

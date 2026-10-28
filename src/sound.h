@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "embedded_assets.h"
 #include "raylib.h"
 
 namespace sfx {
@@ -127,7 +128,73 @@ inline void SetMuted(bool m) {
     if (g.ready && m) StopSound(g.warp);
 }
 
+// ---------------------------------------------------------------- 音楽（ホルスト《惑星》ほか）
+// 一番近い天体の曲を流し、距離で音量を変える。曲が変わる時は今の曲を絞ってから次の曲へ。
+// 離れた曲は一時停止して、また近づいた時に続きから流す
+struct MusicState {
+    bool ready = false, off = false;
+    Music m[MUSIC_COUNT]{};
+    bool ok[MUSIC_COUNT]{};
+    int cur = -1;      // 鳴らしている曲
+    float gain = 0;    // 現在の音量（フェード中の値）
+};
+inline MusicState gm;
+
+inline void MusicInit(bool off) {
+    gm.off = off;
+    if (!g.ready) return;
+    for (int i = 0; i < MUSIC_COUNT; i++) {
+        EmbeddedFile f = MusicOgg(i);
+        gm.m[i] = LoadMusicStreamFromMemory(".ogg", f.data, (int)f.size);
+        gm.ok[i] = IsMusicValid(gm.m[i]);
+        if (gm.ok[i]) gm.m[i].looping = true;
+    }
+    gm.ready = true;
+}
+
+// want: 流したい曲（-1 で無音）, vol: 0..1。新しく曲を流し始めたら true
+inline bool MusicUpdate(int want, float vol, float dt) {
+    if (!gm.ready) return false;
+    if (want >= 0 && !gm.ok[want]) want = -1;
+    if (gm.off) vol = 0;
+    bool started = false;
+    if (want != gm.cur) {
+        gm.gain -= dt / 1.5f;   // 1.5 秒で絞る
+        if (gm.cur < 0 || gm.gain <= 0) {
+            if (gm.cur >= 0) PauseMusicStream(gm.m[gm.cur]);
+            gm.cur = want;
+            gm.gain = 0;
+            if (gm.cur >= 0) {
+                if (IsMusicStreamPlaying(gm.m[gm.cur])) {
+                } else if (GetMusicTimePlayed(gm.m[gm.cur]) > 0) {
+                    ResumeMusicStream(gm.m[gm.cur]);
+                } else {
+                    PlayMusicStream(gm.m[gm.cur]);
+                }
+                started = vol > 0;
+            }
+        }
+    } else if (gm.cur >= 0) {
+        float d = vol - gm.gain;
+        float step = dt / 2.0f;   // 2 秒で 0→1
+        gm.gain += d > 0 ? std::fmin(d, step) : std::fmax(d, -step);
+    }
+    if (gm.cur >= 0) {
+        gm.gain = std::fmax(0.0f, std::fmin(1.0f, gm.gain));
+        SetMusicVolume(gm.m[gm.cur], gm.gain * 0.8f);
+        UpdateMusicStream(gm.m[gm.cur]);
+    }
+    return started;
+}
+
+inline void MusicSetOff(bool off) { gm.off = off; }
+
 inline void Shutdown() {
+    if (gm.ready) {
+        for (int i = 0; i < MUSIC_COUNT; i++)
+            if (gm.ok[i]) UnloadMusicStream(gm.m[i]);
+        gm.ready = false;
+    }
     if (!g.ready) return;
     UnloadSound(g.warp);
     UnloadAudioStream(g.engine);
