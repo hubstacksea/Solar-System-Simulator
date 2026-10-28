@@ -2,7 +2,7 @@
 
 [日本語](README.md) | **English**
 
-A 3D space flight simulator with the Sun, planets, major moons, dwarf planets, asteroids and a comet placed at **true size and true distance**.
+A 3D space flight simulator with the Sun, planets, major moons, dwarf planets, asteroids, a comet and spacecraft placed at **true size and true distance**.
 Body positions are computed from the PC clock (UTC); at 1x time scale they orbit and rotate in real time.
 
 - Rendering engine: [raylib 5.5](https://www.raylib.com/) (OpenGL 3.3)
@@ -17,6 +17,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Solar eclipse of 2 August 2027](docs/screenshots/solar_eclipse.jpg) Solar eclipse of 2 August 2027 (the Moon's shadow over North Africa) | ![Total lunar eclipse of 7 September 2025](docs/screenshots/lunar_eclipse.jpg) Total lunar eclipse of 7 September 2025 |
 | ![Jupiter](docs/screenshots/jupiter.jpg) Jupiter | ![Warp](docs/screenshots/warp.jpg) Warp effect |
 | ![Constellation lines and names](docs/screenshots/constellations.jpg) The real starry sky with constellation lines (C key) | ![Halley's Comet on 9 February 1986](docs/screenshots/halley.jpg) Halley's Comet on 9 February 1986 (perihelion) |
+| ![Voyager 1 at Jupiter](docs/screenshots/voyager1_jupiter.jpg) Voyager 1 at closest approach to Jupiter, 5 March 1979 (K key, then Tab) | ![Voyager 2 at Neptune](docs/screenshots/voyager2_neptune.jpg) Voyager 2 passing over Neptune's night side, 25 August 1989 |
 
 ## Building
 
@@ -85,7 +86,7 @@ After building, run `cpack` in the build directory.
 | [ / ] | Time scale (x1 real time to 1 year per second). Affects both orbits/rotation of the bodies and the ship's acceleration and movement |
 | P / Backspace | Pause time / sync to current time at x1 |
 | Y | Set the date and time (UTC; type the digits and press Enter) |
-| K | Astronomical events: solar and lunar eclipses over the next 3 years and the next shadow transit of each Galilean moon across Jupiter. Select one and press Enter to warp to that time and place |
+| K | Astronomical events: solar and lunar eclipses over the next 3 years and the next shadow transit of each Galilean moon across Jupiter. Select one and press Enter to warp to that time and place. Tab switches to spacecraft events (closest approaches, orbit insertions, end of mission) |
 | I | Invert mouse Y |
 | J | Switch language (日本語 / English) |
 | B / N | Bookmark the current spot / warp to bookmarks in turn (up to 9; position and orientation are stored relative to the rotating body) |
@@ -156,6 +157,7 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 - **Earth**: built from real NASA data — continents, coastlines, elevation (relief shading), ocean depth (shallow-water color), sea ice and city lights at night (about 10 km resolution, with finer detail filled in procedurally). Its rotation follows Greenwich sidereal time, so the regions in daylight and the lit cities at night match the PC clock. Clouds are procedural
 - **Moon**: real NASA data (LRO color and LOLA elevation, about 3–5 km resolution). Maria, craters and ray systems are where they really are; smaller craters are filled in procedurally
 - **Music**: plays a piece for the nearest body: Holst's *The Planets* for the planets (the parent planet's movement near its moons), Grieg's "Morning Mood" for the Sun, the first movement of Beethoven's "Pastoral" Symphony for Earth and Debussy's "Clair de lune" for the Moon. It gets louder as you approach and fades out at the edge of the sphere of influence (1 AU for the Sun). Tracks crossfade when they change and resume where they left off when you return. Nothing plays near Pluto (the later Pluto movement by another composer is still under copyright), nor near the dwarf planets, asteroids and comets
+- **Spacecraft**: Voyager 1 and 2, Pioneer 10 and 11, Galileo, Cassini, New Horizons and Parker Solar Probe fly their real paths from JPL Horizons, from launch to end of mission (spacecraft leaving the Solar System keep coasting after the data ends in 2050–2100). Inside a planet's sphere of influence they move relative to the planet, so flybys of Jupiter, Neptune and the rest happen at the real distance, direction and time (encounters with moons can be off by a few thousand km because of the moons' position errors). Their paths are shown with the orbit lines (O key), brighter where they have already flown. All spacecraft use one simple Voyager-like model with the high-gain antenna pointed at Earth. Their markers are toggled together with the moon markers (L key)
 - **Astronomical events**: from the K-key list you can warp, at the right moment, to a solar eclipse (12,000 km above the center of the eclipse), a lunar eclipse (beside the Moon) or a moon's shadow crossing Jupiter (right above the shadow). Times are computed with simplified formulas and are typically within about 15 minutes of the real eclipses; the center of a solar eclipse is within a few hundred km
 - **Shadows**: solar eclipses (the Moon's shadow on Earth), lunar eclipses (a copper-red Moon), shadows of Jupiter's moons and the shadow of Saturn's rings, with umbra and penumbra from the Sun's real size
 - **Sizes**: equatorial radius and flattening (Jupiter and Saturn are visibly oblate), and Saturn's rings (C ring to A ring, Cassini Division, Encke Gap) drawn at true scale
@@ -172,6 +174,7 @@ The images in `assets/` are made from NASA / NOAA data by `tools/make_earth_asse
 - Elevation and ocean depth: NOAA NCEI, ETOPO 2022 Global Relief Model (60 arc-second, ice surface, subsampled to 5 arc-minutes)
 - City lights: NASA Earth Observatory, Black Marble 2016
 - Moon color and elevation: NASA's Scientific Visualization Studio, CGI Moon Kit (LROC WAC / LOLA)
+- Spacecraft trajectories: NASA/JPL Horizons (fetched and thinned out by `tools/make_probe_assets.py`)
 - Starry sky: stars from the Hipparcos catalogue (ESA), and the lines, names and star names of the 88 constellations, from [d3-celestial](https://github.com/ofrohn/d3-celestial) (Olaf Frohn, BSD 3-Clause), converted by `tools/make_sky_assets.py`
 - Music (Holst, *The Planets*): Mercury by the U.S. Air Force Band (2013, arranged by the band); the other six movements by the London Symphony Orchestra conducted by Holst, recorded 1922–23 (Columbia). Public domain
 - Music (Sun, Earth): Grieg, "Morning Mood" by the Musopen Symphony; Beethoven, "Pastoral" Symphony, 1st movement by the Skidmore College Orchestra. Both public domain recordings provided by Musopen

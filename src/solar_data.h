@@ -8,7 +8,7 @@
 #include <cstring>
 #include <vector>
 
-enum BodyKind { KIND_STAR = 0, KIND_ROCKY = 1, KIND_GAS = 2, KIND_EARTH = 3 };
+enum BodyKind { KIND_STAR = 0, KIND_ROCKY = 1, KIND_GAS = 2, KIND_EARTH = 3, KIND_PROBE = 4 };
 
 struct Col3 { float r, g, b; };
 
@@ -56,6 +56,8 @@ struct BodyDef {
     float atmStrength = 0;
     bool rings = false;
     bool comet = false;        // 太陽に近づくとコマと尾が出る
+    int probe = -1;            // 探査機: assets/probes.bin の番号（位置は記録された軌跡から求める）
+    bool probeCoast = false;   // 探査機: データの終わりより後も等速直線運動で外へ進む（太陽系を脱出する機体）
     int style = S_GENERIC;
 };
 
@@ -224,6 +226,22 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                                 KIND_ROCKY, {0.24f, 0.22f, 0.20f}, {0.12f, 0.11f, 0.10f});
     halley.comet = true;
     v.push_back(halley);
+    // ---- 探査機（並びは tools/make_probe_assets.py と同じ） ----
+    static const struct { const char* jp; const char* en; bool coast; } PROBES[] = {
+        {"ボイジャー1号", "Voyager 1", true}, {"ボイジャー2号", "Voyager 2", true},
+        {"パイオニア10号", "Pioneer 10", true}, {"パイオニア11号", "Pioneer 11", true},
+        {"ガリレオ", "Galileo", false}, {"カッシーニ", "Cassini", false},
+        {"ニュー・ホライズンズ", "New Horizons", true}, {"パーカー・ソーラー・プローブ", "Parker Solar Probe", false},
+    };
+    for (int i = 0; i < (int)(sizeof PROBES / sizeof PROBES[0]); i++) {
+        BodyDef d{};
+        d.jp = PROBES[i].jp; d.en = PROBES[i].en; d.parent = 0;
+        d.radius = 0.002; d.mass = 1000;
+        d.rotPeriod = 1e9;
+        d.kind = KIND_PROBE; d.c1 = {0.85f, 0.82f, 0.70f}; d.c2 = d.c1;
+        d.probe = i; d.probeCoast = PROBES[i].coast;
+        v.push_back(d);
+    }
     for (BodyDef& d : v)
         for (const auto& o : SMALL)
             if (std::strcmp(d.en, o.en) == 0) {

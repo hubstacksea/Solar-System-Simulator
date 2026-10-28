@@ -59,6 +59,23 @@ public:
         Grid(P, true, C, m);
     }
 
+    // a から b への円柱（両端にふた）
+    void Tube(Vector3 a, Vector3 b, float r, int segs, Color c, ShipMat m) {
+        Vector3 ax = Vector3Normalize(Vector3Subtract(b, a));
+        Vector3 t = fabsf(ax.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+        Vector3 u = Vector3Normalize(Vector3CrossProduct(ax, t)), v = Vector3CrossProduct(ax, u);
+        std::vector<std::vector<Vector3>> P(2);
+        for (int i = 0; i < segs; i++) {
+            float ang = 2 * PI * i / segs;
+            Vector3 o = Vector3Add(Vector3Scale(u, cosf(ang) * r), Vector3Scale(v, sinf(ang) * r));
+            P[0].push_back(Vector3Add(a, o));
+            P[1].push_back(Vector3Add(b, o));
+        }
+        Grid(P, true, std::vector<std::vector<Color>>(2, std::vector<Color>(segs, c)), m);
+        Disc(a, Vector3Negate(ax), r, segs, c, m);
+        Disc(b, ax, r, segs, c, m);
+    }
+
     // 翼型断面を持つ翼面。root から spanDir 方向へ span だけ伸び、翼弦は z 方向
     void Wing(Vector3 root, Vector3 spanDir, Vector3 thickDir, float span, float leadRoot, float trailRoot, float leadTip,
               float trailTip, float thickRoot, float thickTip, Color c, ShipMat m) {
@@ -124,6 +141,36 @@ private:
         nrm[a] = Vector3Add(nrm[a], n); nrm[b] = Vector3Add(nrm[b], n); nrm[c] = Vector3Add(nrm[c], n);
     }
 };
+
+// 探査機（ボイジャー型の共通モデル）: 単位 m、高利得アンテナは -Z（地球）を向く
+inline Mesh GenProbeMesh() {
+    ShipMeshBuilder mb;
+    const Color white = {226, 224, 216, 255}, gold = {176, 140, 62, 255}, metal = {120, 122, 128, 255};
+    const Color dark = {44, 44, 48, 255};
+    // 高利得アンテナ（直径 3.7 m の放物面）と副反射鏡
+    std::vector<Vector2> dish;
+    for (int i = 0; i <= 8; i++) {
+        float r = 1.85f * i / 8;
+        dish.push_back({-r * r / (4 * 1.6f), r});
+    }
+    mb.Revolve(0, 0, dish, 32, white, SM_PAINT);
+    mb.Tube({0, 0, -0.05f}, {0, 0, -1.0f}, 0.025f, 6, metal, SM_METAL);
+    mb.Disc({0, 0, -1.0f}, {0, 0, -1}, 0.16f, 16, white, SM_PAINT);
+    // 本体（十角柱、金色の断熱材）
+    mb.Revolve(0, 0, {{0.05f, 0.0f}, {0.05f, 0.95f}, {0.5f, 0.95f}, {0.5f, 0.0f}}, 10, gold, SM_METAL);
+    // 原子力電池 (RTG) のブームと 3 本の RTG
+    mb.Tube({-0.9f, 0, 0.3f}, {-3.0f, 0, 0.3f}, 0.04f, 6, metal, SM_METAL);
+    for (int i = 0; i < 3; i++) {
+        float x = -2.0f - i * 0.45f;
+        mb.Tube({x, 0, 0.3f}, {x - 0.4f, 0, 0.3f}, 0.2f, 12, dark, SM_METAL);
+    }
+    // 科学機器のブームとスキャン・プラットフォーム
+    mb.Tube({0.9f, 0, 0.3f}, {3.0f, 0, 0.3f}, 0.04f, 6, metal, SM_METAL);
+    mb.Tube({2.7f, -0.3f, 0.3f}, {2.7f, 0.4f, 0.3f}, 0.28f, 12, metal, SM_METAL);
+    // 磁力計のブーム（細く長い）
+    mb.Tube({0, 0.9f, 0.4f}, {0, 13.0f, 0.4f}, 0.02f, 5, metal, SM_METAL);
+    return mb.Build();
+}
 
 // 胴体断面（超楕円）の寸法表: z, 半幅, 半高, 中心の高さ
 struct HullStation { float z, w, h, cy; };
