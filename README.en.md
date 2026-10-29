@@ -24,6 +24,8 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Rosetta arriving at Comet Churyumov-Gerasimenko](docs/screenshots/rosetta.jpg) Guided tour (U key): Rosetta arriving at its comet, 6 August 2014 | ![Juno entering orbit around Jupiter](docs/screenshots/juno.jpg) Juno entering orbit around Jupiter, 5 July 2016 |
 | ![Hazy horizon from 10 km](docs/screenshots/haze.jpg) The hazy horizon from 10 km up | ![Saturn in photo mode](docs/screenshots/saturn_photo.jpg) Saturn in photo mode (Z key) |
 | ![Comet Churyumov-Gerasimenko](docs/screenshots/comet_67p.jpg) Comet Churyumov-Gerasimenko in its real shape (August 2015, perihelion) | ![Ryugu](docs/screenshots/ryugu.jpg) The spinning-top asteroid Ryugu |
+| ![Mars with Valles Marineris](docs/screenshots/mars_map.jpg) Mars from Viking maps and MOLA elevations (Valles Marineris in the middle) | ![Pluto with its heart](docs/screenshots/pluto.jpg) Pluto from New Horizons maps |
+| ![Io](docs/screenshots/io.jpg) Io from Galileo / Voyager maps | ![Sunset over the sea](docs/screenshots/sunset_sea.jpg) Sunset over the sea |
 
 ## Building
 

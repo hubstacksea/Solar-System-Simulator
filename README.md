@@ -24,6 +24,8 @@
 | ![チュリュモフ・ゲラシメンコ彗星に到着したロゼッタ](docs/screenshots/rosetta.jpg) 自動ツアー（U キー）: 2014年8月6日、彗星に到着したロゼッタ | ![木星を周回し始めたジュノー](docs/screenshots/juno.jpg) 2016年7月5日、木星の周回軌道に入ったジュノー |
 | ![高度 10 km から見た日本近海](docs/screenshots/haze.jpg) 高度 10 km から見た、かすむ地平線 | ![写真モードの土星](docs/screenshots/saturn_photo.jpg) 写真モード（Z キー）の土星 |
 | ![チュリュモフ・ゲラシメンコ彗星](docs/screenshots/comet_67p.jpg) 実際の形のチュリュモフ・ゲラシメンコ彗星（2015年8月、近日点） | ![リュウグウ](docs/screenshots/ryugu.jpg) そろばん玉形の小惑星リュウグウ |
+| ![マリネリス峡谷の見える火星](docs/screenshots/mars_map.jpg) Viking の地図と MOLA の標高による火星（中央にマリネリス峡谷） | ![ハートの見える冥王星](docs/screenshots/pluto.jpg) New Horizons の地図による冥王星 |
+| ![イオ](docs/screenshots/io.jpg) Galileo / Voyager の地図によるイオ | ![海の夕焼け](docs/screenshots/sunset_sea.jpg) 海の夕焼け |
 
 ## ビルド
 
