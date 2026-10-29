@@ -20,6 +20,8 @@
 | ![ボイジャー1号の木星最接近](docs/screenshots/voyager1_jupiter.jpg) 1979年3月5日、木星に最接近するボイジャー1号（K キー → 探査機のページ） | ![ボイジャー2号の海王星最接近](docs/screenshots/voyager2_neptune.jpg) 1989年8月25日、海王星の夜側を通過するボイジャー2号 |
 | ![2032年11月13日の水星の太陽面通過](docs/screenshots/mercury_transit.jpg) 2032年11月13日の水星の太陽面通過 | ![地球に接近する百武彗星](docs/screenshots/hyakutake.jpg) 1996年3月25日、地球から 0.1 AU を通過する百武彗星 |
 | ![土星に到着したカッシーニ](docs/screenshots/cassini.jpg) 2004年7月1日、土星に到着したカッシーニ（側面にホイヘンス・プローブ） | ![天の川を背にした木星](docs/screenshots/milky_way.jpg) 天の川を背にした木星 |
+| ![太平洋の夕暮れ](docs/screenshots/sunset.jpg) 太平洋上の夕暮れ | ![火星の昼の空](docs/screenshots/mars_sky.jpg) 火星の黄褐色の昼の空 |
+| ![チュリュモフ・ゲラシメンコ彗星に到着したロゼッタ](docs/screenshots/rosetta.jpg) 自動ツアー（U キー）: 2014年8月6日、彗星に到着したロゼッタ | ![木星を周回し始めたジュノー](docs/screenshots/juno.jpg) 2016年7月5日、木星の周回軌道に入ったジュノー |
 
 ## ビルド
 
