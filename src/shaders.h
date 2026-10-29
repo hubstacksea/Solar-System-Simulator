@@ -42,7 +42,7 @@ uniform sampler2D texture0;  // 地球・月: 地表の色 (Blue Marble / LROC)
 uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷 / 月・火星: R 標高上位, A 下位
 uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（1: あり）
 uniform vec4 mapInfo;        // 地図: x 1 / 平均の明るさ, y 種類（0 カラー, 1 白黒, 2 模様だけ）, z 標高あり, w 半径 km
-uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う表面模様の種類
+uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う表面模様の種類, y 地図を東へずらす角度 rad（木星の大赤斑）
 // 大気（地球・火星）: atmBeta は天頂方向の空気 1 つ分で散乱する割合（0 なら大気なし）。日光は太陽が低いほど赤くなる
 // atmHaze: x カメラの位置の空気の濃さ（0 ならかすみなし）, y 描画座標 1 あたりの km, z スケールハイト km
 uniform vec3 atmBeta;
@@ -492,6 +492,19 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     return h;
 }
 
+// 地図のあるガス惑星（木星）: 雲の模様を貼る。地図は mapInfo2.y だけ回す（大赤斑を今の経度に合わせる）
+vec3 gasMap(vec3 p, vec3 o) {
+    vec3 pb = gas(p, int(mapInfo2.x + 0.5), o);
+    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lon = atan(-p.z, p.x) + mapInfo2.y;
+    vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
+    vec2 dx = dFdx(uv), dy = dFdy(uv);
+    dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
+    vec3 tc = textureGrad(texture0, uv, dx, dy).rgb;
+    float cov = textureGrad(texture2, uv, dx, dy).r;
+    return mix(pb, tc * dot(color1, vec3(0.333)) * mapInfo.x, cov);
+}
+
 // base: 地表の色, specMask: 海の反射, lights: 夜景, 戻り値: 高さと勾配
 vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out float lights, out float cloud) {
     vec4 e = fbmD(p, 1.6, 28, 0.5, o);
@@ -614,7 +627,7 @@ void main() {
     vec4 hgt = vec4(0.0);
     float specMask = 0.0, lights = 0.0, cloud = 0.0;
     if (kind == 1) hgt = style == 13 ? moonTex(p, o, base) : style == 14 ? mapTex(p, o, base) : rocky(p, style, o, base);
-    else if (kind == 2) base = gas(p, style, o);
+    else if (kind == 2) base = style == 14 ? gasMap(p, o) : gas(p, style, o);
     else if (style == 31) hgt = earthTex(p, o, ndlG, base, specMask, lights, cloud);
     else hgt = earth(p, o, ndlG, base, specMask, lights, cloud);
 

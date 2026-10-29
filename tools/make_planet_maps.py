@@ -32,9 +32,12 @@ from PIL import Image, ImageFilter
 UA = "SolarSystemVoyager-asset-build/1.0 (https://github.com/hubstacksea/Solar-System-Simulator)"
 WMS = "https://planetarymaps.usgs.gov/cgi-bin/mapserv"
 # 英語名, 地図ファイル, レイヤー, 幅, 種類（0: カラー, 1: 白黒, 2: 模様だけ）, 元データ
-# イアペトゥスのモザイクは明暗がならされていて、暗い半球と明るい半球の差が残っていないので模様だけ使う
+# イアペトゥスのモザイクは明暗がならされていて、暗い半球と明るい半球の差が残っていないので模様だけ使う。
+# 木星の雲は場所ごとに違う速さで流れるので、地図は大赤斑が経度 0°（画像の中央）に来るよう回して保存し、
+# シミュレータが大赤斑の今の経度（体系 II）に合わせて回す。土星・天王星・海王星は、再配布できる全球図がないので入れない
 MAPS = [
     ("Mercury", "mercury/mercury_simp_cyl.map", "MESSENGER", 2048, 1, "MESSENGER MDIS"),
+    ("Jupiter", "jupiter/jupiter_simp_cyl.map", "CASSINI", 3600, 0, "Cassini ISS, PIA07782 (December 2000)"),
     ("Mars", "mars/mars_simp_cyl.map", "MDIM21_color", 4096, 0, "Viking MDIM 2.1 (colorized by NASA Ames)"),
     ("Ceres", "asteroid_belt/ceres_simp_cyl.map", "Ceres_FC_global", 2048, 1, "Dawn FC"),
     ("Vesta", "asteroid_belt/vesta_simp_cyl.map", "Dawn_HAMO_global", 2048, 1, "Dawn FC HAMO"),
@@ -93,6 +96,16 @@ def main():
     for name, mapfile, layer, w, kind, src in MAPS:
         img = wms(work, mapfile, layer, w)
         a = np.asarray(img).astype(np.float32) / 255
+        if name == "Jupiter":
+            # 大赤斑: 南緯 17〜27° の帯で一番赤い所（赤 − 青 を経度方向にならして最大の所）
+            h, wd = a.shape[:2]
+            band = a[int(h * (90 + 17) / 180):int(h * (90 + 27) / 180)]
+            red = (band[:, :, 0] - band[:, :, 2]).mean(axis=0)
+            k = np.ones(wd // 60) / (wd // 60)
+            red = np.convolve(np.concatenate([red[-len(k):], red, red[:len(k)]]), k, "same")[len(k):-len(k)]
+            x = int(np.argmax(red))
+            print("  Great Red Spot at longitude %.1f E in the source map" % (x / wd * 360 - 180))
+            a = np.roll(a, wd // 2 - x, axis=1)
         lum = a.mean(axis=2)
         # 撮影されていない所: 真っ黒か真っ白（サービスが埋めた色）
         valid = (lum > 0.01) & (a.min(axis=2) < 0.985)

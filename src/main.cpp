@@ -131,7 +131,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
-    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    Ctrl+Q : quit") \
+    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    F10 : settings    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
@@ -201,6 +201,28 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(TOUR_END, "ツアー終了", "Tour ended") \
     X(TOUR_NONE, "ツアーの場面が見つかりません", "No tour stops found") \
     X(PHOTO_0, "写真モード: 解除", "Photo mode: off") \
+    X(SET_TITLE, "設定", "Settings") \
+    X(SET_KEYS, "↑↓ : 選択    ←→ / Enter : 変更    Esc / F10 : 閉じる（変更はすぐ保存されます）", "Up/Down : select    Left/Right / Enter : change    Esc / F10 : close (changes are saved at once)") \
+    X(SET_LANG, "言語", "Language") \
+    X(SET_QUALITY, "画質", "Quality") \
+    X(SET_SOUND, "効果音", "Sound effects") \
+    X(SET_MUSIC, "音楽", "Music") \
+    X(SET_SKY, "星座", "Constellations") \
+    X(SET_ORBITS, "軌道表示", "Orbit lines") \
+    X(SET_ASTEROIDS, "小惑星帯・トロヤ群・外縁天体の粒", "Asteroids, Trojans and TNOs") \
+    X(SET_MARKERS, "衛星・探査機のマーカー", "Moon and spacecraft markers") \
+    X(SET_INVERT, "マウス上下反転", "Invert mouse") \
+    X(SET_FULLSCREEN, "フルスクリーン", "Fullscreen") \
+    X(SET_ON, "オン", "On") \
+    X(SET_OFF, "オフ", "Off") \
+    X(SET_Q0, "低（解像度 60%）", "Low (60% resolution)") \
+    X(SET_Q1, "中", "Medium") \
+    X(SET_Q2, "高", "High") \
+    X(SET_SKY0, "表示しない", "Off") \
+    X(SET_SKY1, "星座線", "Lines") \
+    X(SET_SKY2, "星座線と名前", "Lines and names") \
+    X(ASTEROIDS_ON, "小惑星などの粒 ON", "Asteroids ON") \
+    X(ASTEROIDS_OFF, "小惑星などの粒 OFF", "Asteroids OFF") \
     X(PHOTO_1, "写真モード: 表示を隠す（Z で自機も隠す）", "Photo mode: overlays hidden (Z again to hide the ship)") \
     X(PHOTO_2, "写真モード: 表示と自機を隠す", "Photo mode: overlays and ship hidden") \
     X(DATE_TITLE, "日時を指定（UTC）", "Set date and time (UTC)") \
@@ -922,6 +944,87 @@ static Sky LoadSky() {
     return sky;
 }
 
+// ---------------------------------------------------------------- 小惑星帯などの粒（assets/asteroids.bin）
+// 軌道要素から 2 体問題で位置を求め、点で描く（軌道表示 O と、設定の「小惑星」で表示）
+struct AsteroidBelt {
+    std::vector<float> a, e, n, m0;   // km, 離心率, 平均運動 rad/日, J2000 での平均近点角 rad
+    std::vector<V3> P, Q;             // 軌道面の基底（近日点の向きと、それに直交する向き。描画座標）
+    std::vector<unsigned char> kind;  // 0: 小惑星帯, 1: 地球近傍, 2: トロヤ群, 3: ケンタウルス族・太陽系外縁天体
+    std::vector<V3> pos;              // 今の位置 km（太陽中心）
+    double posT = NAN;                // pos を計算した時刻
+    int pending = -1;                 // 計算し直している途中の組（0: 偶数番, 1: 奇数番, -1: 終わっている）
+};
+
+static float HalfToFloat(uint16_t h) {
+    uint32_t sign = (h >> 15) & 1, exp = (h >> 10) & 31, man = h & 1023, f;
+    if (exp == 0) {
+        float v = std::ldexp((float)man, -24);
+        return sign ? -v : v;
+    }
+    if (exp == 31) f = (sign << 31) | 0x7f800000 | (man << 13);
+    else f = (sign << 31) | ((exp + 112) << 23) | (man << 13);
+    float v;
+    std::memcpy(&v, &f, 4);
+    return v;
+}
+
+static AsteroidBelt LoadAsteroids() {
+    AsteroidBelt ab;
+    EmbeddedFile f = AsteroidsBin();
+    uint32_t n = 0;
+    if (f.size >= 4) std::memcpy(&n, f.data, 4);
+    n = (uint32_t)std::min<size_t>(n, (f.size - 4) / 15);
+    for (uint32_t k = 0; k < n; k++) {
+        const unsigned char* p = f.data + 4 + 15 * (size_t)k;
+        float a;
+        uint16_t h[5];
+        std::memcpy(&a, p, 4);
+        std::memcpy(h, p + 4, 10);
+        double e = HalfToFloat(h[0]), inc = HalfToFloat(h[1]) * DEG, om = HalfToFloat(h[2]) * DEG, w = HalfToFloat(h[3]) * DEG;
+        double cw = std::cos(w), sw = std::sin(w), cO = std::cos(om), sO = std::sin(om), cI = std::cos(inc), sI = std::sin(inc);
+        ab.P.push_back(EclToRender(cw * cO - sw * sO * cI, cw * sO + sw * cO * cI, sw * sI));
+        ab.Q.push_back(EclToRender(-sw * cO - cw * sO * cI, -sw * sO + cw * cO * cI, cw * sI));
+        ab.a.push_back((float)(a * AU_KM));
+        ab.e.push_back((float)e);
+        ab.n.push_back((float)(0.01720209895 / std::pow(a, 1.5)));
+        ab.m0.push_back((float)(HalfToFloat(h[4]) * DEG));
+        ab.kind.push_back(p[14]);
+    }
+    ab.pos.resize(ab.a.size());
+    return ab;
+}
+
+// 時刻 t の位置。半日以上進んだら計算し直す。数が多いので、偶数番と奇数番を 1 フレームずつ交互に計算し、
+// float で計算する（ケプラー方程式は 2 次の初期値から、離心率の小さいものは 2 回の反復で足りる）
+static void UpdateAsteroids(AsteroidBelt& ab, double t) {
+    if (ab.pending < 0) {
+        if (!std::isnan(ab.posT) && std::fabs(t - ab.posT) < 0.5) return;
+        ab.posT = t;
+        ab.pending = 0;
+    }
+    size_t start = (size_t)ab.pending;
+    ab.pending = ab.pending == 0 ? 1 : -1;
+    const float TWO_PI = 6.2831853f;
+    for (size_t k = start; k < ab.a.size(); k += 2) {
+        float e = ab.e[k];
+        double Md = std::fmod(ab.m0[k] + ab.n[k] * t, 2 * PI);
+        float M = (float)Md;
+        if (M > 3.14159265f) M -= TWO_PI;
+        if (M < -3.14159265f) M += TWO_PI;
+        float sM = sinf(M), cM = cosf(M);
+        float E = M + e * sM * (1 + e * cM);
+        int iters = e < 0.3f ? 2 : 6;
+        float sE = 0, cE = 1;
+        for (int it = 0; it < iters; it++) {
+            sE = sinf(E); cE = cosf(E);
+            E -= (E - e * sE - M) / (1 - e * cE);
+        }
+        sE = sinf(E); cE = cosf(E);
+        float a = ab.a[k];
+        ab.pos[k] = ab.P[k] * (double)(a * (cE - e)) + ab.Q[k] * (double)(a * sqrtf(1 - e * e) * sE);
+    }
+}
+
 // ---------------------------------------------------------------- 自機
 struct Ship {
     int ref = B_EARTH;  // 基準系の天体（自機はこの天体と一緒に公転移動する）
@@ -1081,6 +1184,7 @@ struct Options {
     double faceSunEl = NAN;     // 太陽の方位を向き、この仰角 deg を見る（--at と使う確認用）
     int tour = 0;               // 1 秒後に自動ツアーをこの場面から始める（確認用、1〜）
     int photo = 0;              // 写真モード 0〜2（確認用）
+    bool settings = false;      // 設定画面を開いた状態で始める（確認用）
     bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
     int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星, 2: 探査機（確認用）
     double timeScale = 1;
@@ -1109,6 +1213,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--face-sun") o.faceSunEl = atof(next());
         else if (a == "--tour") o.tour = atoi(next());
         else if (a == "--photo") o.photo = atoi(next());
+        else if (a == "--settings") o.settings = true;
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -1151,6 +1256,8 @@ struct App {
     std::vector<Body> B;
     Sky sky;
     int skyMode = 0;  // 0: 星のみ, 1: 星座線, 2: 星座線と名前
+    AsteroidBelt belt;
+    bool showAsteroids = true;  // 小惑星帯などの粒（軌道表示 O が有効な時に表示）
     Ship ship;
     Cam cam;
     double tDays = 0;
@@ -1189,6 +1296,8 @@ struct App {
     double tourTime = 0;                  // 今の場面に着いてからの実時間 秒
     std::vector<AstroEvent> tourEvents;
     std::vector<int> tourStops;           // tourEvents の各場面の TOUR の番号
+    bool settingsOpen = false;            // 設定画面（F10 キー）
+    int settingsSel = 0;
     bool dateOpen = false;                // 日時指定（Y キー）
     std::string dateDigits;               // 入力中の数字（YYYYMMDDhhmm）
     double warpPhase = 0;   // 光の筋の流れ（強さに応じて進む）
@@ -2044,8 +2153,96 @@ static void DrawTourPanel(const App& app) {
     }
 }
 
+// ---------------------------------------------------------------- 設定（F10 キー。それぞれのキー操作も同じ関数を使う）
+enum SettingItem { SET_LANG, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_ORBITS, SET_ASTEROIDS, SET_MARKERS,
+                   SET_INVERT, SET_FULLSCREEN, SET_COUNT };
+
+// 項目を dir（+1 / -1）の向きに変える。変えたらすぐ保存し、知らせを出すかは toast で選ぶ
+static void ChangeSetting(App& app, int item, int dir, bool toast) {
+    auto onoff = [](bool v) { return v ? "1" : "0"; };
+    switch (item) {
+        case SET_LANG:
+            if (!g_jpFont) {
+                Toast(app, T(UI_LANG_NO_FONT));
+                return;
+            }
+            SetLanguage(!g_jp);
+            SetSetting("lang", g_jp ? "ja" : "en");
+            if (toast) Toast(app, T(UI_LANG_SET));
+            break;
+        case SET_QUALITY:
+            app.quality = (app.quality + dir + 3) % 3;
+            SetSetting("quality", std::to_string(app.quality));
+            if (toast) Toast(app, T((UiId)(UI_QUALITY_0 + app.quality)));
+            break;
+        case SET_SOUND:
+            sfx::SetMuted(!sfx::g.muted);
+            SetSetting("sound", sfx::g.muted ? "0" : "1");
+            if (toast) Toast(app, T(sfx::g.muted ? UI_SOUND_OFF : UI_SOUND_ON));
+            break;
+        case SET_MUSIC:
+            sfx::MusicSetOff(!sfx::gm.off);
+            SetSetting("music", sfx::gm.off ? "0" : "1");
+            if (toast) Toast(app, T(sfx::gm.off ? UI_MUSIC_OFF : UI_MUSIC_ON));
+            break;
+        case SET_SKY:
+            app.skyMode = (app.skyMode + dir + 3) % 3;
+            SetSetting("sky", std::to_string(app.skyMode));
+            if (toast) Toast(app, T((UiId)(UI_SKY_OFF + app.skyMode)));
+            break;
+        case SET_ORBITS:
+            app.showOrbits = !app.showOrbits;
+            SetSetting("orbits", onoff(app.showOrbits));
+            if (toast) Toast(app, T(app.showOrbits ? UI_ORBITS_ON : UI_ORBITS_OFF));
+            break;
+        case SET_ASTEROIDS:
+            app.showAsteroids = !app.showAsteroids;
+            SetSetting("asteroids", onoff(app.showAsteroids));
+            if (toast) Toast(app, T(app.showAsteroids ? UI_ASTEROIDS_ON : UI_ASTEROIDS_OFF));
+            break;
+        case SET_MARKERS:
+            app.showMoonMarkers = !app.showMoonMarkers;
+            SetSetting("markers", onoff(app.showMoonMarkers));
+            if (toast) Toast(app, T(app.showMoonMarkers ? UI_LABELS_ON : UI_LABELS_OFF));
+            break;
+        case SET_INVERT:
+            app.invertY = !app.invertY;
+            SetSetting("invert", onoff(app.invertY));
+            if (toast) Toast(app, T(app.invertY ? UI_INVERT_ON : UI_INVERT_OFF));
+            break;
+        case SET_FULLSCREEN:
+            ToggleBorderlessWindowed();
+            break;
+    }
+    SaveSettings();
+}
+
+static std::string SettingValue(const App& app, int item) {
+    auto onoff = [](bool v) { return T(v ? UI_SET_ON : UI_SET_OFF); };
+    switch (item) {
+        case SET_LANG: return g_jp ? "日本語" : "English";
+        case SET_QUALITY: return T((UiId)(UI_SET_Q0 + app.quality));
+        case SET_SOUND: return onoff(!sfx::g.muted);
+        case SET_MUSIC: return onoff(!sfx::gm.off);
+        case SET_SKY: return T((UiId)(UI_SET_SKY0 + app.skyMode));
+        case SET_ORBITS: return onoff(app.showOrbits);
+        case SET_ASTEROIDS: return onoff(app.showAsteroids);
+        case SET_MARKERS: return onoff(app.showMoonMarkers);
+        case SET_INVERT: return onoff(app.invertY);
+        default: return onoff(IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE));
+    }
+}
+
 // 一覧・入力欄が開いている間のキー操作。開いていれば true（ほかの操作は止める）
 static bool HandleModalInput(App& app) {
+    if (app.settingsOpen) {
+        if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) app.settingsSel = (app.settingsSel + 1) % SET_COUNT;
+        if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) app.settingsSel = (app.settingsSel + SET_COUNT - 1) % SET_COUNT;
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) ChangeSetting(app, app.settingsSel, 1, false);
+        if (IsKeyPressed(KEY_LEFT)) ChangeSetting(app, app.settingsSel, -1, false);
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_F10)) app.settingsOpen = false;
+        return true;
+    }
     if (app.dateOpen) {
         for (int ch = GetCharPressed(); ch > 0; ch = GetCharPressed())
             if (ch >= '0' && ch <= '9' && app.dateDigits.size() < 12) app.dateDigits += (char)ch;
@@ -2096,6 +2293,25 @@ static bool HandleModalInput(App& app) {
 
 static void DrawModalPanels(const App& app) {
     const Cam& c = app.cam;
+    if (app.settingsOpen) {
+        static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY, UI_SET_ORBITS,
+                                             UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT, UI_SET_FULLSCREEN};
+        float w = std::min(c.W - 20, 720.0f), h = 110 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
+        DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
+        TxtC(T(UI_SET_TITLE), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
+        TxtC(T(UI_SET_KEYS), c.W * 0.5f, y + 40, 14, {170, 200, 230, 255});
+        for (int i = 0; i < SET_COUNT; i++) {
+            float ry = y + 72 + i * 30.0f;
+            bool sel = i == app.settingsSel;
+            if (sel) DrawRectangle((int)x + 12, (int)ry - 4, (int)w - 24, 28, {60, 90, 140, 200});
+            Color col = sel ? Color{255, 240, 200, 255} : Color{215, 228, 245, 255};
+            Txt(T(NAME[i]), x + 28, ry, 18, col);
+            std::string v = SettingValue(app, i);
+            std::string shown = sel ? "<  " + v + "  >" : v;
+            Txt(shown.c_str(), x + w - 28 - TxtW(shown.c_str(), 18), ry, 18, sel ? Color{255, 220, 120, 255} : Color{170, 200, 230, 255});
+        }
+    }
     if (app.eventsOpen) {
         int n = (int)app.events.size();
         int rows = std::max(1, std::min(n, 14));
@@ -2395,33 +2611,14 @@ static void HandleInput(App& app, double dt) {
 
     // 表示
     if (IsKeyPressed(KEY_V) || pad.view) { app.cockpit = !app.cockpit; Toast(app, T(app.cockpit ? UI_VIEW_COCKPIT : UI_VIEW_CHASE)); }
-    if (IsKeyPressed(KEY_O)) { app.showOrbits = !app.showOrbits; Toast(app, T(app.showOrbits ? UI_ORBITS_ON : UI_ORBITS_OFF)); }
-    if (IsKeyPressed(KEY_C)) {
-        app.skyMode = (app.skyMode + 1) % 3;
-        Toast(app, T((UiId)(UI_SKY_OFF + app.skyMode)));
-        SetSetting("sky", std::to_string(app.skyMode));
-    }
-    if (IsKeyPressed(KEY_L)) { app.showMoonMarkers = !app.showMoonMarkers; Toast(app, T(app.showMoonMarkers ? UI_LABELS_ON : UI_LABELS_OFF)); }
-    if (IsKeyPressed(KEY_J)) {
-        if (!g_jpFont) {
-            Toast(app, T(UI_LANG_NO_FONT));
-        } else {
-            SetLanguage(!g_jp);
-            SetSetting("lang", g_jp ? "ja" : "en");
-            SaveSettings();
-            Toast(app, T(UI_LANG_SET));
-        }
-    }
-    if (IsKeyPressed(KEY_M) && shift) {
-        sfx::MusicSetOff(!sfx::gm.off);
-        SetSetting("music", sfx::gm.off ? "0" : "1");
-        SaveSettings();
-        Toast(app, T(sfx::gm.off ? UI_MUSIC_OFF : UI_MUSIC_ON));
-    } else if (IsKeyPressed(KEY_M)) {
-        sfx::SetMuted(!sfx::g.muted);
-        SetSetting("sound", sfx::g.muted ? "0" : "1");
-        SaveSettings();
-        Toast(app, T(sfx::g.muted ? UI_SOUND_OFF : UI_SOUND_ON));
+    if (IsKeyPressed(KEY_O)) ChangeSetting(app, SET_ORBITS, 1, true);
+    if (IsKeyPressed(KEY_C)) ChangeSetting(app, SET_SKY, 1, true);
+    if (IsKeyPressed(KEY_L)) ChangeSetting(app, SET_MARKERS, 1, true);
+    if (IsKeyPressed(KEY_J)) ChangeSetting(app, SET_LANG, 1, true);
+    if (IsKeyPressed(KEY_M)) ChangeSetting(app, shift ? SET_MUSIC : SET_SOUND, 1, true);
+    if (IsKeyPressed(KEY_F10)) {
+        app.settingsOpen = true;
+        app.settingsSel = 0;
     }
     if (IsKeyPressed(KEY_B)) SaveBookmark(app);
     if (IsKeyPressed(KEY_N) && app.warpT < 0) {
@@ -2438,15 +2635,10 @@ static void HandleInput(App& app, double dt) {
             Toast(app, msg);
         }
     }
-    if (IsKeyPressed(KEY_F9)) {
-        app.quality = (app.quality + 1) % 3;
-        SetSetting("quality", std::to_string(app.quality));
-        SaveSettings();
-        Toast(app, T((UiId)(UI_QUALITY_0 + app.quality)));
-    }
-    if (IsKeyPressed(KEY_I)) { app.invertY = !app.invertY; Toast(app, T(app.invertY ? UI_INVERT_ON : UI_INVERT_OFF)); }
+    if (IsKeyPressed(KEY_F9)) ChangeSetting(app, SET_QUALITY, 1, true);
+    if (IsKeyPressed(KEY_I)) ChangeSetting(app, SET_INVERT, 1, true);
     if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
-    if (IsKeyPressed(KEY_F11)) ToggleBorderlessWindowed();
+    if (IsKeyPressed(KEY_F11)) ChangeSetting(app, SET_FULLSCREEN, 1, false);
 
     // 時間
     if (IsKeyPressed(KEY_RIGHT_BRACKET) || pad.timeUp) app.timeIdx = std::min(TIME_SCALE_COUNT - 1, app.timeIdx + 1);
@@ -2810,6 +3002,30 @@ static void LoadEarthTextures(App& app) {
     }
 }
 
+// 木星の大赤斑の経度（体系 II、西経 deg、360° を超えても続けて数える）。Project Pluto がまとめた観測値
+// （https://www.projectpluto.com/grs_lon.txt、1964 年以降は JUPOS）を年 1 点に間引いたもの。2025 年 12 月より後は
+// 年 16° で増えるとして延ばし、1962 年より前は 1962 年の値のまま
+static double GreatRedSpotLon(double tDays) {
+    static const double T[][2] = {
+        {1962.66, 14}, {1964.73, 18}, {1966.03, 22}, {1967.20, 28}, {1968.44, 21}, {1969.34, 21}, {1970.58, 22},
+        {1971.70, 7}, {1972.66, 0}, {1973.79, 7}, {1974.40, 14}, {1975.47, 35}, {1976.20, 49}, {1977.11, 48},
+        {1978.29, 55}, {1979.81, 61}, {1980.36, 58}, {1981.93, 53}, {1983.57, 39}, {1984.42, 28}, {1986.50, 19},
+        {1987.92, 14}, {1988.92, 16}, {1989.84, 30}, {1990.92, 27}, {1991.42, 32}, {1992.50, 33}, {1993.33, 45},
+        {1994.42, 40}, {1995.67, 49}, {1996.67, 61}, {1997.33, 62}, {1998.84, 64}, {1999.92, 66}, {2000.84, 76},
+        {2001.84, 77}, {2002.17, 80}, {2003.84, 84}, {2004.92, 94}, {2006.42, 109}, {2007.33, 114}, {2008.54, 127},
+        {2009.54, 138}, {2010.77, 156}, {2011.58, 168}, {2012.58, 182}, {2013.75, 202}, {2014.67, 216},
+        {2015.92, 236}, {2016.92, 258}, {2017.75, 280}, {2018.84, 296}, {2019.84, 320}, {2020.92, 347},
+        {2021.92, 365}, {2022.84, 386}, {2024.00, 410}, {2024.75, 421}, {2025.92, 439},
+    };
+    const int n = sizeof T / sizeof T[0];
+    double y = 2000.0 + tDays / 365.25;
+    if (y <= T[0][0]) return T[0][1];
+    if (y >= T[n - 1][0]) return T[n - 1][1] + 16.0 * (y - T[n - 1][0]);
+    int i = 0;
+    while (T[i + 1][0] < y) i++;
+    return T[i][1] + (T[i + 1][1] - T[i][1]) * (y - T[i][0]) / (T[i + 1][0] - T[i][0]);
+}
+
 // 惑星・衛星の地図（形式は tools/make_planet_maps.py）。読めた地図を名前の同じ天体に割り当てる
 static void LoadBodyMaps(App& app) {
     EmbeddedFile f = MapsBin();
@@ -2843,7 +3059,7 @@ static void LoadBodyMaps(App& app) {
         m.height = m.data.id != 0;
         if (!m.color.id || !m.mask.id) continue;
         for (Body& b : app.B)
-            if (m.name == b.d.en && b.d.kind == KIND_ROCKY) b.map = (int)app.maps.size();
+            if (m.name == b.d.en && (b.d.kind == KIND_ROCKY || b.d.kind == KIND_GAS)) b.map = (int)app.maps.size();
         app.maps.push_back(m);
     }
 }
@@ -3120,7 +3336,9 @@ static void DrawBodies(App& app) {
             app.mat.maps[MATERIAL_MAP_SPECULAR].texture = m.height ? m.data : m.color;
             app.mat.maps[MATERIAL_MAP_NORMAL].texture = m.mask;
             float info[4] = {1.0f / std::max(0.05f, m.mean), (float)m.kind, m.height ? 1.0f : 0.0f, (float)d.radius};
-            float info2[4] = {(float)d.style, 0, 0, 0};
+            // 木星の地図は大赤斑が経度 0° にあるので、大赤斑の今の西経（体系 II）だけ回す
+            float shift = it.i == B_JUPITER ? (float)(GreatRedSpotLon(app.tDays) * DEG) : 0.0f;
+            float info2[4] = {(float)d.style, shift, 0, 0};
             SetShaderValue(app.shader, app.locMapInfo, info, SHADER_UNIFORM_VEC4);
             SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         }
@@ -3309,6 +3527,30 @@ static void DrawStars(const App& app) {
         if (st.size > 0) DrawCircleV(p, st.size, st.col);
         else DrawPixelV(p, st.col);
     }
+}
+
+// 小惑星帯などの粒: 1 ピクセルの点。種類ごとに色を変える（地表近くでは軌道線と同じく描かない）
+static void DrawAsteroids(App& app) {
+    if (!app.showOrbits || !app.showAsteroids || app.belt.a.empty()) return;
+    const Cam& c = app.cam;
+    for (const Body& b : app.B)
+        if (Len(c.pos - b.pos) < b.d.radius * 1.3) return;
+    UpdateAsteroids(app.belt, app.tDays);
+    static const unsigned char COL[4][4] = {{205, 190, 165, 120}, {235, 150, 120, 150}, {160, 215, 150, 130}, {150, 185, 235, 140}};
+    rlCheckRenderBatchLimit(4);
+    rlBegin(RL_QUADS);
+    for (size_t k = 0; k < app.belt.pos.size(); k++) {
+        Vector2 p;
+        if (!Project(c, app.belt.pos[k] - c.pos, &p) || p.x < 0 || p.y < 0 || p.x >= c.W || p.y >= c.H) continue;
+        const unsigned char* col = COL[app.belt.kind[k] & 3];
+        rlCheckRenderBatchLimit(4);
+        rlColor4ub(col[0], col[1], col[2], col[3]);
+        rlVertex2f(p.x, p.y);
+        rlVertex2f(p.x, p.y + 1);
+        rlVertex2f(p.x + 1, p.y + 1);
+        rlVertex2f(p.x + 1, p.y);
+    }
+    rlEnd();
 }
 
 // 天体が他の天体に隠れていないか（太陽のグロー用）
@@ -3847,6 +4089,11 @@ int main(int argc, char** argv) {
     App app;
     app.B = InitBodies();
     app.sky = LoadSky();
+    app.belt = LoadAsteroids();
+    app.showAsteroids = GetSetting("asteroids") != "0";
+    app.showOrbits = GetSetting("orbits") != "0";
+    app.showMoonMarkers = GetSetting("markers") != "0";
+    app.invertY = GetSetting("invert") == "1";
 
     // フォント
     std::string allText = "°²·×〜";
@@ -3958,6 +4205,7 @@ int main(int argc, char** argv) {
     app.apAutoEngine = opt.autoEngine;
     app.showHelp = opt.help;
     app.photoMode = std::max(0, std::min(2, opt.photo));
+    app.settingsOpen = opt.settings;
     app.probeEvents = FindProbeEvents(app);
     app.cometEvents = FindCometEvents(app);
     app.eventsPage = std::max(0, std::min(2, opt.eventsPage));
@@ -4060,6 +4308,7 @@ int main(int argc, char** argv) {
             if (lowRes) rlScalef(rk, rk, 1);   // EndMode3D で modelview が単位行列に戻るので、縮小を掛け直す
         }
         DrawStars(app);
+        DrawAsteroids(app);
         {
             Camera3D sky = {{0, 0, 0}, {0, 0, -1}, {0, 1, 0}, 60, CAMERA_PERSPECTIVE};
             BeginMode3D(sky);

@@ -126,7 +126,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                            KIND_ROCKY, {0.82f, 0.45f, 0.26f}, {0.52f, 0.25f, 0.14f}, 0, {0.9f, 0.6f, 0.45f}, 0.3f));
     v.push_back(MakePlanet("木星", "Jupiter", 71492, 0.06487, 1.898e27,
                            5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909,
-                           268.06, 64.50, 0.41354,
+                           268.06, 64.50, 0.413665,   // 自転は雲の模様に合わせて体系 II（870.27°/日）
                            KIND_GAS, {0.90f, 0.82f, 0.68f}, {0.66f, 0.45f, 0.30f}, 14, {0.9f, 0.85f, 0.7f}, 0.3f));
     BodyDef saturn = MakePlanet("土星", "Saturn", 60268, 0.09796, 5.683e26,
                            9.53667594, 0.05386179, 2.48599187, 49.95424423, 92.59887831, 113.66242448,
@@ -367,6 +367,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     // 冥王星の自転軸は右手系の北（赤緯 -6.16°）で、自転は順行（カロンの公転と同じ向き）
     static const struct { const char* en; double w0; } PRIME[] = {
         {"Mercury", 329.5988}, {"Mars", 176.630}, {"Ceres", 170.650}, {"Vesta", 285.39}, {"Pluto", 302.695},
+        {"Jupiter", 43.3},   // 体系 II
     };
     for (BodyDef& d : v)
         for (const auto& pm : PRIME)
