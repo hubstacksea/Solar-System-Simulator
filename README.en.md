@@ -26,6 +26,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Comet Churyumov-Gerasimenko](docs/screenshots/comet_67p.jpg) Comet Churyumov-Gerasimenko in its real shape (August 2015, perihelion) | ![Ryugu](docs/screenshots/ryugu.jpg) The spinning-top asteroid Ryugu |
 | ![Mars with Valles Marineris](docs/screenshots/mars_map.jpg) Mars from Viking maps and MOLA elevations (Valles Marineris in the middle) | ![Pluto with its heart](docs/screenshots/pluto.jpg) Pluto from New Horizons maps |
 | ![Io](docs/screenshots/io.jpg) Io from Galileo / Voyager maps | ![Sunset over the sea](docs/screenshots/sunset_sea.jpg) Sunset over the sea |
+| ![Asteroid belt and Trojans](docs/screenshots/asteroid_belt.jpg) The main belt (ring) and Jupiter's Trojans (green) from 15 AU above | ![Jupiter with the Great Red Spot](docs/screenshots/jupiter_map.jpg) Jupiter from Cassini maps (Great Red Spot at lower right) |
 
 ## Building
 

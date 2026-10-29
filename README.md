@@ -26,6 +26,7 @@
 | ![チュリュモフ・ゲラシメンコ彗星](docs/screenshots/comet_67p.jpg) 実際の形のチュリュモフ・ゲラシメンコ彗星（2015年8月、近日点） | ![リュウグウ](docs/screenshots/ryugu.jpg) そろばん玉形の小惑星リュウグウ |
 | ![マリネリス峡谷の見える火星](docs/screenshots/mars_map.jpg) Viking の地図と MOLA の標高による火星（中央にマリネリス峡谷） | ![ハートの見える冥王星](docs/screenshots/pluto.jpg) New Horizons の地図による冥王星 |
 | ![イオ](docs/screenshots/io.jpg) Galileo / Voyager の地図によるイオ | ![海の夕焼け](docs/screenshots/sunset_sea.jpg) 海の夕焼け |
+| ![小惑星帯とトロヤ群](docs/screenshots/asteroid_belt.jpg) 15 AU 上から見た小惑星帯（輪）と木星のトロヤ群（緑） | ![大赤斑の見える木星](docs/screenshots/jupiter_map.jpg) Cassini の地図による木星（右下に大赤斑） |
 
 ## ビルド
 
