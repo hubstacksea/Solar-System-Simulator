@@ -40,6 +40,12 @@ uniform vec4 detail;       // x: 表面模様の種類, y: 1 画素の大きさ�
 uniform mat4 matNormal;
 uniform sampler2D texture0;  // 地球・月: 地表の色 (Blue Marble / LROC)
 uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷 / 月: R 標高上位, A 下位
+// 大気（地球・火星）: atmBeta は天頂方向の空気 1 つ分で散乱する割合（0 なら大気なし）。日光は太陽が低いほど赤くなる
+// atmHaze: x カメラの位置の空気の濃さ（0 ならかすみなし）, y 描画座標 1 あたりの km, z スケールハイト km
+uniform vec3 atmBeta;
+uniform vec3 atmMie;
+uniform vec4 atmHaze;
+uniform vec3 camUp;
 out vec4 finalColor;
 
 const float PI = 3.14159265;
@@ -575,25 +581,27 @@ void main() {
     vec3 N = normalize(Ng + (nb - n0));
     float ndl = max(dot(N, L), 0.0) * smoothstep(-0.06, 0.02, ndlG) * sh;
     float muN = max(dot(N, V), 0.05);
+    // 大気を通ってきた日光の色（太陽が真上の時を白として、朝夕は赤い）
+    vec3 sunTint = exp(-atmBeta * max(min(1.0 / (max(ndlG, 0.0) + 0.06), 7.0) - 1.0, 0.0));
 
     vec3 col;
     if (kind == 1 && style != 3) {
         // 大気の無い天体: ランベルトとロンメル・ゼーリガーの中間（満月が縁まで明るく見える）
         float ls = 2.0 * ndl / (ndl + muN);
-        col = base * (mix(ndl, ls * 0.5, 0.5) * 1.15 + 0.012);
+        col = base * (mix(ndl, ls * 0.5, 0.5) * 1.15 * sunTint + 0.012);
     } else if (kind == 2) {
         col = base * (ndl * 1.05 + 0.015) * (0.8 + 0.2 * sqrt(mu));
     } else {
-        col = base * (ndl * 1.05 + 0.012);
+        col = base * (ndl * 1.05 * sunTint + 0.012);
     }
 
     if (kind == 3) {
         vec3 H = normalize(L + V);
         float nh = max(dot(N, H), 0.0);
-        col += vec3(1.0, 0.96, 0.88) * specMask * (pow(nh, 90.0) * 0.6 + pow(nh, 12.0) * 0.04) * step(0.0, ndlG) * sh;
+        col += vec3(1.0, 0.96, 0.88) * sunTint * specMask * (pow(nh, 90.0) * 0.6 + pow(nh, 12.0) * 0.04) * step(0.0, ndlG) * sh;
         col += vec3(1.0, 0.72, 0.38) * lights * 1.4 * (1.0 - smoothstep(-0.18, 0.02, ndlG)) * (1.0 - cloud);
-        float cl = max(ndlG, 0.0) * sh + 0.01;
-        col = mix(col, vec3(cl), cloud * 0.92);
+        vec3 cl = max(ndlG, 0.0) * sh * sunTint + 0.01;
+        col = mix(col, cl, cloud * 0.92);
         col = mix(col, atmColor * max(ndlG, 0.0), 0.12 * (1.0 - mu) * params.w);   // 大気による青み
     }
 
@@ -601,6 +609,19 @@ void main() {
     col += base * vec3(0.32, 0.10, 0.04) * eclRed * max(ndlG, 0.0);
     float rim = pow(1.0 - mu, 3.0) * params.w;
     col += atmColor * rim * clamp(ndlG + 0.25, 0.0, 1.0);
+
+    // 大気の中から見た地面のかすみ: 遠いほど地面の色が薄れ、空と同じ光（SKY_FS と同じ近似）が重なる
+    if (atmHaze.x > 0.0) {
+        float air = atmHaze.x * length(fragWorld) * atmHaze.y / atmHaze.z;
+        vec3 v = normalize(fragWorld);
+        float cosT = dot(v, L), sunEl = dot(camUp, L);
+        vec3 sunCol = exp(-atmBeta * min(atmHaze.x / (max(sunEl, 0.0) + 0.06), 7.0));
+        vec3 ray = sunCol * (1.0 - exp(-atmBeta * air)) * 0.75 * (1.0 + cosT * cosT);
+        float g = max(cosT, 0.0);
+        vec3 mie = sunCol * atmMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * air));
+        vec3 ins = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl));
+        col = col * exp(-(atmBeta + 0.02) * air) + ins;
+    }
     finalColor = vec4(col, 1.0);
 }
 )";

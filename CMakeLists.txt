@@ -41,7 +41,7 @@ endif()
 target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
 file(GLOB MUSIC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/music/*.ogg")
 set_source_files_properties(src/embedded_assets.cpp PROPERTIES
-  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/stars.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/sky.txt;${CMAKE_CURRENT_SOURCE_DIR}/assets/probes.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/milkyway.jpg;${MUSIC_FILES}")
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/stars.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/sky.txt;${CMAKE_CURRENT_SOURCE_DIR}/assets/probes.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/milkyway.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/shapes.bin;${MUSIC_FILES}")
 target_link_libraries(solar_voyager PRIVATE raylib)
 
 if(MINGW)

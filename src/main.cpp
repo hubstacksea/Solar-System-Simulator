@@ -129,7 +129,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
-    X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
+    X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
@@ -200,6 +200,9 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(TOUR_KEYS, "Enter : 次へ    Shift+Enter : 前へ    U : ツアー終了", "Enter : next    Shift+Enter : previous    U : end tour") \
     X(TOUR_END, "ツアー終了", "Tour ended") \
     X(TOUR_NONE, "ツアーの場面が見つかりません", "No tour stops found") \
+    X(PHOTO_0, "写真モード: 解除", "Photo mode: off") \
+    X(PHOTO_1, "写真モード: 表示を隠す（Z で自機も隠す）", "Photo mode: overlays hidden (Z again to hide the ship)") \
+    X(PHOTO_2, "写真モード: 表示と自機を隠す", "Photo mode: overlays and ship hidden") \
     X(DATE_TITLE, "日時を指定（UTC）", "Set date and time (UTC)") \
     X(DATE_KEYS, "数字を入力    Backspace : 1 文字消す    Enter : 決定    Esc / Y : 取消", "Type digits    Backspace : delete    Enter : apply    Esc / Y : cancel") \
     X(DATE_SET, "日時: %s", "Date: %s") \
@@ -271,7 +274,89 @@ struct Body {
     std::vector<V3> orbit;  // 母天体相対の軌道点
     double orbitT = -1e9;   // 軌道線を計算した時刻（月）
     bool active = true;     // 探査機: その時刻に飛んでいるか（打ち上げ前・運用終了後は false で、表示しない）
+    int shape = -1;         // 実際の形（g_shapes の番号。-1 は楕円体）
 };
+
+// ---------------------------------------------------------------- 彗星・小惑星の実際の形（assets/shapes.bin）
+// 頂点は本体の座標系（X, 自転軸, Z）で、天体の半径を 1 とする。外側の表面までの半径の表で高度や衝突を求める
+struct Shape {
+    std::string name;
+    std::vector<float> vert, norm;          // 頂点・法線（xyz の並び）
+    std::vector<unsigned short> idx;
+    int nlon = 0, nlat = 0;
+    std::vector<float> rad;                 // [緯度][経度] km（緯度 -90〜90°、経度はモデルの x 軸から反時計回り）
+    float rmax = 0;
+};
+static std::vector<Shape> g_shapes;
+
+static void LoadShapes() {
+    EmbeddedFile f = ShapesBin();
+    const unsigned char* p = f.data;
+    const unsigned char* end = f.data + f.size;
+    auto rd = [&](void* dst, size_t n) { if (p + n > end) return false; std::memcpy(dst, p, n); p += n; return true; };
+    uint32_t count = 0;
+    if (!rd(&count, 4)) return;
+    for (uint32_t k = 0; k < count; k++) {
+        char name[33] = {0};
+        float scale;
+        uint32_t nv, nf;
+        uint16_t nlon, nlat;
+        if (!rd(name, 32) || !rd(&scale, 4) || !rd(&nv, 4) || !rd(&nf, 4) || !rd(&nlon, 2) || !rd(&nlat, 2)) return;
+        Shape sh;
+        sh.name = name;
+        std::vector<int16_t> v(nv * 3);
+        std::vector<uint16_t> fi(nf * 3);
+        sh.rad.resize((size_t)nlon * nlat);
+        if (!rd(v.data(), v.size() * 2) || !rd(fi.data(), fi.size() * 2) || !rd(sh.rad.data(), sh.rad.size() * 4)) return;
+        sh.nlon = nlon;
+        sh.nlat = nlat;
+        // モデルの (x, y, z: 北) → 本体の座標系 (X = x, Y = z, Z = -y)。km のまま（描画時に半径で割る）
+        sh.vert.resize(nv * 3);
+        for (uint32_t i = 0; i < nv; i++) {
+            sh.vert[i * 3] = v[i * 3] * scale;
+            sh.vert[i * 3 + 1] = v[i * 3 + 2] * scale;
+            sh.vert[i * 3 + 2] = -v[i * 3 + 1] * scale;
+        }
+        sh.idx.assign(fi.begin(), fi.end());
+        sh.norm.assign(nv * 3, 0.0f);
+        for (uint32_t t = 0; t < nf; t++) {
+            const float* a = &sh.vert[fi[t * 3] * 3];
+            const float* b = &sh.vert[fi[t * 3 + 1] * 3];
+            const float* c = &sh.vert[fi[t * 3 + 2] * 3];
+            Vector3 n = Vector3CrossProduct({b[0] - a[0], b[1] - a[1], b[2] - a[2]}, {c[0] - a[0], c[1] - a[1], c[2] - a[2]});
+            for (int j = 0; j < 3; j++) {
+                float* q = &sh.norm[fi[t * 3 + j] * 3];
+                q[0] += n.x; q[1] += n.y; q[2] += n.z;
+            }
+        }
+        for (uint32_t i = 0; i < nv; i++) {
+            Vector3 n = Vector3Normalize({sh.norm[i * 3], sh.norm[i * 3 + 1], sh.norm[i * 3 + 2]});
+            sh.norm[i * 3] = n.x; sh.norm[i * 3 + 1] = n.y; sh.norm[i * 3 + 2] = n.z;
+        }
+        for (float r : sh.rad) sh.rmax = std::max(sh.rmax, r);
+        g_shapes.push_back(std::move(sh));
+    }
+}
+
+// 描画用のメッシュ（半径 1 の単位）
+static Mesh ShapeMesh(const Shape& sh, double radius) {
+    Mesh m = {0};
+    int nv = (int)sh.vert.size() / 3;
+    m.vertexCount = nv;
+    m.triangleCount = (int)sh.idx.size() / 3;
+    m.vertices = (float*)MemAlloc(nv * 3 * sizeof(float));
+    m.normals = (float*)MemAlloc(nv * 3 * sizeof(float));
+    m.texcoords = (float*)MemAlloc(nv * 2 * sizeof(float));
+    m.indices = (unsigned short*)MemAlloc(sh.idx.size() * sizeof(unsigned short));
+    for (int i = 0; i < nv * 3; i++) {
+        m.vertices[i] = (float)(sh.vert[i] / radius);
+        m.normals[i] = sh.norm[i];
+    }
+    std::memset(m.texcoords, 0, nv * 2 * sizeof(float));
+    std::memcpy(m.indices, sh.idx.data(), sh.idx.size() * sizeof(unsigned short));
+    UploadMesh(&m, false);
+    return m;
+}
 
 static V3 PlanetOrbitPoint(const BodyDef& d, double E) {
     double a = d.a_au * AU_KM, e = d.e;
@@ -436,6 +521,7 @@ static std::vector<Body> InitBodies() {
         b.d = d;
         B.push_back(b);
     }
+    if (g_shapes.empty()) LoadShapes();
     for (size_t i = 0; i < B.size(); i++) {
         Body& b = B[i];
         const BodyDef& d = b.d;
@@ -480,6 +566,11 @@ static std::vector<Body> InitBodies() {
             }
         }
         if (d.parent >= 0) b.soi = std::max(b.soi, d.radius * 5);
+        for (size_t k = 0; k < g_shapes.size(); k++)
+            if (g_shapes[k].name == d.en) {
+                b.shape = (int)k;
+                b.outer = g_shapes[k].rmax;
+            }
     }
     // 探査機: 惑星中心の区間の境目での、シミュレータの惑星と実際の惑星の差
     if (g_probes.empty()) LoadProbeTracks();
@@ -530,6 +621,19 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
 
 // 楕円体表面までの半径（dir は単位ベクトル）
 static double SurfaceRadius(const Body& b, V3 dir) {
+    if (b.shape >= 0) {
+        // 実際の形: 本体の座標系での向きから、外側の表面までの半径の表を補間する
+        const Shape& sh = g_shapes[b.shape];
+        double cs = std::cos(b.spin), sn = std::sin(b.spin);
+        V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;
+        double x = Dot(dir, X), y = -Dot(dir, Z), z = Dot(dir, b.pole);
+        double fl = (std::asin(std::max(-1.0, std::min(1.0, z))) / PI + 0.5) * (sh.nlat - 1);
+        double fo = std::fmod(std::atan2(y, x) / (2 * PI) + 1.0, 1.0) * sh.nlon;
+        int i0 = std::min((int)fl, sh.nlat - 2), j0 = (int)fo % sh.nlon, j1 = (j0 + 1) % sh.nlon;
+        double u = fl - i0, w = fo - std::floor(fo);
+        auto R = [&](int i, int j) { return (double)sh.rad[(size_t)i * sh.nlon + j]; };
+        return (R(i0, j0) * (1 - w) + R(i0, j1) * w) * (1 - u) + (R(i0 + 1, j0) * (1 - w) + R(i0 + 1, j1) * w) * u;
+    }
     double a = b.d.radius, c = a * (1 - b.d.flattening);
     double y = Dot(dir, b.pole);
     return 1.0 / std::sqrt((1 - y * y) / (a * a) + y * y / (c * c));
@@ -968,6 +1072,7 @@ struct Options {
     double probeView = 0;       // ワープの後、ターゲットの探査機をこの距離 m から斜めに見る（確認用）
     double faceSunEl = NAN;     // 太陽の方位を向き、この仰角 deg を見る（--at と使う確認用）
     int tour = 0;               // 1 秒後に自動ツアーをこの場面から始める（確認用、1〜）
+    int photo = 0;              // 写真モード 0〜2（確認用）
     bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
     int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星, 2: 探査機（確認用）
     double timeScale = 1;
@@ -995,6 +1100,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--probe-view") o.probeView = atof(next());
         else if (a == "--face-sun") o.faceSunEl = atof(next());
         else if (a == "--tour") o.tour = atoi(next());
+        else if (a == "--photo") o.photo = atoi(next());
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -1069,6 +1175,7 @@ struct App {
     std::vector<AstroEvent> events;
     int eventSel = 0;
     int warpEvent = -1;                   // イベントへのワープ中はその番号
+    int photoMode = 0;                    // 写真モード（Z キー）0: 通常, 1: 表示を隠す, 2: 表示と自機を隠す
     bool tourOn = false;                  // 自動ツアー（U キー）
     int tourIdx = 0;
     double tourTime = 0;                  // 今の場面に着いてからの実時間 秒
@@ -1078,6 +1185,7 @@ struct App {
     std::string dateDigits;               // 入力中の数字（YYYYMMDDhhmm）
     double warpPhase = 0;   // 光の筋の流れ（強さに応じて進む）
     Mesh sphere{}, ring{};
+    std::vector<Mesh> shapeMesh;          // 実際の形（g_shapes と同じ並び）
     Mesh shipMesh{};
     Mesh probeMesh[PM_COUNT]{};
     Material shipMat{};
@@ -1096,6 +1204,7 @@ struct App {
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
     int locOcc = -1, locOccN = -1, locSunAng = -1;
+    int locAtmBeta = -1, locAtmMie = -1, locAtmHaze = -1, locCamUp = -1;
     std::vector<Vector3> dust;
     double glow = 0;
     double camYaw = NAN, camPitch = 0, camDist = 60;
@@ -2149,6 +2258,10 @@ static void HandleInput(App& app, double dt) {
     PadState pad = ReadPad(app);
     app.padZoom = pad.zoom;
     if (HandleModalInput(app)) return;
+    if (IsKeyPressed(KEY_Z)) {
+        app.photoMode = (app.photoMode + 1) % 3;
+        Toast(app, T((UiId)(UI_PHOTO_0 + app.photoMode)));
+    }
     if (IsKeyPressed(KEY_U)) {
         if (app.tourOn) StopTour(app);
         else StartTour(app);
@@ -2952,7 +3065,28 @@ static void DrawBodies(App& app) {
         }
         float detail[4] = {(float)style, (float)(QUALITY_DETAIL[app.quality] / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
         SetShaderValue(app.shader, app.locDetail, detail, SHADER_UNIFORM_VEC4);
-        DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
+        // 大気のある天体: 日光の色と、カメラが同じ大気の中にいる時のかすみ
+        {
+            Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, up = {0, 1, 0};
+            float haze[4] = {0, (float)(1.0 / s), 1, 0};
+            for (const SkyAtmosphere& a : SKY_ATM)
+                if (a.body == it.i) {
+                    beta = a.beta;
+                    mie = a.mie;
+                    double density, sunEl;
+                    V3 u;
+                    if (CameraAtmosphere(app, &density, &u, &sunEl) == &a) {
+                        haze[0] = (float)density;
+                        haze[2] = (float)a.H;
+                        up = ToF(u);
+                    }
+                }
+            SetShaderValue(app.shader, app.locAtmBeta, &beta, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locAtmMie, &mie, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locAtmHaze, haze, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
+        }
+        DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
 
         if (d.rings) {
             float rp[4] = {4.0f, (float)d.radius, 0, 0};
@@ -3497,8 +3631,19 @@ static void DrawWarpEffect(const App& app) {
     if (flash > 0.003) DrawRectangle(0, 0, (int)c.W, (int)c.H, Fade({225, 238, 255, 255}, (float)std::min(1.0, flash)));
 }
 
+static void DrawToast(const App& app) {
+    if (app.toastTime <= 0) return;
+    float a = (float)std::min(1.0, app.toastTime);
+    TxtC(app.toast.c_str(), app.cam.W * 0.5f, app.cam.H * 0.24f, 24, Fade({255, 240, 200, 255}, a));
+}
+
 static void DrawHUD(App& app) {
     const Cam& c = app.cam;
+    if (app.photoMode > 0) {   // 写真モード: 一覧・入力欄と、切り替えの知らせだけ
+        DrawToast(app);
+        DrawModalPanels(app);
+        return;
+    }
     const Ship& s = app.ship;
     const Engine& e = ENGINES[s.engine];
     V3 sw = ShipWorld(app);
@@ -3583,10 +3728,7 @@ static void DrawHUD(App& app) {
     snprintf(b, sizeof b, "%d FPS", GetFPS());
     Txt(b, 12, c.H - 44, 13, {110, 130, 160, 200});
 
-    if (app.toastTime > 0) {
-        float a = (float)std::min(1.0, app.toastTime);
-        TxtC(app.toast.c_str(), c.W * 0.5f, c.H * 0.24f, 24, Fade({255, 240, 200, 255}, a));
-    }
+    DrawToast(app);
 
     if (app.showHelp) {
         const int lines = UI_HELP15 - UI_HELP1 + 1;
@@ -3679,6 +3821,10 @@ int main(int argc, char** argv) {
     app.locOcc = GetShaderLocation(app.shader, "occ");
     app.locOccN = GetShaderLocation(app.shader, "occN");
     app.locSunAng = GetShaderLocation(app.shader, "sunAng");
+    app.locAtmBeta = GetShaderLocation(app.shader, "atmBeta");
+    app.locAtmMie = GetShaderLocation(app.shader, "atmMie");
+    app.locAtmHaze = GetShaderLocation(app.shader, "atmHaze");
+    app.locCamUp = GetShaderLocation(app.shader, "camUp");
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
     LoadMoonTextures(app);
@@ -3691,6 +3837,12 @@ int main(int argc, char** argv) {
     app.locSkyDensity = GetShaderLocation(app.skyShader, "density");
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
+    for (const Shape& sh : g_shapes) {
+        double r = 1;
+        for (const Body& b : app.B)
+            if (b.shape >= 0 && g_shapes[b.shape].name == sh.name) r = b.d.radius;
+        app.shapeMesh.push_back(ShapeMesh(sh, r));
+    }
     app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
     app.shipShader = LoadShaderFromMemory(SHIP_VS, SHIP_FS);
     app.locSunDir = GetShaderLocation(app.shipShader, "sunDir");
@@ -3737,6 +3889,7 @@ int main(int argc, char** argv) {
     app.autopilot = opt.autopilot;
     app.apAutoEngine = opt.autoEngine;
     app.showHelp = opt.help;
+    app.photoMode = std::max(0, std::min(2, opt.photo));
     app.probeEvents = FindProbeEvents(app);
     app.cometEvents = FindCometEvents(app);
     app.eventsPage = std::max(0, std::min(2, opt.eventsPage));
@@ -3854,7 +4007,7 @@ int main(int argc, char** argv) {
         DrawCometTails(app);
         DrawBodies(app);
         DrawProbes(app);
-        DrawShipPass(app, dt);
+        if (app.photoMode < 2) DrawShipPass(app, dt);
         EndMode3D();
         if (lowRes) {
             EndTextureMode();
@@ -3869,7 +4022,7 @@ int main(int argc, char** argv) {
         }
 
         DrawSkyLabels(app);
-        if (app.warpT < 0) DrawMarkers(app);
+        if (app.warpT < 0 && app.photoMode == 0) DrawMarkers(app);
         DrawWarpEffect(app);
         DrawHUD(app);
 
@@ -3904,6 +4057,7 @@ int main(int argc, char** argv) {
 
     UnloadMesh(app.sphere);
     UnloadMesh(app.ring);
+    for (Mesh& m : app.shapeMesh) UnloadMesh(m);
     UnloadMesh(app.shipMesh);
     for (Mesh& m : app.probeMesh) UnloadMesh(m);
     UnloadShader(app.shipShader);
