@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // OS ごとの保存先フォルダ
 #pragma once
 #include <string>

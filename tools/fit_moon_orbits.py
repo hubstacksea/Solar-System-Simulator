@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """衛星の公転位相を JPL Horizons に合わせる（src/solar_data.h の JPL 表の phase / P を出力する）。
 
 軌道面は JPL の平均軌道要素（https://ssd.jpl.nasa.gov/sats/elem/ の Laplace 面・傾斜角・昇交点）を使い、

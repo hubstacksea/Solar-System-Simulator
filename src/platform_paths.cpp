@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // windows.h は raylib と名前がぶつかるので、OS 依存の処理はこのファイルに分ける
 #include "platform_paths.h"
 

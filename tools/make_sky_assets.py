@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """背景の星空 (assets/stars.bin, assets/sky.txt) を作る。
 
 データ: d3-celestial (Olaf Frohn, BSD 3-Clause, https://github.com/ofrohn/d3-celestial)

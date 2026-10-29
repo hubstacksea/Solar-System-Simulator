@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // 日本語フォントの読み込み（OS 標準フォントを探す）。見つからなければ英語表示に切り替える。
 // raylib は .ttc を直接読めないため、先頭フォントを単体 .ttf として切り出してから読む。
 #pragma once

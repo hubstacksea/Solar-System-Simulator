@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // 太陽系天体データ（実寸）
 //  - 半径: km（赤道半径）、扁平率
 //  - 惑星軌道: JPL "Approximate Positions of the Planets" J2000 平均軌道要素
@@ -38,6 +40,7 @@ struct BodyDef {
     double moonPeriod = 0;  // 公転周期 日
     double moonIncl = 0;    // 傾斜角 deg（eclipticRef なら黄道面基準、それ以外は母天体赤道面基準）
     double moonNode = 0, moonPhase = 0;
+    double moonPeriod2 = 0, moonChangeT = 0;  // 公転周期がこの時刻（J2000 からの日数）から moonPeriod2 に変わる（ディモルフォス）
     bool eclipticRef = false;
     // JPL の軌道面を使う衛星: 基準面の極（NaN なら母天体の赤道面）。moonNode は基準面が ICRF 赤道と交わる
     // 昇交点から測った昇交点経度、moonPhase は J2000 での面内の角度、libA / libB は秤動の振幅 deg
@@ -224,6 +227,13 @@ inline std::vector<BodyDef> BuildSolarSystem() {
          -0.05679580, 0.03909233, 0.271663, 5580.268350, -0.559222, -2.552549},  // ±0.07°
         {"Ryugu", 1.18742232, 0.18899094, 5.909952, 34.280403, 102.779918, 252.062251,
          0.01359665, 0.00718100, -0.171581, 27738.673544, 1.422512, -2.967596},  // ±0.93°
+        // ベンヌ 2014〜2026 年、イトカワ 2001〜2013 年、ディディモス 2018〜2026 年で合わせた値
+        {"Bennu", 1.12599650, 0.20355427, 6.038076, 95.503060, 68.244828, 2.125642,
+         -0.00020896, 0.00073091, -0.019542, 30131.459104, 0.427143, -0.574207},  // ±0.07°
+        {"Itokawa", 1.32279946, 0.27968787, 1.726215, 275.922890, 232.100470, 71.019072,
+         0.01221728, 0.00347865, -1.069083, 23636.574803, -2.854246, -19.306375},  // ±0.82°
+        {"Didymos", 1.64890452, 0.38351127, 3.389990, 97.437843, 32.067888, 73.981297,
+         -0.02360042, 0.00093012, 0.093911, 17081.506923, 2.182975, -3.933204},  // ±0.51°
     };
     //                       名前                          半径    扁平率  質量
     //                       自転軸RA  Dec   自転周期[日]
@@ -264,10 +274,29 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     v.push_back(MakePlanet("リュウグウ", "Ryugu", 0.448, 0.0, 4.5e11, 0, 0, 0, 0, 0, 0,
                            96.4, -66.4, 0.3178,
                            KIND_ROCKY, {0.20f, 0.19f, 0.18f}, {0.10f, 0.09f, 0.09f}));
+    // ベンヌ（オシリス・レックスが 2018〜2021 年に滞在）、イトカワ（初代はやぶさが 2005 年に着地）、
+    // ディディモスと衛星ディモルフォス（2022 年 9 月 26 日に DART が衝突し、公転周期が 11.92 時間から 11.37 時間に縮んだ）。
+    // 自転軸は IAU / DART チームの値（ディディモスは黄経 310°・黄緯 -84°）
+    v.push_back(MakePlanet("ベンヌ", "Bennu", 0.245, 0.0, 7.3e10, 0, 0, 0, 0, 0, 0,
+                           85.46, -60.36, 0.179002,
+                           KIND_ROCKY, {0.17f, 0.16f, 0.15f}, {0.08f, 0.08f, 0.07f}));
+    v.push_back(MakePlanet("イトカワ", "Itokawa", 0.162, 0.0, 3.5e10, 0, 0, 0, 0, 0, 0,
+                           90.53, -66.30, 0.505515,
+                           KIND_ROCKY, {0.55f, 0.52f, 0.47f}, {0.34f, 0.32f, 0.29f}));
+    v.push_back(MakePlanet("ディディモス", "Didymos", 0.365, 0.0, 5.3e11, 0, 0, 0, 0, 0, 0,
+                           78.22, -70.79, 0.094167,
+                           KIND_ROCKY, {0.42f, 0.40f, 0.37f}, {0.26f, 0.25f, 0.23f}));
+    {
+        BodyDef dim = MakeMoon("ディモルフォス", "Dimorphos", (int)v.size() - 1, 0.075, 4.3e9, 1.19, 11.921 / 24, 0.0,
+                               KIND_ROCKY, {0.42f, 0.40f, 0.37f}, {0.26f, 0.25f, 0.23f});
+        dim.moonPeriod2 = 11.372 / 24;
+        dim.moonChangeT = 8304.4683;   // 2022-09-26 23:14:24 UTC（衝突）
+        v.push_back(dim);
+    }
     // ---- 探査機（並びは tools/make_probe_assets.py と同じ） ----
     //   coast: データの後も直進する, end: データの終わりが運用終了（天体への突入・着地）
     //   機体の形: 0 ボイジャー, 1 パイオニア, 2 ガリレオ, 4 カッシーニ, 6 ニュー・ホライズンズ, 7 パーカー,
-    //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2（ProbeModel）
+    //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2, 11 オシリス・レックス, 12 DART（ProbeModel）
     static const struct { const char* jp; const char* en; bool coast, end; int model; } PROBES[] = {
         {"ボイジャー1号", "Voyager 1", true, false, 0}, {"ボイジャー2号", "Voyager 2", true, false, 0},
         {"パイオニア10号", "Pioneer 10", true, false, 1}, {"パイオニア11号", "Pioneer 11", true, false, 1},
@@ -276,6 +305,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         {"パーカー・ソーラー・プローブ", "Parker Solar Probe", false, false, 7},
         {"ジュノー", "Juno", false, false, 8}, {"ロゼッタ", "Rosetta", false, true, 9},
         {"はやぶさ2", "Hayabusa2", false, false, 10},
+        {"オシリス・レックス", "OSIRIS-REx", false, false, 11}, {"DART", "DART", false, true, 12},
     };
     for (int i = 0; i < (int)(sizeof PROBES / sizeof PROBES[0]); i++) {
         BodyDef d{};

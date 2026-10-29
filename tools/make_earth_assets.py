@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """NASA / NOAA の地球データからゲーム用アセット (assets/earth_color.jpg, assets/earth_data.png) を作る。
 
 データ（いずれも商用を含め自由に再配布できるもの）:

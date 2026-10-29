@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // 自機モデル: 手続き的に生成するメッシュと専用シェーダ
 //  単位: m、機首は -Z、上は +Y
 //  マテリアル番号は texcoord.x に入れる（0: 塗装, 1: 金属, 2: ガラス, 3: ノズル発光, 4: 航法灯）
@@ -226,7 +228,7 @@ private:
 // 探査機の機体モデル。単位 m。-Z が姿勢の基準（パーカーは耐熱シールドを太陽へ、ほかは高利得アンテナを地球へ向ける）
 enum ProbeModel {
     PM_VOYAGER = 0, PM_PIONEER, PM_GALILEO, PM_GALILEO_PROBE, PM_CASSINI, PM_CASSINI_HUYGENS, PM_NEW_HORIZONS, PM_PARKER,
-    PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_COUNT
+    PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_OSIRIS_REX, PM_DART, PM_COUNT
 };
 
 inline Mesh GenProbeMesh(int model) {
@@ -401,6 +403,38 @@ inline Mesh GenProbeMesh(int model) {
                 mb.Box({sx * (1.4f + k * 1.15f), 0.3f, 0}, {0.55f, 0.02f, 0.55f}, panel, SM_GLASS);
         }
         mb.Tube({0, 0, 0.62f}, {0, 0, 0.78f}, 0.3f, 12, dark, SM_METAL);   // イオンエンジン
+        break;
+    }
+    case PM_OSIRIS_REX: {
+        // オシリス・レックス: 箱形の本体（2.4 × 2.4 × 3.2 m）、上に直径 2 m の高利得アンテナと試料回収カプセル、
+        // 両側に太陽電池パネル（端から端まで 6.2 m）、底から伸びる試料採取用のアーム（TAGSAM）
+        mb.Box({0, 0, 0}, {1.2f, 1.2f, 1.6f}, white, SM_PAINT);
+        mb.Dish({0, 0, -2.05f}, {0, 0, -1}, 1.0f, 0.3f, white, SM_PAINT);
+        mb.Tube({0, 0, -1.6f}, {0, 0, -1.8f}, 0.08f, 8, metal, SM_METAL);
+        mb.Revolve(0.75f, 0.6f, {{-1.6f, 0.4f}, {-1.95f, 0.25f}, {-2.0f, 0.0f}}, 16, {200, 190, 170, 255}, SM_METAL);  // 回収カプセル
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 1.2f, 0, 0.3f}, {sx * 1.5f, 0, 0.3f}, 0.05f, 6, metal, SM_METAL);
+            mb.Box({sx * 2.4f, 0, 0.3f}, {0.9f, 0.02f, 0.85f}, panel, SM_GLASS);
+        }
+        mb.Tube({0.4f, -1.2f, 1.6f}, {0.4f, -1.2f, 4.6f}, 0.05f, 6, metal, SM_METAL);   // TAGSAM
+        mb.Revolve(0.4f, -1.2f, {{4.6f, 0.0f}, {4.6f, 0.15f}, {4.75f, 0.15f}, {4.75f, 0.0f}}, 12, metal, SM_METAL);
+        break;
+    }
+    case PM_DART: {
+        // DART: 1.3 m の箱形の本体、両側に長さ 8.5 m の巻き取り式太陽電池パネル（ROSA）、
+        // 本体の側面に平らな円形のアンテナ、前（-Z）に小惑星を撮るカメラ（DRACO）の筒
+        mb.Box({0, 0, 0}, {0.65f, 0.65f, 0.65f}, gold, SM_METAL);
+        mb.Tube({0, 0, -0.65f}, {0, 0, -1.2f}, 0.17f, 12, dark, SM_METAL);
+        mb.Disc({0, 0, -1.201f}, {0, 0, -1}, 0.17f, 12, black, SM_METAL);
+        mb.Tube({0, 0.66f, 0}, {0, 0.72f, 0}, 0.5f, 24, white, SM_PAINT);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 0.65f, 0, 0}, {sx * 0.9f, 0, 0}, 0.06f, 6, metal, SM_METAL);
+            mb.Box({sx * 5.15f, 0, 0}, {4.25f, 0.015f, 1.2f}, panel, SM_GLASS);
+            mb.Tube({sx * 0.9f, 0, -1.2f}, {sx * 9.4f, 0, -1.2f}, 0.04f, 6, metal, SM_METAL);
+            mb.Tube({sx * 0.9f, 0, 1.2f}, {sx * 9.4f, 0, 1.2f}, 0.04f, 6, metal, SM_METAL);
+        }
         break;
     }
     default: {

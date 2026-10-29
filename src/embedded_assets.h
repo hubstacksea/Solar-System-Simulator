@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // 実行ファイルに埋め込んだデータ（単体 exe のまま動かすため）
 #pragma once
 #include <cstddef>
@@ -9,6 +11,8 @@ struct EmbeddedFile {
 
 EmbeddedFile EarthColorJpg();  // 地球の地表の色 (NASA Blue Marble)
 EmbeddedFile EarthDataPng();   // R: 標高・水深, G: 夜景, B: 海陸マスク (NOAA ETOPO 2022 / NASA Black Marble)
+EmbeddedFile EarthMonthsJpg();  // 地球の 12 か月の地表の色 (NASA Blue Marble NG)。形式は tools/make_earth_season_assets.py
+EmbeddedFile EarthCloudsJpg();  // 地球の雲 (NASA Blue Marble)
 EmbeddedFile MoonColorJpg();   // 月の地表の色 (NASA SVS / LROC)
 EmbeddedFile MoonDataPng();    // 月の標高 16 bit: グレー=上位, アルファ=下位 (NASA SVS / LOLA)
 EmbeddedFile IconPng();         // ウィンドウのアイコン (256px)
@@ -18,6 +22,7 @@ EmbeddedFile SkyTxt();          // 星座線・星座名・恒星の固有名。
 EmbeddedFile ShapesBin();       // 彗星・小惑星の形 (ISAS/JAXA, ESA/Rosetta/NAVCAM)。形式は tools/make_shape_assets.py
 EmbeddedFile MapsBin();         // 惑星・衛星の地図 (USGS / NASA)。形式は tools/make_planet_maps.py
 EmbeddedFile AsteroidsBin();    // 小惑星帯・トロヤ群・太陽系外縁天体の軌道要素 (JPL SBDB)。形式は tools/make_asteroid_assets.py
+EmbeddedFile SaturnRingsPng();  // 土星の環の不透明度 (Voyager 2 PPS)。形式は tools/make_ring_assets.py
 EmbeddedFile MilkyWayJpg();     // 天の川の光 (NASA SVS Deep Star Maps 2020)。形式は tools/make_milkyway_asset.py
 // 天体の音楽 (OGG Vorbis)。0〜6: ホルスト《惑星》の 水星, 金星, 火星, 木星, 土星, 天王星, 海王星
 // 7: 太陽（グリーグ「朝」）, 8: 地球（ベートーヴェン「田園」第1楽章）, 9: 月（ドビュッシー「月の光」）

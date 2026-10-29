@@ -38,10 +38,10 @@ if(WIN32)
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc" PROPERTIES OBJECT_DEPENDS "${ICON_PATH};${MANIFEST_PATH}")
 endif()
 # assets/ の地球データを実行ファイルに埋め込む
-target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets" APP_VERSION="${PROJECT_VERSION}")
 file(GLOB MUSIC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/music/*.ogg")
 set_source_files_properties(src/embedded_assets.cpp PROPERTIES
-  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/stars.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/sky.txt;${CMAKE_CURRENT_SOURCE_DIR}/assets/probes.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/milkyway.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/shapes.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/maps.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/asteroids.bin;${MUSIC_FILES}")
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_color.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/moon_data.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/stars.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/sky.txt;${CMAKE_CURRENT_SOURCE_DIR}/assets/probes.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/milkyway.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/shapes.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/maps.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/asteroids.bin;${CMAKE_CURRENT_SOURCE_DIR}/assets/saturn_rings.png;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_months.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/earth_clouds.jpg;${MUSIC_FILES}")
 target_link_libraries(solar_voyager PRIVATE raylib)
 
 if(MINGW)

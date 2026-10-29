@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // 天体描画用シェーダ (GLSL 330)。テクスチャ無しで手続き的に模様を生成する。
 //  - 近づくほど細かいオクターブを足す（画素より小さい模様は打ち切る）ので、地表付近でも模様が潰れない
 //  - 地形の高さの勾配を解析的に求めて法線を揺らし、山やクレーターの陰影を付ける
@@ -41,10 +43,13 @@ uniform mat4 matNormal;
 uniform sampler2D texture0;  // 地球・月: 地表の色 (Blue Marble / LROC)
 uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷 / 月・火星: R 標高上位, A 下位
 uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（1: あり）
+uniform sampler2D texture3;  // 土星と環: 環の不透明度（半径 72,000〜142,500 km） / 地球: 12 か月の地表の色
 uniform vec4 mapInfo;        // 地図: x 1 / 平均の明るさ, y 種類（0 カラー, 1 白黒, 2 模様だけ）, z 標高あり, w 半径 km
 uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う表面模様の種類, y 地図を東へずらす角度 rad（木星の大赤斑）
+                             // 地球: z 今の月（0 = 1 月中旬、12 で一周）, w 季節の色と雲の画像あり
 // 大気（地球・火星）: atmBeta は天頂方向の空気 1 つ分で散乱する割合（0 なら大気なし）。日光は太陽が低いほど赤くなる
-// atmHaze: x カメラの位置の空気の濃さ（0 ならかすみなし）, y 描画座標 1 あたりの km, z スケールハイト km
+// atmHaze: x カメラの位置の空気の濃さ（0 ならかすみなし）, y 描画座標 1 あたりの km, z スケールハイト km,
+//          w 見えている太陽の割合（日食）
 uniform vec3 atmBeta;
 uniform vec3 atmMie;
 uniform vec3 atmOzone;
@@ -343,6 +348,17 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
     vec3 tc = textureGrad(texture0, uv, dx, dy).rgb;
     vec4 td = textureGrad(texture1, uv, dx, dy);
+    if (mapInfo2.w > 0.5) {
+        // 季節: 12 か月の地表の色（texture3 に 4 列 × 3 行）から今の月の色と 4 月の色の差を足す（雪・緑・乾季）
+        vec2 tuv = clamp(uv, vec2(0.001, 0.002), vec2(0.999, 0.998));
+        vec2 gx = dx / vec2(4.0, 3.0), gy = dy / vec2(4.0, 3.0);
+        float m0 = floor(mapInfo2.z), f = mapInfo2.z - m0;
+        int a = int(m0) % 12, b = (a + 1) % 12;
+        vec3 ca = textureGrad(texture3, (vec2(float(a % 4), float(a / 4)) + tuv) / vec2(4.0, 3.0), gx, gy).rgb;
+        vec3 cb = textureGrad(texture3, (vec2(float(b % 4), float(b / 4)) + tuv) / vec2(4.0, 3.0), gx, gy).rgb;
+        vec3 apr = textureGrad(texture3, (vec2(3.0, 0.0) + tuv) / vec2(4.0, 3.0), gx, gy).rgb;
+        tc = clamp(tc + mix(ca, cb, f) - apr, 0.0, 1.0);
+    }
 
     // 標高の勾配（中心差分。間隔は 1 テクセルか 1 画素の大きい方）
     vec2 texel = vec2(1.0 / 4096.0, 1.0 / 2048.0);
@@ -377,7 +393,14 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
 
     // 夜景: 実データ。近づくと街の明かりの粒に分かれる
     lights = td.g * land * clamp(1.0 + 1.2 * fbmL(p, 900.0, 12, 0.6, o + 13.0), 0.0, 2.0);
-    cloud = earthClouds(p, o, 0.12);   // 実データの地表が見えるよう少なめ
+    if (mapInfo2.w > 0.5) {
+        // 雲: NASA Blue Marble の雲の分布（texture2）に、画像より細かい筋を手続きで足す
+        float cv = textureGrad(texture2, uv, dx, dy).r;
+        float wisp = fbmL(p, 300.0, 12, 0.55, o + 29.0);
+        cloud = smoothstep(0.12, 0.8, cv + wisp * 0.1 * cv) * detail.w;
+    } else {
+        cloud = earthClouds(p, o, 0.12);   // 実データの地表が見えるよう少なめ
+    }
 
     // 起伏: データの勾配 + テクセルより細かい山肌（標高が高いほど険しい）
     float rough = (0.03 + 0.3 * clamp(hm / 4000.0, 0.0, 1.0)) / 1400.0;
@@ -387,15 +410,11 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
 }
 
 // 土星の環の密度（中心からの距離 km）
+// 土星の環を垂直に見た時の不透明度 1 - exp(-τ)（Voyager 2 PPS の掩蔽観測、assets/saturn_rings.png）
 float ringDensity(float rkm) {
-    if (rkm < 74658.0) return 0.0;
-    if (rkm < 92000.0) return 0.22;     // C環
-    if (rkm < 117580.0) return 0.92;    // B環
-    if (rkm < 122170.0) return 0.06;    // カッシーニの間隙
-    if (rkm < 133423.0) return 0.62;    // A環
-    if (rkm < 133745.0) return 0.0;     // エンケの間隙
-    if (rkm < 136775.0) return 0.55;    // A環外側
-    return 0.0;
+    float u = (rkm - 72000.0) / 70500.0;
+    if (u <= 0.0 || u >= 1.0) return 0.0;
+    return texture(texture3, vec2(u, 0.5)).r;
 }
 
 // 他の天体の影（日食・月食・衛星の影）。太陽の視半径を考えて本影と半影を分ける
@@ -579,16 +598,21 @@ void main() {
         float rkm = length(fragObj.xz) * params.y;
         float d = ringDensity(rkm);
         fw = length(fragWorld) * detail.y;
-        // 細い環の筋（近づくほど細かく）
-        float ringlets = 0.0, a = 0.5, f = 0.004;
+        // 観測（34 km ごと）より細かい環の筋（近づくほど細かく）
+        float ringlets = 0.0, a = 0.5, f = 0.03;
         for (int i = 0; i < 9; i++) {
             float w = lodW(f * params.y);
             if (w <= 0.0) break;
             ringlets += a * w * vnoise(vec3(rkm * f, 0.0, float(i) * 3.1));
             a *= 0.6; f *= 2.7;
         }
-        d *= 0.55 + 0.6 * ringlets;
+        d *= 0.85 + 0.3 * ringlets;
         if (d <= 0.002) discard;
+        // 斜めに見るほど光が環を通る距離が長くなり、不透明になる
+        vec3 Nr = normalize(mat3(matNormal) * vec3(0.0, 1.0, 0.0));
+        float muV = abs(dot(normalize(-fragWorld), Nr));
+        float tau = -log(1.0 - min(d, 0.993));
+        float alpha = 1.0 - exp(-tau / max(muV, 0.03));
         vec3 Lo = normalize(lightDirObj);
         vec3 P = fragObj;
         float b = dot(P, Lo);
@@ -597,7 +621,7 @@ void main() {
         float shadow = (h > 0.0 && (-b - sqrt(h)) > 0.0) ? 0.06 : 1.0;
         float lit = 0.2 + 0.8 * pow(abs(Lo.y), 0.35);
         vec3 col = mix(color2, color1, clamp(d, 0.0, 1.0)) * lit * shadow;
-        finalColor = vec4(col, clamp(d, 0.0, 1.0) * 0.95);
+        finalColor = vec4(col, clamp(alpha, 0.0, 1.0) * 0.97);
         return;
     }
 
@@ -678,7 +702,7 @@ void main() {
         vec3 ray = sunCol * (1.0 - exp(-atmBeta * air)) * 0.75 * (1.0 + cosT * cosT);
         float g = max(cosT, 0.0);
         vec3 mie = sunCol * atmMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * air));
-        vec3 ins = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl));
+        vec3 ins = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * atmHaze.w);
         col = col * exp(-(atmBeta + 0.02) * air) + ins;
     }
     finalColor = vec4(col, 1.0);
@@ -710,6 +734,7 @@ uniform vec3 beta;      // 天頂方向の空気 1 つ分で散乱する割合�
 uniform vec3 mieTint;
 uniform vec3 ozone;     // 天頂方向の空気 1 つ分でオゾンが吸収する割合（黄緑〜橙を吸収し、夕方の空を青紫に保つ）
 uniform float density;  // 高さによる空気の濃さ（地表 1）
+uniform float sunVis;   // 見えている太陽の割合（日食で欠けると減る）
 out vec4 finalColor;
 void main() {
     vec3 d = normalize(fragDir);
@@ -726,7 +751,7 @@ void main() {
     vec3 ray = sunCol * (1.0 - exp(-beta * airV)) * 0.75 * (1.0 + cosT * cosT);
     float g = max(cosT, 0.0);
     vec3 mie = sunCol * mieTint * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));
-    float light = smoothstep(-0.17, 0.03, sunEl);   // 太陽が地平線の下 10° まで薄明が残る
+    float light = smoothstep(-0.17, 0.03, sunEl) * sunVis;   // 太陽が地平線の下 10° まで薄明が残る
     vec3 col = 1.0 - exp(-(ray * 3.0 + mie) * light);   // 明るい所が白く飛ばないように丸める
     float a = clamp(max(col.r, max(col.g, col.b)) * 2.5, 0.0, 1.0);
     finalColor = vec4(min(col / max(a, 1e-3), vec3(1.0)), a);

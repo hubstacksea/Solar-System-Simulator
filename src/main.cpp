@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // Solar System Voyager — 実スケール太陽系 3D シミュレータ
 //
 //  * 単位: 距離 km / 速度 km/s / 時間 s（天体暦は日）
@@ -184,6 +186,9 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(EV_END, "%sの運用終了（%sへ突入）", "%s: end of mission (enters %s)") \
     X(EV_ARRIVE_SMALL, "%sが%sに到着", "%s arrives at %s") \
     X(EV_END_LAND, "%sの運用終了（%sに降下）", "%s: end of mission (descends to %s)") \
+    X(EV_IMPACT, "%sが%sに衝突", "%s impacts %s") \
+    X(EV_GROUND, "%s（地上から）", "%s (from the ground)") \
+    X(EV_IMPACT_D, "公転周期 11.92 → 11.37 時間", "orbital period 11.92 → 11.37 h") \
     X(EV_ALT, "高度 %s", "altitude %s") \
     X(EV_NOTE, "簡易計算のため、時刻は数分〜数十分、日食の位置は数百 km ずれることがあります。太陽面通過は 150 年先まで", "Simplified calculation: times may be off by minutes, solar eclipse locations by a few hundred km. Transits up to 150 years ahead") \
     X(EV_SEARCHING, "計算中…", "Calculating...") \
@@ -257,6 +262,13 @@ static const char* UI_EN[] = {
     UI_STRINGS(X)
 #undef X
 };
+
+#ifndef APP_VERSION
+#define APP_VERSION "dev"
+#endif
+// 操作説明・設定画面の下に出す表記
+static const char* CREDIT = "Solar System Voyager " APP_VERSION "   (c) 2026 hubstacksea   MIT License   "
+                            "https://github.com/hubstacksea/Solar-System-Simulator";
 
 static bool g_jp = false;       // 表示言語（true: 日本語）
 static bool g_jpFont = false;   // 日本語フォントを読み込めたか
@@ -556,7 +568,7 @@ static std::vector<Body> InitBodies() {
             V3 Q = Norm(Cross(EquToRender(0, 90), b.pole));
             b.primeOffset = std::atan2(-Dot(Q, b.ez), Dot(Q, b.ex));
         }
-        b.outer = d.rings ? d.radius * 2.27 : d.radius;
+        b.outer = d.rings ? d.radius * 2.37 : d.radius;
         if (d.probe >= 0) {
             b.soi = 2000;    // 近くにいる自機は探査機と一緒に移動する
             b.outer = 0.03;  // 機体の大きさ（アンテナやブームを含めて約 30 m 以内。ワープの到着距離に使う）
@@ -603,6 +615,18 @@ static std::vector<Body> InitBodies() {
     }
     // 探査機: 惑星中心の区間の境目での、シミュレータの惑星と実際の惑星の差
     if (g_probes.empty()) LoadProbeTracks();
+    // ディモルフォスの公転の位置: 衝突の瞬間に、DART の最後の点から衝突までまっすぐ進んだ所にいるように合わせる
+    for (Body& m : B) {
+        if (m.d.moonPeriod2 <= 0) continue;
+        for (const Body& pr : B) {
+            if (pr.d.probe < 0 || pr.d.probe >= (int)g_probes.size() || !pr.d.probeEnd || g_probes[pr.d.probe].segs.empty()) continue;
+            const ProbeSeg& sg = g_probes[pr.d.probe].segs.back();
+            if (sg.body != m.d.parent) continue;
+            V3 r = sg.p.back() + sg.v.back() * (m.d.moonChangeT - sg.t.back());
+            double th = std::atan2(Dot(r, m.oQ), Dot(r, m.oN));
+            m.d.moonPhase = (th - 2 * PI * m.d.moonChangeT / m.d.moonPeriod) / DEG;
+        }
+    }
     for (ProbeTrack& tr : g_probes)
         for (ProbeSeg& sg : tr.segs) {
             if (sg.body <= 0 || sg.body >= (int)B.size()) continue;
@@ -632,6 +656,8 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
             }
         } else {
             double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
+            if (d.moonPeriod2 > 0 && t > d.moonChangeT)   // ディモルフォス: DART の衝突で公転周期が縮んだ
+                th = d.moonPhase * DEG + 2 * PI * (d.moonChangeT / d.moonPeriod + (t - d.moonChangeT) / d.moonPeriod2);
             if (d.libA != 0 || d.libB != 0) {   // ミマス・テティスの秤動（周期 70.56 年）
                 double w = 2 * PI * t / (70.56 * 365.25);
                 th += (d.libA * std::sin(w) + d.libB * std::cos(w)) * DEG;
@@ -1239,15 +1265,15 @@ static Options ParseArgs(int argc, char** argv) {
 // ---------------------------------------------------------------- アプリ本体
 // 天文イベント（日食・月食・木星面の衛星の影の通過・太陽面通過・惑星の接近・衝）、彗星、探査機のできごと
 enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TOTAL, EV_LUNAR_PARTIAL, EV_SHADOW,
-                 EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH,
-                 EV_FLYBY, EV_ARRIVE, EV_END };
+                 EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH, EV_ECLIPSE_GROUND,
+                 EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT };
 struct AstroEvent {
     int kind = 0;
     double t = 0;          // 最大の時刻（J2000 からの日数）
     int moon = -1;         // 影の通過: 影を落とす衛星
     double lat = 0, lon = 0;  // 日食: 食の中心（地球の緯度・経度 deg）
     int probe = -1, body = -1;  // 探査機のできごと: 探査機と惑星の番号。ほかは主な天体（太陽面通過・衝の惑星、彗星）
-    int body2 = -1;             // 惑星の接近: もう一方の惑星
+    int body2 = -1;             // 惑星の接近: もう一方の惑星。地上から見る日食: 元の日食の種類
     double dist = 0;            // 最接近: 惑星の中心からの距離 km。彗星: 太陽か地球からの距離 km、
                                 // 太陽面通過: 太陽の中心からの距離（太陽の半径が 1）、接近: 角距離 deg、衝: 地球からの距離 km
 };
@@ -1311,15 +1337,17 @@ struct App {
     Material mat{};
     Shader shader{};
     Texture2D earthColor{}, earthData{};  // 地球の実データ（読めなければ手続き生成で描く）
+    Texture2D earthMonths{}, earthClouds{};  // 地球の 12 か月の地表の色と雲（読めなければ 4 月の色と手続きの雲）
     bool earthTex = false;
     Texture2D moonColor{}, moonData{};    // 月の実データ
     bool moonTex = false;
     Texture2D milkyWay{};                 // 天の川の光（赤道座標の全天画像）
+    Texture2D ringTex{};                  // 土星の環の不透明度（半径方向）
     struct BodyMap { std::string name; int kind = 0; bool height = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
     std::vector<BodyMap> maps;            // 探査機の画像による地図（assets/maps.bin）
     int locMapInfo = -1, locMapInfo2 = -1;
     Shader skyShader{};                   // 大気の中から見た空
-    int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1;
+    int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1, locSkySunVis = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
@@ -1698,7 +1726,15 @@ static std::vector<AstroEvent> FindEvents(const App& app, double t0) {
         AstroEvent ev;
         if (ps[1] < ps[0] && ps[1] <= ps[2] && ps[1] < 2.0e4) {
             double tm = MinimizeT(solarF, t - step, t + step);
-            if (ClassifySolar(B, tm, &ev)) out.push_back(ev);
+            if (ClassifySolar(B, tm, &ev)) {
+                out.push_back(ev);
+                if (ev.kind != EV_SOLAR_PARTIAL) {   // 皆既・金環は、食の中心の地上から見る場面も並べる
+                    AstroEvent g = ev;
+                    g.kind = EV_ECLIPSE_GROUND;
+                    g.body2 = ev.kind;
+                    out.push_back(g);
+                }
+            }
         }
         if (pl[1] < pl[0] && pl[1] <= pl[2] && pl[1] < 2.0e4) {
             double tm = MinimizeT(lunarF, t - step, t + step);
@@ -1764,6 +1800,7 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
                 if (Len(sg.p[j]) < Len(sg.p[best])) best = j;
             }
             if (best == 0) continue;  // 打ち上げ直後の地球からの出発
+            if (best + 1 == sg.t.size() && &sg == &S.back() && d.probeEnd) continue;  // 突入・衝突の直前（運用終了として扱う）
             auto f = [&](double t) { return Len(SegPos(sg, t)); };
             AstroEvent ev;
             ev.kind = orbiter ? EV_ARRIVE : EV_FLYBY;
@@ -1779,6 +1816,13 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
             ev.t = S.back().t.back() - 10.0 / 1440;
             ev.probe = (int)i;
             ev.body = S.back().body;
+            // 衝突で公転周期の変わった衛星があれば、その衛星への衝突（1 分前から見る）
+            for (size_t k = 0; k < app.B.size(); k++)
+                if (app.B[k].d.parent == ev.body && app.B[k].d.moonPeriod2 > 0) {
+                    ev.kind = EV_IMPACT;
+                    ev.body = (int)k;
+                    ev.t = app.B[k].d.moonChangeT - 1.0 / 1440;
+                }
             out.push_back(ev);
         }
     }
@@ -1791,6 +1835,9 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
     char b[200];
     switch (ev.kind) {
         case EV_SOLAR_TOTAL: return T(UI_EV_SOLAR_TOTAL);
+        case EV_ECLIPSE_GROUND:
+            snprintf(b, sizeof b, T(UI_EV_GROUND), T(ev.body2 == EV_SOLAR_TOTAL ? UI_EV_SOLAR_TOTAL : UI_EV_SOLAR_ANNULAR));
+            break;
         case EV_SOLAR_ANNULAR: return T(UI_EV_SOLAR_ANNULAR);
         case EV_SOLAR_PARTIAL: return T(UI_EV_SOLAR_PARTIAL);
         case EV_LUNAR_TOTAL: return T(UI_EV_LUNAR_TOTAL);
@@ -1805,6 +1852,7 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
         case EV_ARRIVE:
             snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_ARRIVE_SMALL : UI_EV_ARRIVE), name(ev.probe), name(ev.body));
             break;
+        case EV_IMPACT: snprintf(b, sizeof b, T(UI_EV_IMPACT), name(ev.probe), name(ev.body)); break;
         default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
@@ -1820,9 +1868,10 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_OPPOSITION:
         case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_FROM_EARTH), FmtDist(ev.dist).c_str()); return b;
         case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_FROM_SUN), FmtDist(ev.dist).c_str()); return b;
+        case EV_IMPACT: return T(UI_EV_IMPACT_D);
         default: break;
     }
-    if (ev.kind > EV_SOLAR_PARTIAL) return "";
+    if (ev.kind > EV_SOLAR_PARTIAL && ev.kind != EV_ECLIPSE_GROUND) return "";
     char ll[96];
     if (g_jp)
         snprintf(ll, sizeof ll, "%s%.0f° %s%.0f°", ev.lat >= 0 ? "北緯" : "南緯", std::fabs(ev.lat), ev.lon >= 0 ? "東経" : "西経", std::fabs(ev.lon));
@@ -1895,6 +1944,25 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         app.ship.ref = B_EARTH;
         app.ship.local = d * (earth.d.radius * 4);
         app.ship.q = QuatFromBasis(d, Y_UP);
+        app.target = ev.body;
+    } else if (ev.kind == EV_ECLIPSE_GROUND) {
+        // 食の中心の地上（高度 300 m）から、ズームして太陽を見上げる
+        PlaceAt(app, B_EARTH, ev.lat, ev.lon, 0.3);
+        V3 sw = ShipWorld(app);
+        app.ship.q = QuatFromBasis(sun.pos - sw, Norm(sw - earth.pos));
+        app.target = B_MOON;
+        app.eventZoom = true;
+    } else if (ev.kind == EV_IMPACT) {
+        // 衝突の 1 分前: 衛星のすぐ横（探査機が来る向きから 70° ずらした 1.5 km 先）から衛星と母天体を見る
+        const Body& m = app.B[ev.body];
+        const Body& host = app.B[m.d.parent];
+        V3 u = Norm(app.B[ev.probe].pos - m.pos);
+        V3 side = Norm(Cross(u, host.pole));
+        V3 dir = Norm(u * 0.35 + side * 0.94);
+        app.ship.ref = ev.body;
+        app.ship.local = dir * 1.5;
+        V3 aim = m.pos + (host.pos - m.pos) * 0.3;
+        app.ship.q = QuatFromBasis(aim - (m.pos + app.ship.local), host.pole);
         app.target = ev.body;
     } else if (ev.kind >= EV_FLYBY) {
         // 探査機の斜め後ろ（惑星と反対側）から惑星の方を見る。探査機は画面の横に、惑星は正面に見える。
@@ -1991,7 +2059,9 @@ static void StartWarp(App& app, int ti, bool land);
 
 // イベントへワープする時に向かう天体
 static int EventBody(const AstroEvent& ev) {
+    if (ev.kind == EV_IMPACT) return ev.body;
     if (ev.kind >= EV_FLYBY) return ev.probe;
+    if (ev.kind == EV_ECLIPSE_GROUND) return B_EARTH;
     if (ev.kind >= EV_TRANSIT) return ev.body;
     return ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER;
 }
@@ -2056,9 +2126,15 @@ static const TourStop TOUR[] = {
     {2, EV_ARRIVE, "Hayabusa2", "Ryugu", "20180627",
      "直径 約 900 m のそろばん玉形の小惑星に到着。2 回の着地で岩石を採り、\n2020 年 12 月に地球へ届けた",
      "It reached this 900 m spinning-top-shaped asteroid, collected samples in two touchdowns\nand delivered them to Earth in December 2020"},
-    {0, EV_SOLAR_TOTAL, nullptr, nullptr, "20270802",
-     "北アフリカから中東を通る皆既日食。皆既は最長 6 分 23 秒続き、\n今世紀でも有数の長さ",
-     "A total eclipse crossing North Africa and the Middle East. Totality lasts up to 6 min 23 s,\none of the longest of this century"},
+    {2, EV_ARRIVE, "OSIRIS-REx", "Bennu", "20181203",
+     "炭素に富む小惑星ベンヌに到着。2020 年に表面の砂を採り、\n2023 年 9 月に地球へ届けた（いまは小惑星アポフィスへ向かう OSIRIS-APEX）",
+     "It arrived at the carbon-rich asteroid Bennu, collected surface material in 2020\nand delivered it to Earth in September 2023 (now OSIRIS-APEX, bound for Apophis)"},
+    {2, EV_IMPACT, "DART", "Dimorphos", "20220926",
+     "小惑星の軌道を変えられるかを確かめる、人類初の惑星防衛の実験。秒速 6 km で衝突し、\nディモルフォスの公転周期を 33 分縮めた",
+     "The first planetary-defense test: could a spacecraft change an asteroid's orbit? Hitting at 6 km/s,\nit shortened Dimorphos's orbital period by 33 minutes"},
+    {0, EV_ECLIPSE_GROUND, nullptr, nullptr, "20270802",
+     "北アフリカから中東を通る皆既日食を、食の中心の地上から。皆既は最長 6 分 23 秒続き、\n今世紀でも有数の長さ。太陽の周りにコロナが広がり、空が暗くなって明るい星が見える",
+     "The total eclipse crossing North Africa and the Middle East, seen from the ground at its center. Totality lasts\nup to 6 min 23 s, one of the longest this century: the corona appears and the sky darkens enough to show bright stars"},
     {0, EV_TRANSIT, nullptr, nullptr, "20321113",
      "水星が太陽の前を横切る太陽面通過。地球から見えるのは 100 年に 13 回ほどで、\n次は 2039 年",
      "Mercury crosses the face of the Sun. Seen from Earth this happens about 13 times a century;\nthe next one is in 2039"},
@@ -2296,7 +2372,7 @@ static void DrawModalPanels(const App& app) {
     if (app.settingsOpen) {
         static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY, UI_SET_ORBITS,
                                              UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT, UI_SET_FULLSCREEN};
-        float w = std::min(c.W - 20, 720.0f), h = 110 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
         TxtC(T(UI_SET_TITLE), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
@@ -2311,6 +2387,7 @@ static void DrawModalPanels(const App& app) {
             std::string shown = sel ? "<  " + v + "  >" : v;
             Txt(shown.c_str(), x + w - 28 - TxtW(shown.c_str(), 18), ry, 18, sel ? Color{255, 220, 120, 255} : Color{170, 200, 230, 255});
         }
+        TxtC(CREDIT, c.W * 0.5f, y + h - 26, 13, {150, 170, 190, 255});
     }
     if (app.eventsOpen) {
         int n = (int)app.events.size();
@@ -2996,6 +3073,8 @@ static void LoadEarthTextures(App& app) {
     app.earthColor = LoadEmbeddedTexture(EarthColorJpg(), ".jpg");
     app.earthData = LoadEmbeddedTexture(EarthDataPng(), ".png");
     app.earthTex = app.earthColor.id && app.earthData.id;
+    app.earthMonths = LoadEmbeddedTexture(EarthMonthsJpg(), ".jpg");
+    app.earthClouds = LoadEmbeddedTexture(EarthCloudsJpg(), ".jpg");
     if (!app.earthTex) {
         TraceLog(LOG_WARNING, "Earth textures unavailable, using procedural surface");
         return;
@@ -3114,6 +3193,33 @@ static void DrawMilkyWay(const App& app) {
 }
 
 // 大気のある天体（地球・火星）の空: 高さ 0 から top km まで、スケールハイト H km で薄くなる
+// 点 from から見て、太陽の円盤がほかの天体に隠されている割合（0〜1。日食）。2 つの円の重なりの面積から求める
+static double SunCover(const App& app, V3 from) {
+    V3 ds = app.B[B_SUN].pos - from;
+    double Ls = Len(ds), rs = std::asin(std::min(1.0, app.B[B_SUN].d.radius / Ls));
+    double best = 0;
+    for (size_t i = 1; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        if (b.d.probe >= 0 || !b.active) continue;
+        V3 db = b.pos - from;
+        double Lb = Len(db);
+        if (Lb >= Ls || Lb < b.d.radius) continue;
+        double rb = std::asin(std::min(1.0, b.d.radius / Lb));
+        double d = AngleBetween(ds, db);
+        if (d >= rs + rb) continue;
+        double area;
+        if (d <= std::fabs(rs - rb)) {
+            area = PI * std::min(rs, rb) * std::min(rs, rb);
+        } else {
+            double a1 = std::acos(std::max(-1.0, std::min(1.0, (d * d + rs * rs - rb * rb) / (2 * d * rs))));
+            double a2 = std::acos(std::max(-1.0, std::min(1.0, (d * d + rb * rb - rs * rs) / (2 * d * rb))));
+            area = rs * rs * (a1 - std::sin(2 * a1) / 2) + rb * rb * (a2 - std::sin(2 * a2) / 2);
+        }
+        best = std::max(best, area / (PI * rs * rs));
+    }
+    return std::min(1.0, best);
+}
+
 // beta: レイリー散乱（火星は塵）, mie: 太陽のまわりの光の色, ozone: オゾンの吸収（地球だけ）
 struct SkyAtmosphere { int body; double top, H; Vector3 beta, mie, ozone; };
 static const SkyAtmosphere SKY_ATM[] = {
@@ -3163,6 +3269,8 @@ static void DrawSkyAtmosphere(const App& app) {
     SetShaderValue(app.skyShader, app.locSkyBeta, &a->beta, SHADER_UNIFORM_VEC3);
     SetShaderValue(app.skyShader, app.locSkyMie, &a->mie, SHADER_UNIFORM_VEC3);
     SetShaderValue(app.skyShader, app.locSkyOzone, &a->ozone, SHADER_UNIFORM_VEC3);
+    float vis = (float)(1.0 - SunCover(app, c.pos));
+    SetShaderValue(app.skyShader, app.locSkySunVis, &vis, SHADER_UNIFORM_FLOAT);
     SetShaderValue(app.skyShader, app.locSkyDensity, &dens, SHADER_UNIFORM_FLOAT);
     const int NU = 48, NV = 24;
     const double R = 1e5;
@@ -3325,6 +3433,16 @@ static void DrawBodies(App& app) {
             style = S_EARTH_TEX;
             app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.earthColor;
             app.mat.maps[MATERIAL_MAP_SPECULAR].texture = app.earthData;
+            bool season = app.earthMonths.id && app.earthClouds.id;
+            if (season) {
+                app.mat.maps[MATERIAL_MAP_NORMAL].texture = app.earthClouds;
+                app.mat.maps[MATERIAL_MAP_ROUGHNESS].texture = app.earthMonths;
+            }
+            // 今の月（各月の画像はその月の中ごろ）: 1 年の中の位置から
+            double year = 2000.0 + (app.tDays + 0.5) / 365.2425;
+            double month = std::fmod((year - std::floor(year)) * 12.0 - 0.5 + 12.0, 12.0);
+            float info2[4] = {0, 0, (float)month, season ? 1.0f : 0.0f};
+            SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         } else if (d.style == S_MOON && app.moonTex) {
             style = S_MOON_TEX;
             app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.moonColor;
@@ -3347,7 +3465,7 @@ static void DrawBodies(App& app) {
         // 大気のある天体: 日光の色と、カメラが同じ大気の中にいる時のかすみ
         {
             Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, ozone = {0, 0, 0}, up = {0, 1, 0};
-            float haze[4] = {0, (float)(1.0 / s), 1, 0};
+            float haze[4] = {0, (float)(1.0 / s), 1, 1};
             for (const SkyAtmosphere& a : SKY_ATM)
                 if (a.body == it.i) {
                     beta = a.beta;
@@ -3358,6 +3476,7 @@ static void DrawBodies(App& app) {
                     if (CameraAtmosphere(app, &density, &u, &sunEl) == &a) {
                         haze[0] = (float)density;
                         haze[2] = (float)a.H;
+                        haze[3] = (float)(1.0 - SunCover(app, app.cam.pos));
                         up = ToF(u);
                     }
                 }
@@ -3367,6 +3486,7 @@ static void DrawBodies(App& app) {
             SetShaderValue(app.shader, app.locAtmHaze, haze, SHADER_UNIFORM_VEC4);
             SetShaderValue(app.shader, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
         }
+        if (d.rings) app.mat.maps[MATERIAL_MAP_ROUGHNESS].texture = app.ringTex;   // 本体に落ちる環の影と環の描画
         DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
 
         if (d.rings) {
@@ -3585,6 +3705,38 @@ static void DrawSkyLabels(const App& app) {
     }
 }
 
+// 皆既日食のコロナ: 太陽の縁から放射状に伸びる淡い光の筋（赤道方向に長い流線、極の方向に短い羽毛状の筋）
+static void DrawCorona(Vector2 c, float rs, float k) {
+    rs = std::max(rs, 3.0f);
+    BeginBlendMode(BLEND_ADDITIVE);
+    DrawCircleGradient((int)c.x, (int)c.y, rs * 2.6f, {235, 238, 255, (unsigned char)(110 * k)}, {200, 210, 255, 0});
+    const int N = 240;
+    rlDrawRenderBatchActive();
+    rlDisableBackfaceCulling();
+    rlBegin(RL_TRIANGLES);
+    for (int i = 0; i < N; i++) {
+        double a0 = 2 * PI * i / N, a1 = 2 * PI * (i + 1) / N;
+        // 角度ごとの筋の長さ: 赤道（画面の左右）方向に長く、いくつかの流線が特に長い
+        auto len = [&](double a) {
+            double eq = 0.55 + 0.45 * std::pow(std::fabs(std::cos(a)), 1.5);
+            double h = std::sin(a * 7.0 + 1.3) * 0.25 + std::sin(a * 13.0 + 0.4) * 0.15 + std::sin(a * 29.0 + 2.1) * 0.08;
+            return rs * (1.4 + 2.6 * eq * (0.75 + h));
+        };
+        float l0 = (float)len(a0), l1 = (float)len(a1);
+        unsigned char al = (unsigned char)(150 * k);
+        rlColor4ub(240, 242, 255, al); rlVertex2f(c.x + (float)std::cos(a0) * rs, c.y + (float)std::sin(a0) * rs);
+        rlColor4ub(200, 210, 255, 0); rlVertex2f(c.x + (float)std::cos(a0) * l0, c.y + (float)std::sin(a0) * l0);
+        rlColor4ub(240, 242, 255, al); rlVertex2f(c.x + (float)std::cos(a1) * rs, c.y + (float)std::sin(a1) * rs);
+        rlColor4ub(240, 242, 255, al); rlVertex2f(c.x + (float)std::cos(a1) * rs, c.y + (float)std::sin(a1) * rs);
+        rlColor4ub(200, 210, 255, 0); rlVertex2f(c.x + (float)std::cos(a0) * l0, c.y + (float)std::sin(a0) * l0);
+        rlColor4ub(200, 210, 255, 0); rlVertex2f(c.x + (float)std::cos(a1) * l1, c.y + (float)std::sin(a1) * l1);
+    }
+    rlEnd();
+    rlDrawRenderBatchActive();
+    rlEnableBackfaceCulling();
+    EndBlendMode();
+}
+
 static void DrawSunGlowAndDots(const App& app) {
     const Cam& c = app.cam;
     for (size_t i = 0; i < app.B.size(); i++) {
@@ -3594,11 +3746,15 @@ static void DrawSunGlowAndDots(const App& app) {
         if (!Project(c, rel, &p)) continue;
         double px = b.d.radius / Len(rel) * c.focal;
         if (i == B_SUN) {
+            // 日食: 欠けた分だけまぶしさを弱め、皆既の直前からコロナを描く（月の円盤は後で 3D に重なって中央を隠す）
+            double cover = SunCover(app, c.pos);
+            double k = std::max(0.0, std::min(1.0, (cover - 0.985) / 0.015));
+            if (k > 0) DrawCorona(p, (float)px, (float)k);
             if (Occluded(app, c.pos, b.pos, B_SUN)) continue;
-            float r = (float)(px * 1.8 + 14);
+            float r = (float)(px * 1.8 + 14), g = (float)std::pow(1.0 - cover, 0.6);
             BeginBlendMode(BLEND_ADDITIVE);
-            DrawCircleGradient((int)p.x, (int)p.y, r, {255, 240, 200, 200}, {255, 200, 120, 0});
-            DrawCircleGradient((int)p.x, (int)p.y, r * 3, {255, 200, 140, 35}, {255, 160, 80, 0});
+            DrawCircleGradient((int)p.x, (int)p.y, r, {255, 240, 200, (unsigned char)(200 * g)}, {255, 200, 120, 0});
+            DrawCircleGradient((int)p.x, (int)p.y, r * 3, {255, 200, 140, (unsigned char)(35 * g)}, {255, 160, 80, 0});
             EndBlendMode();
             if (px < 0.8) DrawCircleV(p, 2.5f, {255, 250, 230, 255});
         } else if (b.d.probe < 0 && b.outer / Len(rel) * c.focal < 0.8) {
@@ -4037,12 +4193,13 @@ static void DrawHUD(App& app) {
 
     if (app.showHelp) {
         const int lines = UI_HELP15 - UI_HELP1 + 1;
-        float w = std::min(c.W - 20, 980.0f), h = 44 + lines * 26.0f, hx = (c.W - w) / 2, hy = (c.H - h) / 2;
+        float w = std::min(c.W - 20, 980.0f), h = 74 + lines * 26.0f, hx = (c.W - w) / 2, hy = (c.H - h) / 2;
         DrawRectangleRounded({hx, hy, w, h}, 0.04f, 6, {0, 8, 20, 225});
         DrawRectangleRoundedLinesEx({hx, hy, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
         TxtC(T(UI_HELP_TITLE), c.W * 0.5f, hy + 10, 22, {255, 220, 120, 255});
         for (int i = 0; i < lines; i++)
             Txt(T((UiId)(UI_HELP1 + i)), hx + 24, hy + 44 + i * 26.0f, i >= 12 ? 15 : 17, i >= 12 ? Color{170, 220, 190, 255} : Color{215, 228, 245, 255});
+        TxtC(CREDIT, c.W * 0.5f, hy + h - 26, 13, {150, 170, 190, 255});
     }
     DrawTourPanel(app);
     DrawModalPanels(app);
@@ -4140,6 +4297,17 @@ int main(int argc, char** argv) {
     LoadEarthTextures(app);
     LoadMoonTextures(app);
     app.milkyWay = LoadEmbeddedTexture(MilkyWayJpg(), ".jpg");
+    {
+        EmbeddedFile f = SaturnRingsPng();
+        Image img = LoadImageFromMemory(".png", f.data, (int)f.size);
+        if (img.data) {
+            app.ringTex = LoadTextureFromImage(img);
+            UnloadImage(img);
+            SetTextureFilter(app.ringTex, TEXTURE_FILTER_BILINEAR);
+            SetTextureWrap(app.ringTex, TEXTURE_WRAP_CLAMP);
+        }
+    }
+    app.shader.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(app.shader, "texture3");   // DrawMesh が texture3 に割り当てる
     LoadBodyMaps(app);
     app.locMapInfo = GetShaderLocation(app.shader, "mapInfo");
     app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");
@@ -4150,6 +4318,7 @@ int main(int argc, char** argv) {
     app.locSkyMie = GetShaderLocation(app.skyShader, "mieTint");
     app.locSkyDensity = GetShaderLocation(app.skyShader, "density");
     app.locSkyOzone = GetShaderLocation(app.skyShader, "ozone");
+    app.locSkySunVis = GetShaderLocation(app.skyShader, "sunVis");
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
     for (const Shape& sh : g_shapes) {
@@ -4158,7 +4327,7 @@ int main(int argc, char** argv) {
             if (b.shape >= 0 && g_shapes[b.shape].name == sh.name) r = b.d.radius;
         app.shapeMesh.push_back(ShapeMesh(sh, r));
     }
-    app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
+    app.ring = GenRing(72000.0f / 60268.0f, 142500.0f / 60268.0f, 720);   // D 環の内側〜F 環の外側
     app.shipShader = LoadShaderFromMemory(SHIP_VS, SHIP_FS);
     app.locSunDir = GetShaderLocation(app.shipShader, "sunDir");
     app.locSunColor = GetShaderLocation(app.shipShader, "sunColor");
@@ -4381,8 +4550,11 @@ int main(int argc, char** argv) {
     UnloadShader(app.shader);
     UnloadShader(app.skyShader);
     if (app.earthTex) { UnloadTexture(app.earthColor); UnloadTexture(app.earthData); }
+    if (app.earthMonths.id) UnloadTexture(app.earthMonths);
+    if (app.earthClouds.id) UnloadTexture(app.earthClouds);
     if (app.moonTex) { UnloadTexture(app.moonColor); UnloadTexture(app.moonData); }
     if (app.milkyWay.id) UnloadTexture(app.milkyWay);
+    if (app.ringTex.id) UnloadTexture(app.ringTex);
     for (App::BodyMap& m : app.maps) {
         UnloadTexture(m.color);
         UnloadTexture(m.mask);

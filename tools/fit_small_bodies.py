@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """準惑星・小惑星・彗星の軌道要素を JPL Horizons に合わせる（src/solar_data.h の SMALL_BODIES を出力する）。
 
 惑星と同じ形（J2000 の軌道要素と 1 世紀あたりの変化率、src/main.cpp の PlanetPos）で、
@@ -19,7 +21,10 @@ UA = "SolarSystemVoyager-orbit-fit/1.0 (https://github.com/hubstacksea/Solar-Sys
 BODIES = [("Ceres", "1;"), ("Vesta", "4;"), ("Eris", "136199;"), ("Halley", "DES=1P;CAP;NOFRAG"),
           ("Hale-Bopp", "DES=C/1995 O1;CAP;NOFRAG"), ("Hyakutake", "DES=C/1996 B2;CAP;NOFRAG"),
           ("Churyumov-Gerasimenko", "DES=67P;CAP;NOFRAG", "2012-01-01", "2018-01-01", "2 d"),
-          ("Ryugu", "162173;", "2012-01-01", "2024-01-01", "5 d")]
+          ("Ryugu", "162173;", "2012-01-01", "2024-01-01", "5 d"),
+          ("Bennu", "101955;", "2014-01-01", "2026-01-01", "5 d"),
+          ("Itokawa", "25143;", "2001-01-01", "2013-01-01", "5 d"),
+          ("Didymos", "65803;", "2018-01-01", "2026-01-01", "5 d")]
 # 名前のあとに期間と刻みがあるものは、その期間だけで合わせる（木星や地球への接近で軌道が変わり、
 # 長い期間では合わないもの。探査機が訪れた頃を優先する）
 J2000 = 2451545.0

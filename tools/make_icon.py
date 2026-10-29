@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """アプリアイコンを生成する（Pillow のみ使用）。
 
 出力: assets/icon.png (256px, ウィンドウ・Linux 用), assets/icon.ico (16〜256px, Windows exe 用)

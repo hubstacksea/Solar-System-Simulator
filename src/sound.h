@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // 効果音: エンジン音とワープ音を音声ファイル無しでその場で合成する
 #pragma once
 #include <atomic>

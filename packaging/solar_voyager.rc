@@ -23,6 +23,8 @@ BEGIN
       VALUE "OriginalFilename", "solar_voyager.exe"
       VALUE "ProductName",      "Solar System Voyager"
       VALUE "ProductVersion",   "@PROJECT_VERSION@"
+      VALUE "CompanyName",      "hubstacksea"
+      VALUE "LegalCopyright",   "Copyright (c) 2026 hubstacksea. MIT License. https://github.com/hubstacksea/Solar-System-Simulator"
     END
   END
   BLOCK "VarFileInfo"

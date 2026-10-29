@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""彗星・小惑星の実際の形 (assets/shapes.bin) を作る。
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
+"""彗星・小惑星・小さな衛星の実際の形 (assets/shapes.bin) を作る。
 
 データ:
   - リュウグウ: Watanabe et al. (2019) の形状モデル SHAPE_SFM_49k_v20180804.obj
@@ -7,7 +9,10 @@
   - チュリュモフ・ゲラシメンコ彗星 (67P): ESA の NAVCAM による形状モデル MTP019 の低解像度版
     cshp_dv_130_01_lores_obj.obj（NASA PDS Small Bodies Node, ro-c-multi-5-67p-shape-v2.0、
     ESA/Rosetta/NAVCAM – CC BY-SA IGO 3.0）
-どちらも元の頂点と三角形をそのまま使い、座標を 16 ビットに丸め、外側の表面までの半径の表を加える。
+  - ベンヌ・イトカワ・ディディモス・ディモルフォス・フォボス: NASA NAIF の SPICE 形状データ (DSK)
+    （ベンヌ: OSIRIS-REx、イトカワ: Gaskell et al. の Hayabusa AMICA モデル、ディディモス・ディモルフォス: DART、
+    フォボス: Gaskell のモデル。いずれも NASA の惑星データ）
+頂点が 65,536 個を超えるもの（フォボス）は格子でまとめて間引く。座標を 16 ビットに丸め、外側の表面までの半径の表を加える。
 
 出力形式（リトルエンディアン）:
   uint32 形の数
@@ -19,7 +24,7 @@
             （緯度 -90〜90°・経度 0〜360° を等間隔に、両端を含む NLAT 行 × 端を含まない NLON 列）
 
 使い方: python3 tools/make_shape_assets.py <作業ディレクトリ> [出力先=assets]
-必要なもの: NumPy（ダウンロード 約 8 MB）
+必要なもの: NumPy, spiceypy（ダウンロード 約 38 MB）
 """
 import os
 import struct
@@ -29,11 +34,18 @@ import urllib.request
 import numpy as np
 
 UA = "SolarSystemVoyager-asset-build/1.0 (https://github.com/hubstacksea/Solar-System-Simulator)"
+NAIF = "https://naif.jpl.nasa.gov/pub/naif/"
 SHAPES = [
     ("Ryugu", "https://data.darts.isas.jaxa.jp/pub/hayabusa2/paper/Watanabe_2019/SHAPE_SFM_49k_v20180804.obj"),
     ("Churyumov-Gerasimenko", "https://pdssbn.astro.umd.edu/holdings/ro-c-multi-5-67p-shape-v2.0/data/triplate/"
                               "spc_esa/mtp019/cshp_dv_130_01_lores_obj.obj"),
+    ("Bennu", NAIF + "ORX/kernels/dsk/bennu_g_06370mm_alt_obj_0000n00000_v021.bds"),
+    ("Itokawa", NAIF + "generic_kernels/dsk/asteroids/itokawa/hay_a_amica_5_itokawashape_v1_0_64q.bds"),
+    ("Didymos", NAIF + "pds/pds4/dart/dart_spice/spice_kernels/dsk/didymos_g_09309mm_spc_0000n00000_v003.bds"),
+    ("Dimorphos", NAIF + "pds/pds4/dart/dart_spice/spice_kernels/dsk/dimorphos_g_01940mm_spc_0000n00000_v004.bds"),
+    ("Phobos", NAIF + "generic_kernels/dsk/satellites/phobos_3_3.bds"),
 ]
+MAX_VERTS = 60000
 NLON, NLAT = 96, 49
 
 
@@ -60,6 +72,37 @@ def read_obj(path):
             elif p[0] == "f":
                 faces.append([int(x.split("/")[0]) - 1 for x in p[1:4]])
     return np.array(verts), np.array(faces, dtype=np.int64)
+
+
+def read_dsk(path):
+    import spiceypy as sp
+    h = sp.dasopr(path)
+    dla = sp.dlabfs(h)
+    nv, nplates = sp.dskz02(h, dla)
+    v = np.array(sp.dskv02(h, dla, 1, nv))
+    f = np.array(sp.dskp02(h, dla, 1, nplates), dtype=np.int64) - 1
+    sp.dascls(h)
+    return v, f
+
+
+def decimate(v, f, max_verts):
+    """格子に入る頂点を 1 つにまとめる（格子の大きさは頂点数が max_verts 以下になるまで広げる）"""
+    if len(v) <= max_verts:
+        return v, f
+    cell = np.abs(v).max() / 40
+    while True:
+        key = np.floor(v / cell).astype(np.int64)
+        _, inv, cnt = np.unique(key, axis=0, return_inverse=True, return_counts=True)
+        if len(cnt) <= max_verts:
+            break
+        cell *= 1.15
+    inv = inv.reshape(-1)
+    nv = np.zeros((len(cnt), 3))
+    np.add.at(nv, inv, v)
+    nv /= cnt[:, None]
+    nf = inv[f]
+    nf = nf[(nf[:, 0] != nf[:, 1]) & (nf[:, 1] != nf[:, 2]) & (nf[:, 0] != nf[:, 2])]
+    return nv, nf
 
 
 def outer_radius(v, f, dirs):
@@ -92,7 +135,9 @@ def main():
     la, lo = np.meshgrid(lat, lon, indexing="ij")
     dirs = np.stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)], axis=-1).reshape(-1, 3)
     for name, url in SHAPES:
-        v, f = read_obj(fetch(work, url))
+        path = fetch(work, url)
+        v, f = read_dsk(path) if path.endswith(".bds") else read_obj(path)
+        v, f = decimate(v, f, MAX_VERTS)
         # 三角形の向きをそろえる（法線が中心から外を向くものが多数派になるように）
         a, b, c = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
         n = np.cross(b - a, c - a)

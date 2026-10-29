@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """天体の音楽 (assets/music/*.ogg) を作る。
 
 ホルスト《惑星》（いずれもパブリックドメイン。Wikimedia Commons より）:

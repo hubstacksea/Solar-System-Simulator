@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """NASA SVS CGI Moon Kit から月のアセット (assets/moon_color.jpg, assets/moon_data.png) を作る。
 
 データ（NASA's Scientific Visualization Studio, https://svs.gsfc.nasa.gov/4720）:

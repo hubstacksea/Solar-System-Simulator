@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """天の川の光 (assets/milkyway.jpg) を作る。
 
 データ: NASA/Goddard Space Flight Center Scientific Visualization Studio "Deep Star Maps 2020"

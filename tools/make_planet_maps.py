@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """惑星・衛星・準惑星の実際の地図 (assets/maps.bin) を作る。
 
 データ: USGS Astrogeology の天体地図サービス（WMS, https://planetarymaps.usgs.gov/）で配信している全球モザイク

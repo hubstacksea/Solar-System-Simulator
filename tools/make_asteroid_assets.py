@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """小惑星帯・トロヤ群・太陽系外縁天体などの粒 (assets/asteroids.bin) を JPL の小天体データベースから作る。
 
 データ: JPL Small-Body Database Query API (https://ssd-api.jpl.nasa.gov/sbdb_query.api) の軌道要素

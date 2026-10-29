@@ -1,3 +1,5 @@
+// Solar System Voyager — Copyright (c) 2026 hubstacksea
+// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 // assets/ のファイルをアセンブラの .incbin でそのまま埋め込む（gcc / MinGW 共通）
 #include "embedded_assets.h"
 
@@ -22,6 +24,8 @@
 
 INCBIN(g_earth_color_jpg, "earth_color.jpg")
 INCBIN(g_earth_data_png, "earth_data.png")
+INCBIN(g_earth_months_jpg, "earth_months.jpg")
+INCBIN(g_earth_clouds_jpg, "earth_clouds.jpg")
 INCBIN(g_moon_color_jpg, "moon_color.jpg")
 INCBIN(g_moon_data_png, "moon_data.png")
 INCBIN(g_icon_png, "icon.png")
@@ -32,6 +36,7 @@ INCBIN(g_milkyway_jpg, "milkyway.jpg")
 INCBIN(g_shapes_bin, "shapes.bin")
 INCBIN(g_maps_bin, "maps.bin")
 INCBIN(g_asteroids_bin, "asteroids.bin")
+INCBIN(g_saturn_rings_png, "saturn_rings.png")
 INCBIN(g_music_mercury, "music/holst_mercury.ogg")
 INCBIN(g_music_venus, "music/holst_venus.ogg")
 INCBIN(g_music_mars, "music/holst_mars.ogg")
@@ -45,11 +50,14 @@ INCBIN(g_music_moon, "music/debussy_clair_de_lune.ogg")
 
 EmbeddedFile EarthColorJpg() { return {g_earth_color_jpg, (size_t)(g_earth_color_jpg_end - g_earth_color_jpg)}; }
 EmbeddedFile EarthDataPng() { return {g_earth_data_png, (size_t)(g_earth_data_png_end - g_earth_data_png)}; }
+EmbeddedFile EarthMonthsJpg() { return {g_earth_months_jpg, (size_t)(g_earth_months_jpg_end - g_earth_months_jpg)}; }
+EmbeddedFile EarthCloudsJpg() { return {g_earth_clouds_jpg, (size_t)(g_earth_clouds_jpg_end - g_earth_clouds_jpg)}; }
 EmbeddedFile MoonColorJpg() { return {g_moon_color_jpg, (size_t)(g_moon_color_jpg_end - g_moon_color_jpg)}; }
 EmbeddedFile MoonDataPng() { return {g_moon_data_png, (size_t)(g_moon_data_png_end - g_moon_data_png)}; }
 EmbeddedFile IconPng() { return {g_icon_png, (size_t)(g_icon_png_end - g_icon_png)}; }
 EmbeddedFile StarsBin() { return {g_stars_bin, (size_t)(g_stars_bin_end - g_stars_bin)}; }
 EmbeddedFile ProbesBin() { return {g_probes_bin, (size_t)(g_probes_bin_end - g_probes_bin)}; }
+EmbeddedFile SaturnRingsPng() { return {g_saturn_rings_png, (size_t)(g_saturn_rings_png_end - g_saturn_rings_png)}; }
 EmbeddedFile AsteroidsBin() { return {g_asteroids_bin, (size_t)(g_asteroids_bin_end - g_asteroids_bin)}; }
 EmbeddedFile MapsBin() { return {g_maps_bin, (size_t)(g_maps_bin_end - g_maps_bin)}; }
 EmbeddedFile ShapesBin() { return {g_shapes_bin, (size_t)(g_shapes_bin_end - g_shapes_bin)}; }
