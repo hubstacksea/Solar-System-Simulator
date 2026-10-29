@@ -17,7 +17,9 @@
 | ![2027年8月2日の皆既日食](docs/screenshots/solar_eclipse.jpg) 2027年8月2日の日食（月の影が北アフリカに落ちる） | ![2025年9月7日の皆既月食](docs/screenshots/lunar_eclipse.jpg) 2025年9月7日の皆既月食 |
 | ![木星](docs/screenshots/jupiter.jpg) 木星 | ![ワープ](docs/screenshots/warp.jpg) ワープ演出 |
 | ![星座線と名前](docs/screenshots/constellations.jpg) 実在の星空と星座線（C キー） | ![1986年2月9日のハレー彗星](docs/screenshots/halley.jpg) 1986年2月9日（近日点）のハレー彗星 |
-| ![ボイジャー1号の木星最接近](docs/screenshots/voyager1_jupiter.jpg) 1979年3月5日、木星に最接近するボイジャー1号（K キー → Tab） | ![ボイジャー2号の海王星最接近](docs/screenshots/voyager2_neptune.jpg) 1989年8月25日、海王星の夜側を通過するボイジャー2号 |
+| ![ボイジャー1号の木星最接近](docs/screenshots/voyager1_jupiter.jpg) 1979年3月5日、木星に最接近するボイジャー1号（K キー → 探査機のページ） | ![ボイジャー2号の海王星最接近](docs/screenshots/voyager2_neptune.jpg) 1989年8月25日、海王星の夜側を通過するボイジャー2号 |
+| ![2032年11月13日の水星の太陽面通過](docs/screenshots/mercury_transit.jpg) 2032年11月13日の水星の太陽面通過 | ![地球に接近する百武彗星](docs/screenshots/hyakutake.jpg) 1996年3月25日、地球から 0.1 AU を通過する百武彗星 |
+| ![土星に到着したカッシーニ](docs/screenshots/cassini.jpg) 2004年7月1日、土星に到着したカッシーニ（側面にホイヘンス・プローブ） | ![天の川を背にした木星](docs/screenshots/milky_way.jpg) 天の川を背にした木星 |
 
 ## ビルド
 
