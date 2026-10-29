@@ -22,6 +22,8 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Cassini arriving at Saturn](docs/screenshots/cassini.jpg) Cassini arriving at Saturn, 1 July 2004 (Huygens probe on its side) | ![Jupiter against the Milky Way](docs/screenshots/milky_way.jpg) Jupiter against the Milky Way |
 | ![Dusk over the Pacific](docs/screenshots/sunset.jpg) Dusk over the Pacific | ![Daytime sky on Mars](docs/screenshots/mars_sky.jpg) The butterscotch daytime sky of Mars |
 | ![Rosetta arriving at Comet Churyumov-Gerasimenko](docs/screenshots/rosetta.jpg) Guided tour (U key): Rosetta arriving at its comet, 6 August 2014 | ![Juno entering orbit around Jupiter](docs/screenshots/juno.jpg) Juno entering orbit around Jupiter, 5 July 2016 |
+| ![Hazy horizon from 10 km](docs/screenshots/haze.jpg) The hazy horizon from 10 km up | ![Saturn in photo mode](docs/screenshots/saturn_photo.jpg) Saturn in photo mode (Z key) |
+| ![Comet Churyumov-Gerasimenko](docs/screenshots/comet_67p.jpg) Comet Churyumov-Gerasimenko in its real shape (August 2015, perihelion) | ![Ryugu](docs/screenshots/ryugu.jpg) The spinning-top asteroid Ryugu |
 
 ## Building
 

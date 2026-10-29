@@ -22,6 +22,8 @@
 | ![土星に到着したカッシーニ](docs/screenshots/cassini.jpg) 2004年7月1日、土星に到着したカッシーニ（側面にホイヘンス・プローブ） | ![天の川を背にした木星](docs/screenshots/milky_way.jpg) 天の川を背にした木星 |
 | ![太平洋の夕暮れ](docs/screenshots/sunset.jpg) 太平洋上の夕暮れ | ![火星の昼の空](docs/screenshots/mars_sky.jpg) 火星の黄褐色の昼の空 |
 | ![チュリュモフ・ゲラシメンコ彗星に到着したロゼッタ](docs/screenshots/rosetta.jpg) 自動ツアー（U キー）: 2014年8月6日、彗星に到着したロゼッタ | ![木星を周回し始めたジュノー](docs/screenshots/juno.jpg) 2016年7月5日、木星の周回軌道に入ったジュノー |
+| ![高度 10 km から見た日本近海](docs/screenshots/haze.jpg) 高度 10 km から見た、かすむ地平線 | ![写真モードの土星](docs/screenshots/saturn_photo.jpg) 写真モード（Z キー）の土星 |
+| ![チュリュモフ・ゲラシメンコ彗星](docs/screenshots/comet_67p.jpg) 実際の形のチュリュモフ・ゲラシメンコ彗星（2015年8月、近日点） | ![リュウグウ](docs/screenshots/ryugu.jpg) そろばん玉形の小惑星リュウグウ |
 
 ## ビルド
 
