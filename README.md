@@ -41,11 +41,21 @@
 
 インストールせずにブラウザで試せます: **https://hubstacksea.github.io/Solar-System-Simulator/**
 
-- WebGL2 が使えるブラウザ（Chrome / Edge / Firefox / Safari の最近の版）で動きます。最初に約 33 MB のデータを読み込みます
+- WebGL2 が使えるブラウザ（Chrome / Edge / Firefox / Safari の最近の版）で動きます。起動に要る約 8 MB だけを先に読み込み、惑星・衛星の地図、小惑星の形、月の地図、地球の雲と季節、小惑星帯など（約 25 MB）は遊びながら裏で読み込みます。届くまでは手続きで描いた表面で表示し、画面左下に「地図などを読み込み中（残り N）」と出ます
 - 音楽は入っていません（効果音は鳴ります）。日本語は同梱のフォント（Noto Sans JP）で表示します
 - 画面をクリックするとマウスで機首を操作できます（Esc で解除）。設定やブックマークはブラウザに保存されます
-- スマホ・タブレットでは画面にボタンが出ます: ドラッグで機首の向き、右の「加速」「減速」「停止」、左の「ターゲット」「ワープ」「自動操縦」、上の「ツアー」「イベント」「設定」「説明」、下のエンジン欄をタップで切り替え。画質は最初「低」になり、縦の画面が小さい時は縦 720 ピクセル相当で描いて縮めて表示します
+- スマホ・タブレットでは画面にボタンが出ます: ドラッグで機首の向き、右の「加速」「減速」「停止」、左の「ターゲット」「ワープ」「自動操縦」、上の「ツアー」「イベント」「設定」「説明」「共有」、下のエンジン欄をタップで切り替え。画質は最初「低」になり、縦の画面が小さい時は縦 720 ピクセル相当で描いて縮めて表示します
 - 描画が重い場合は F9 で画質を下げてください
+- **F2（タッチ操作では「共有」）で、今の場面のリンクをコピー**します（日時・場所・向き・ターゲット・時間倍率。アドレス欄も同じリンクになります）。リンクを開くとその場面から始まります。PC 版で F2 を押すとブラウザ版へのリンクがコピーされます
+
+## macOS 版
+
+[リリース](https://github.com/hubstacksea/Solar-System-Simulator/releases) の `SolarSystemVoyager-<版>-macos.zip`（macOS 11 以降、Apple Silicon / Intel 両対応）を展開し、`SolarSystemVoyager.app` を「アプリケーション」などに移して起動します。
+
+- Apple の公証を受けていないため、最初の起動では「開発元を確認できない」と表示されます。**アプリを右クリック（Control+クリック）→「開く」→「開く」**で起動してください。macOS 15 以降でこの方法が出ない場合は、一度起動を試した後に **システム設定 →「プライバシーとセキュリティ」→「このまま開く」**を押します
+- それでも開けない場合は、ターミナルで `xattr -dr com.apple.quarantine SolarSystemVoyager.app` を実行してから開いてください
+- 設定とブックマークは `~/Library/Application Support/SolarSystemVoyager/solar_voyager.cfg` に保存します。日本語はヒラギノ角ゴシックで表示します
+- 開発者のマシンでは動作を確認していません（GitHub Actions でのビルドのみ）。不具合があれば Issue で教えてください
 
 ## ビルド
 
@@ -72,9 +82,18 @@ cmake --build build
 
 DLL 不要の単体 exe になります。コンソールを出したい場合は `-DSOLAR_CONSOLE=ON`。
 
+### macOS
+
+```sh
+xcode-select --install   # コマンドライン ツール（clang）
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+cmake --build build -j
+open build/SolarSystemVoyager.app
+```
+
 ### 自動ビルドとリリース（GitHub Actions）
 
-`v2.4.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。
+`v2.4.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。
 
 ```sh
 git tag v2.4.0
@@ -89,7 +108,7 @@ cmake --build build-web -j
 python3 -m http.server -d build-web 8000                 # http://localhost:8000/ で開く
 ```
 
-`build-web/index.html`・`index.js`・`index.wasm`・`index.data` をそのまま Web サーバーに置けば動きます。データは実行ファイルに埋め込まず `index.data` にまとめ、シェーダは起動時に WebGL2 用（GLSL ES 3.00）に書き換えます。日本語フォント `web/NotoSansJP-subset.ttf` は `tools/make_web_font.py` で作ります。
+`build-web/index.html`・`index.js`・`index.wasm`・`index.data` と `assets/` フォルダをそのまま Web サーバーに置けば動きます。データは実行ファイルに埋め込まず、起動に要るものは `index.data` にまとめ、大きな地図などは `assets/` から起動後に読み込みます（分け方は `CMakeLists.txt` の `WEB_PRELOAD` / `WEB_DEFERRED`）。シェーダは起動時に WebGL2 用（GLSL ES 3.00）に書き換えます。日本語フォント `web/NotoSansJP-subset.ttf` は `tools/make_web_font.py` で作ります。
 
 ### Linux から Windows 版をクロスビルド
 
@@ -106,6 +125,7 @@ cmake --build build-win -j
 |---|---|---|
 | Windows (7-Zip) | `cd build-win && cpack` | `SolarSystemVoyager-<版>-win64.7z`（展開してそのまま使えるポータブル版） |
 | Linux (.deb / .rpm) | `cd build && cpack` | `solar-voyager_<版>_amd64.deb` / `solar-voyager-<版>-1.x86_64.rpm` |
+| macOS (.zip) | `cd build && cpack` | `SolarSystemVoyager-<版>-macos.zip`（`.app` に ad-hoc 署名） |
 
 - Linux 版は `/usr/bin/solar_voyager` に入り、アプリメニュー（ゲーム）にアイコン付きで登録されます。`.rpm` の作成には `rpmbuild` が必要です
 - 片方だけ作る場合: `cpack -G DEB` / `cpack -G RPM`
@@ -143,6 +163,7 @@ cmake --build build-win -j
 | B / N | 現在地をブックマーク / ブックマークへ順にワープ（最大 9 か所。天体と一緒に回る位置・向きを保存） |
 | M / Shift+M | 効果音（エンジン音・ワープ音）/ 音楽 のオン・オフ |
 | F9 | 画質 高 → 低 → 中（重い時は「低」: 3D を 60% の解像度で描画し、細部を省略） |
+| F2 | この場面の共有リンクをコピー（日時・場所・向き・ターゲット・時間倍率。ブラウザ版で開くと同じ場面から始まる。PC 版は `--share <リンク>` で開ける） |
 | F11 / F12 | フルスクリーン / スクリーンショット（ピクチャ フォルダの `SolarSystemVoyager` に保存） |
 | Esc | マウスの解放・捕捉 |
 | Ctrl+Q | 終了 |
@@ -248,10 +269,10 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 ## 表示言語（日本語 / English）
 
 - **J キー**でいつでも切り替えられます。選んだ言語は `solar_voyager.cfg` に保存され、次回起動時も使われます
-- `solar_voyager.cfg` には言語・画質・効果音・星座の表示・ブックマークを保存します。場所は実行ファイルと同じフォルダ（書き込めない場合、たとえば .deb / .rpm でインストールした時は `~/.config/solar_voyager/solar_voyager.cfg`）
+- `solar_voyager.cfg` には言語・画質・効果音・星座の表示・ブックマークを保存します。場所は実行ファイルと同じフォルダ（書き込めない場合、たとえば .deb / .rpm でインストールした時は `~/.config/solar_voyager/solar_voyager.cfg`。macOS は `~/Library/Application Support/SolarSystemVoyager/`）
 - 起動時に指定する場合: `solar_voyager --lang en`（または `ja`）。優先順位は「起動オプション > 保存された設定 > 日本語」です
 
-日本語表示には OS の日本語フォント（Windows: メイリオ / 游ゴシック / MS ゴシック、Linux: Noto Sans CJK / IPA など）を自動で探して使います。
+日本語表示には OS の日本語フォント（Windows: メイリオ / 游ゴシック / MS ゴシック、macOS: ヒラギノ角ゴシック、Linux: Noto Sans CJK / IPA など）を自動で探して使います。
 見つからない場合は英語表示に固定されます。`assets/font.ttf` を置くとそれを優先します。
 
 ## ライセンス

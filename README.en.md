@@ -41,11 +41,21 @@ On the first launch a short guide (4 pages) introduces the controls and highligh
 
 Try it in your browser without installing anything: **https://hubstacksea.github.io/Solar-System-Simulator/**
 
-- Runs in browsers with WebGL2 (recent Chrome / Edge / Firefox / Safari). About 33 MB of data is loaded first
+- Runs in browsers with WebGL2 (recent Chrome / Edge / Firefox / Safari). Only the 8 MB needed to start is loaded first; the planet and moon maps, asteroid shapes, Moon maps, Earth's clouds and seasons and the asteroid belt (about 25 MB) are loaded in the background while you play. Until they arrive, surfaces are drawn procedurally and "Loading maps (N left)" is shown at the bottom left
 - Music is not included (sound effects are). Japanese text uses the bundled Noto Sans JP font
 - Click the view to steer with the mouse (Esc to release). Settings and bookmarks are kept in the browser
-- On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Settings / Help at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down
+- On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Settings / Help / Share at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down
 - If it runs slowly, lower the quality with F9
+- **F2 (or "Share" on touch screens) copies a link to the current scene** (date, place, view, target and time scale; the address bar shows the same link). Opening the link starts from that scene. F2 in the PC version copies a link to the browser version
+
+## macOS version
+
+Download `SolarSystemVoyager-<version>-macos.zip` (macOS 11 or later, Apple Silicon and Intel) from the [releases](https://github.com/hubstacksea/Solar-System-Simulator/releases), extract it and move `SolarSystemVoyager.app` to Applications or anywhere you like.
+
+- The app is not notarized by Apple, so the first launch shows an "unidentified developer" warning. **Right-click (Control-click) the app → Open → Open.** If macOS 15 or later does not offer that, try to launch it once, then press **System Settings → Privacy & Security → Open Anyway**
+- If it still does not open, run `xattr -dr com.apple.quarantine SolarSystemVoyager.app` in Terminal and try again
+- Settings and bookmarks are saved in `~/Library/Application Support/SolarSystemVoyager/solar_voyager.cfg`. Japanese text uses Hiragino Sans
+- It is built by GitHub Actions but has not been tested on the developer's machine. Please report problems in Issues
 
 ## Building
 
@@ -72,9 +82,18 @@ cmake --build build
 
 The result is a standalone exe that needs no DLLs. Add `-DSOLAR_CONSOLE=ON` if you want a console window.
 
+### macOS
+
+```sh
+xcode-select --install   # command line tools (clang)
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+cmake --build build -j
+open build/SolarSystemVoyager.app
+```
+
 ### Automatic builds and releases (GitHub Actions)
 
-Pushing a tag such as `v2.4.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages.
+Pushing a tag such as `v2.4.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages.
 
 ```sh
 git tag v2.4.0
@@ -89,7 +108,7 @@ cmake --build build-web -j
 python3 -m http.server -d build-web 8000                 # open http://localhost:8000/
 ```
 
-Put `build-web/index.html`, `index.js`, `index.wasm` and `index.data` on any web server. The data is not embedded but packed into `index.data`, and the shaders are rewritten for WebGL2 (GLSL ES 3.00) at startup. The Japanese font `web/NotoSansJP-subset.ttf` is made by `tools/make_web_font.py`.
+Put `build-web/index.html`, `index.js`, `index.wasm`, `index.data` and the `assets/` folder on any web server. The data is not embedded: what is needed to start is packed into `index.data`, and the large maps and shapes are fetched from `assets/` after startup (see `WEB_PRELOAD` / `WEB_DEFERRED` in `CMakeLists.txt`), and the shaders are rewritten for WebGL2 (GLSL ES 3.00) at startup. The Japanese font `web/NotoSansJP-subset.ttf` is made by `tools/make_web_font.py`.
 
 ### Cross-building the Windows version on Linux
 
@@ -106,6 +125,7 @@ After building, run `cpack` in the build directory.
 |---|---|---|
 | Windows (7-Zip) | `cd build-win && cpack` | `SolarSystemVoyager-<version>-win64.7z` (portable: extract and run) |
 | Linux (.deb / .rpm) | `cd build && cpack` | `solar-voyager_<version>_amd64.deb` / `solar-voyager-<version>-1.x86_64.rpm` |
+| macOS (.zip) | `cd build && cpack` | `SolarSystemVoyager-<version>-macos.zip` (`.app` with an ad-hoc signature) |
 
 - The Linux packages install `/usr/bin/solar_voyager` and add it, with its icon, to the application menu (Games). Building the `.rpm` requires `rpmbuild`
 - To build only one: `cpack -G DEB` / `cpack -G RPM`
@@ -143,6 +163,7 @@ After building, run `cpack` in the build directory.
 | B / N | Bookmark the current spot / warp to bookmarks in turn (up to 9; position and orientation are stored relative to the rotating body) |
 | M / Shift+M | Sound effects (engine and warp) / music on/off |
 | F9 | Quality High → Low → Medium (use Low if it runs slowly: 3D at 60% resolution with less detail) |
+| F2 | Copy a share link to this scene (date, place, view, target, time scale; opening it in the browser version starts from the same scene; the PC version opens one with `--share <link>`) |
 | F11 / F12 | Fullscreen / screenshot (saved to `SolarSystemVoyager` in your Pictures folder) |
 | Esc | Release / capture the mouse |
 | Ctrl+Q | Quit |
@@ -248,10 +269,10 @@ All of them may be used and redistributed freely, including commercially (see [T
 ## Display language (日本語 / English)
 
 - Press the **J key** at any time to switch. The chosen language is saved in `solar_voyager.cfg` and used on the next launch
-- `solar_voyager.cfg` stores the language, quality, sound setting, constellation display and bookmarks. It lives next to the executable (if that folder is not writable, e.g. when installed from the .deb / .rpm, in `~/.config/solar_voyager/solar_voyager.cfg`)
+- `solar_voyager.cfg` stores the language, quality, sound setting, constellation display and bookmarks. It lives next to the executable (if that folder is not writable, e.g. when installed from the .deb / .rpm, in `~/.config/solar_voyager/solar_voyager.cfg`; on macOS in `~/Library/Application Support/SolarSystemVoyager/`)
 - To choose at startup: `solar_voyager --lang en` (or `ja`). Priority is: command-line option > saved setting > Japanese
 
-For Japanese text, the program automatically searches for an OS Japanese font (Windows: Meiryo / Yu Gothic / MS Gothic, Linux: Noto Sans CJK / IPA, etc.).
+For Japanese text, the program automatically searches for an OS Japanese font (Windows: Meiryo / Yu Gothic / MS Gothic, macOS: Hiragino Sans, Linux: Noto Sans CJK / IPA, etc.).
 If none is found, the display is fixed to English. A font placed at `assets/font.ttf` takes priority.
 
 ## License

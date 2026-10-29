@@ -28,3 +28,8 @@ EmbeddedFile MilkyWayJpg();     // 天の川の光 (NASA SVS Deep Star Maps 2020
 // 7: 太陽（グリーグ「朝」）, 8: 地球（ベートーヴェン「田園」第1楽章）, 9: 月（ドビュッシー「月の光」）
 constexpr int MUSIC_COUNT = 10;
 EmbeddedFile MusicOgg(int i);
+#if defined(__EMSCRIPTEN__)
+// ブラウザ版: 起動に要らない大きなデータ（地図・形・月・雲など）を裏で取得し始める / まだ届いていない数（-1: 取得しない）
+void StartDeferredAssetDownloads();
+int DeferredAssetsPending();
+#endif

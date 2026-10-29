@@ -43,6 +43,11 @@ inline std::vector<std::string> CandidatePaths() {
     std::string fonts = std::string(win ? win : "C:\\Windows") + "\\Fonts\\";
     for (const char* f : {"meiryo.ttc", "YuGothM.ttc", "YuGothR.ttc", "msgothic.ttc", "BIZ-UDGothicR.ttc"})
         p.push_back(fonts + f);
+#elif defined(__APPLE__)
+    for (const char* f : {"/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc", "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                          "/System/Library/Fonts/ヒラギノ丸ゴ ProN W4.ttc", "/Library/Fonts/Arial Unicode.ttf",
+                          "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"})
+        p.push_back(f);
 #else
     for (const char* f : {"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
                           "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",

@@ -38,12 +38,21 @@ if(EMSCRIPTEN)
   option(SOLAR_WEB_MUSIC "ブラウザ版に音楽を入れる（約 17 MB 増える）" OFF)
   set(WEB_LINK -sUSE_GLFW=3 -sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 -sSTACK_SIZE=4194304
       -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
-      "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets"
       "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/web/NotoSansJP-subset.ttf@/assets/font.ttf"
-      "--exclude-file=*.ico" "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
-  if(NOT SOLAR_WEB_MUSIC)
-    list(APPEND WEB_LINK "--exclude-file=*.ogg")
+      "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
+  # 起動に要るものだけを index.data に入れ（約 8 MB）、大きなデータはページの assets/ に置いて起動後に取得する
+  set(WEB_PRELOAD stars.bin sky.txt probes.bin earth_color.jpg earth_data.png milkyway.jpg saturn_rings.png icon.png)
+  set(WEB_DEFERRED maps.bin shapes.bin moon_data.png moon_color.jpg earth_clouds.jpg asteroids.bin earth_months.jpg)
+  foreach(f ${WEB_PRELOAD})
+    list(APPEND WEB_LINK "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/assets/${f}@/assets/${f}")
+  endforeach()
+  if(SOLAR_WEB_MUSIC)
+    list(APPEND WEB_LINK "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/assets/music@/assets/music")
   endif()
+  foreach(f ${WEB_DEFERRED})
+    add_custom_command(TARGET solar_voyager POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                       "${CMAKE_CURRENT_SOURCE_DIR}/assets/${f}" "${CMAKE_CURRENT_BINARY_DIR}/assets/${f}")
+  endforeach()
   target_link_options(solar_voyager PRIVATE ${WEB_LINK})
   set_target_properties(solar_voyager PROPERTIES SUFFIX ".html" OUTPUT_NAME "index")
   target_compile_definitions(solar_voyager PRIVATE APP_VERSION="${PROJECT_VERSION}")
@@ -77,16 +86,52 @@ if(MINGW)
 elseif(UNIX AND NOT APPLE)
   find_package(OpenGL REQUIRED)
   target_link_libraries(solar_voyager PRIVATE OpenGL::GL m)
+elseif(APPLE)
+  # macOS: SolarSystemVoyager.app（アイコンは iconutil があれば icon.png から作る）
+  set_target_properties(solar_voyager PROPERTIES
+    MACOSX_BUNDLE TRUE
+    OUTPUT_NAME "SolarSystemVoyager"
+    MACOSX_BUNDLE_BUNDLE_NAME "Solar System Voyager"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.hubstacksea.solarvoyager"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+    MACOSX_BUNDLE_COPYRIGHT "(c) 2026 hubstacksea, MIT License")
+  find_program(ICONUTIL iconutil)
+  find_program(SIPS sips)
+  if(ICONUTIL AND SIPS)
+    set(ICONSET "${CMAKE_CURRENT_BINARY_DIR}/SolarSystemVoyager.iconset")
+    set(ICNS "${CMAKE_CURRENT_BINARY_DIR}/SolarSystemVoyager.icns")
+    set(ICON_CMDS COMMAND ${CMAKE_COMMAND} -E make_directory "${ICONSET}")
+    foreach(sz 16 32 128 256)
+      math(EXPR sz2 "${sz} * 2")
+      list(APPEND ICON_CMDS COMMAND ${SIPS} -z ${sz} ${sz} "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png" --out "${ICONSET}/icon_${sz}x${sz}.png")
+      if(sz2 LESS_EQUAL 256)
+        list(APPEND ICON_CMDS COMMAND ${SIPS} -z ${sz2} ${sz2} "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png" --out "${ICONSET}/icon_${sz}x${sz}@2x.png")
+      endif()
+    endforeach()
+    add_custom_command(OUTPUT "${ICNS}" ${ICON_CMDS} COMMAND ${ICONUTIL} -c icns "${ICONSET}" -o "${ICNS}"
+                       DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.png" VERBATIM)
+    target_sources(solar_voyager PRIVATE "${ICNS}")
+    set_source_files_properties("${ICNS}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(solar_voyager PROPERTIES MACOSX_BUNDLE_ICON_FILE "SolarSystemVoyager.icns")
+  endif()
 endif()
 endif()   # EMSCRIPTEN
 
 # ---- インストール / パッケージ (cpack) ------------------------------------
 # Windows: 7z アーカイブ（展開してそのまま使うポータブル版）
 # Linux:   .deb / .rpm（/usr/bin・メニュー登録・アイコン）
+# macOS:   .zip（SolarSystemVoyager.app と説明書。署名は ad-hoc）
 # raylib 自体のインストール（ライブラリ・ヘッダ）は含めず、app コンポーネントだけを梱包する
 if(WIN32)
   install(TARGETS solar_voyager RUNTIME DESTINATION . COMPONENT app)
   install(FILES README.md README.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
+elseif(APPLE)
+  install(TARGETS solar_voyager BUNDLE DESTINATION . COMPONENT app)
+  install(FILES README.md README.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
+  # 置いた後に署名し直す（Apple Silicon は署名のない実行ファイルを起動できない）
+  install(CODE "execute_process(COMMAND codesign --force --deep -s - \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/SolarSystemVoyager.app\")"
+          COMPONENT app)
 else()
   include(GNUInstallDirs)
   install(TARGETS solar_voyager RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT app)
@@ -110,6 +155,11 @@ if(WIN32)
   set(CPACK_GENERATOR "7Z")
   set(CPACK_PACKAGE_FILE_NAME "SolarSystemVoyager-${PROJECT_VERSION}-win64")
   set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+elseif(APPLE)
+  set(CPACK_GENERATOR "ZIP")
+  set(CPACK_PACKAGE_FILE_NAME "SolarSystemVoyager-${PROJECT_VERSION}-macos")
+  set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+  set(CPACK_STRIP_FILES OFF)   # 署名した後に書き換えない
 else()
   set(CPACK_GENERATOR "DEB;RPM")
   set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")

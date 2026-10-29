@@ -2,7 +2,8 @@
 # MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 #
 # タグ（v1.2.3 の形）を push すると:
-#   1. Linux (.deb / .rpm)・Windows (.7z、Linux からクロスビルド)・ブラウザ版 (Emscripten) を作る
+#   1. Linux (.deb / .rpm)・Windows (.7z、Linux からクロスビルド)・macOS (.zip、Apple Silicon と Intel の両対応)・
+#      ブラウザ版 (Emscripten) を作る
 #   2. GitHub のリリースを作ってパッケージを添付する
 #   3. ブラウザ版を gh-pages ブランチへ置き、GitHub Pages で公開する
 # Actions タブから手動で動かした時（workflow_dispatch）は、ビルドだけしてリリースと公開はしない
@@ -59,6 +60,24 @@ jobs:
           name: windows
           path: build-win/*.7z
 
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and package
+        run: |
+          cmake -B build-mac -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          cmake --build build-mac -j 4
+          cd build-mac && cpack
+          unzip -q -o SolarSystemVoyager-*-macos.zip -d check
+          lipo -info check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager
+          codesign --verify --verbose check/*/SolarSystemVoyager.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: build-mac/*.zip
+
   web:
     runs-on: ubuntu-24.04
     steps:
@@ -81,10 +100,11 @@ jobs:
             build-web/index.js
             build-web/index.wasm
             build-web/index.data
+            build-web/assets/
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows, web]
+    needs: [linux, windows, macos, web]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -103,6 +123,7 @@ jobs:
           | File | Platform |
           |---|---|
           | \`SolarSystemVoyager-${V}-win64.7z\` | Windows 64-bit (portable: extract and run \`solar_voyager.exe\`) |
+          | \`SolarSystemVoyager-${V}-macos.zip\` | macOS 11+ (Apple Silicon / Intel). Not notarized: on first launch, right-click the app → Open, or allow it in System Settings → Privacy & Security |
           | \`solar-voyager_${V}_amd64.deb\` | Debian / Ubuntu (\`sudo apt install ./solar-voyager_${V}_amd64.deb\`) |
           | \`solar-voyager-${V}-1.x86_64.rpm\` | Fedora / RHEL / openSUSE (\`sudo dnf install ./solar-voyager-${V}-1.x86_64.rpm\`) |
 
@@ -112,14 +133,14 @@ jobs:
           NOTES
           sed -i 's/^          //' notes.md
           gh release create "$TAG" --title "Solar System Voyager $TAG" --notes-file notes.md \
-            dist/windows/*.7z dist/linux/*.deb dist/linux/*.rpm
+            dist/windows/*.7z dist/macos/*.zip dist/linux/*.deb dist/linux/*.rpm
       - name: Publish the browser version to gh-pages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           mkdir site
-          cp dist/web/index.* site/
+          cp -r dist/web/index.* dist/web/assets site/
           cp LICENSE THIRD_PARTY_NOTICES.md site/
           cp web/OFL.txt site/OFL-NotoSansJP.txt
           touch site/.nojekyll

@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <map>
 #include <string>
 #include <vector>
 #ifndef _WIN32
@@ -151,7 +152,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード    R : 重力モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode    R : gravity mode") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
-    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    F10 : settings    Ctrl+Q : quit") \
+    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F2 : 共有リンク    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F2 : share link    F9 : quality    F10 : settings    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
@@ -237,6 +238,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(SET_INVERT, "マウス上下反転", "Invert mouse") \
     X(SET_FULLSCREEN, "フルスクリーン", "Fullscreen") \
     X(SET_ON, "オン", "On") \
+    X(LOADING, "地図などを読み込み中（残り %d）", "Loading maps (%d left)") \
     X(TB_THRUST, "加速", "Thrust") \
     X(TB_BRAKE, "減速", "Brake") \
     X(TB_STOP, "停止", "Stop") \
@@ -247,6 +249,10 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(TB_EVENTS, "イベント", "Events") \
     X(TB_SETTINGS, "設定", "Settings") \
     X(TB_HELP, "説明", "Help") \
+    X(TB_SHARE, "共有", "Share") \
+    X(SHARED, "この場面のリンクをコピーしました（日時・場所・向き・時間倍率）", "Link to this scene copied (date, place, view, time scale)") \
+    X(SHARED_BAR, "この場面のリンクをアドレス欄に入れました（コピーして共有できます）", "Link to this scene is in the address bar (copy it to share)") \
+    X(SHARE_OPENED, "共有リンクの場面: %s", "Shared scene: %s") \
     X(INTRO_KEYS, "Enter / → : 次へ    ← : 前へ    Esc : 閉じる（次からは表示しません。H キーの操作説明はいつでも見られます）", "Enter / Right : next    Left : back    Esc : close (not shown again; H shows the controls at any time)") \
     X(INTRO_TAP, "タップで次へ    右上の × で閉じる（次からは表示しません）", "Tap for next    × at the top right closes (not shown again)") \
     X(INTRO_T1, "Solar System Voyager へようこそ", "Welcome to Solar System Voyager") \
@@ -1205,10 +1211,17 @@ static bool SaveScreenshot(const char* path) {
 
 // ---------------------------------------------------------------- 設定ファイル（表示言語）
 // 実行ファイルと同じフォルダ（ポータブル版）。書き込めない場所（/usr/bin 等へインストール）なら
-// Linux は $XDG_CONFIG_HOME/solar_voyager/ (既定 ~/.config/solar_voyager/)
+// Linux は $XDG_CONFIG_HOME/solar_voyager/ (既定 ~/.config/solar_voyager/)。
+// macOS はアプリの中に書かないよう、いつも ~/Library/Application Support/SolarSystemVoyager/
 static std::string ConfigPath() {
     std::string local = std::string(GetApplicationDirectory()) + "solar_voyager.cfg";
-#ifndef _WIN32
+#if defined(__APPLE__)
+    const char* h = getenv("HOME");
+    if (!h || !*h) return local;
+    std::string dir = std::string(h) + "/Library/Application Support/SolarSystemVoyager";
+    mkdir(dir.c_str(), 0755);
+    return dir + "/solar_voyager.cfg";
+#elif !defined(_WIN32)
     if (FileExists(local.c_str()) ? access(local.c_str(), W_OK) == 0 : access(GetApplicationDirectory(), W_OK) == 0)
         return local;
     std::string dir;
@@ -1316,6 +1329,7 @@ struct Options {
     const char* lang = nullptr;  // "ja" / "en"
     int quality = -1;            // 0〜2（確認用）
     int sky = -1;                // 星座の表示 0〜2（確認用）
+    std::string share;           // 共有リンク（URL か ? 以降）の場面で始める。ブラウザ版はページの URL から
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -1358,6 +1372,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--lang") o.lang = next();
         else if (a == "--quality") o.quality = atoi(next());
         else if (a == "--sky") o.sky = atoi(next());
+        else if (a == "--share") o.share = next();
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
@@ -1634,6 +1649,109 @@ static void ApplyBookmark(App& app, const Bookmark& bm) {
     app.ship.q = QuatFromBasis(toWorld(bm.fwd), toWorld(bm.up));
     app.target = bm.body;
     UpdateReferenceFrame(app);
+}
+
+// ---------------------------------------------------------------- 共有リンク
+// 場面を URL の ? 以降に入れる: t=時刻（J2000 からの日数）, at=ブックマークと同じ形式の位置と向き,
+// tg=ターゲットの英語名, ts=時間倍率の番号, p=1 なら時間停止
+static const char* const SHARE_BASE = "https://hubstacksea.github.io/Solar-System-Simulator/";
+
+#if defined(__EMSCRIPTEN__)
+EM_JS(char*, WebQuery, (), { return stringToNewUTF8(location.search || ""); });
+EM_JS(char*, WebPageUrl, (), { return stringToNewUTF8(location.origin + location.pathname); });
+// クリップボードへ書き、アドレス欄も同じ URL にする（再読み込みでも同じ場面になる）。書けなければ 0
+EM_JS(int, WebShare, (const char* url), {
+    var u = UTF8ToString(url);
+    try { history.replaceState(null, "", u); } catch (e) {}
+    if (!navigator.clipboard || !window.isSecureContext) return 0;
+    navigator.clipboard.writeText(u).catch(function () {});
+    return 1;
+});
+#endif
+
+static std::string UrlEncode(const std::string& v) {
+    std::string out;
+    for (unsigned char ch : v) {
+        if (isalnum(ch) || strchr("-_.~,", ch)) out += (char)ch;
+        else {
+            char h[4];
+            snprintf(h, sizeof h, "%%%02X", ch);
+            out += h;
+        }
+    }
+    return out;
+}
+
+static std::string UrlDecode(const std::string& v) {
+    std::string out;
+    for (size_t i = 0; i < v.size(); i++) {
+        if (v[i] == '%' && i + 2 < v.size() && isxdigit((unsigned char)v[i + 1]) && isxdigit((unsigned char)v[i + 2])) {
+            out += (char)strtol(v.substr(i + 1, 2).c_str(), nullptr, 16);
+            i += 2;
+        } else out += v[i] == '+' ? ' ' : v[i];
+    }
+    return out;
+}
+
+static std::string ShareQuery(const App& app) {
+    const Body& b = app.B[app.ship.ref];
+    V3 X, Z;
+    BodyFixedAxes(b, &X, &Z);
+    auto toFixed = [&](V3 w) { return V3(Dot(w, X), Dot(w, b.pole), Dot(w, Z)); };
+    V3 p = toFixed(app.ship.local), f = toFixed(ShipFwd(app.ship)), u = toFixed(ShipUp(app.ship));
+    char at[400];
+    snprintf(at, sizeof at, "%s,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f", b.d.en, p.x, p.y, p.z, f.x, f.y, f.z, u.x, u.y, u.z);
+    char q[700];
+    snprintf(q, sizeof q, "?t=%.6f&at=%s&tg=%s&ts=%d%s", app.tDays, UrlEncode(at).c_str(), UrlEncode(app.B[app.target].d.en).c_str(),
+             app.timeIdx, app.paused ? "&p=1" : "");
+    return q;
+}
+
+static void ShareScene(App& app) {
+    std::string q = ShareQuery(app);
+#if defined(__EMSCRIPTEN__)
+    char* base = WebPageUrl();
+    std::string url = base + q;
+    free(base);
+    Toast(app, T(WebShare(url.c_str()) ? UI_SHARED : UI_SHARED_BAR));
+#else
+    SetClipboardText((SHARE_BASE + q).c_str());
+    Toast(app, T(UI_SHARED));
+#endif
+}
+
+// 共有リンクの場面にする（起動時に一度）。読めた項目だけ使う
+static bool ApplyShareQuery(App& app, std::string q) {
+    size_t qm = q.find('?');
+    if (qm != std::string::npos) q = q.substr(qm + 1);
+    std::map<std::string, std::string> kv;
+    size_t i = 0;
+    while (i <= q.size()) {
+        size_t amp = q.find('&', i);
+        if (amp == std::string::npos) amp = q.size();
+        std::string item = q.substr(i, amp - i);
+        size_t eq = item.find('=');
+        if (eq != std::string::npos) kv[item.substr(0, eq)] = UrlDecode(item.substr(eq + 1));
+        i = amp + 1;
+    }
+    if (!kv.count("t") && !kv.count("at")) return false;
+    if (kv.count("t")) {
+        double t = atof(kv["t"].c_str());
+        if (std::isfinite(t) && std::fabs(t) < 365.25 * 400) app.tDays = t;
+        UpdateBodies(app.B, app.tDays);
+    }
+    if (kv.count("ts")) app.timeIdx = std::max(0, std::min(TIME_SCALE_COUNT - 1, atoi(kv["ts"].c_str())));
+    app.paused = kv["p"] == "1";
+    Bookmark bm;
+    if (kv.count("at") && ParseBookmark(app, kv["at"], &bm) && app.B[bm.body].active) {
+        ApplyBookmark(app, bm);
+        char msg[256];
+        snprintf(msg, sizeof msg, T(UI_SHARE_OPENED), BookmarkLabel(app, bm).c_str());
+        Toast(app, msg);
+    }
+    for (size_t k = 0; k < app.B.size(); k++)
+        if (kv["tg"] == app.B[k].d.en && app.B[k].active) app.target = (int)k;
+    return true;
 }
 
 // ---------------------------------------------------------------- 天文イベント
@@ -2430,7 +2548,8 @@ static std::string SettingValue(const App& app, int item) {
 }
 
 // ---------------------------------------------------------------- タッチ操作（スマホ・タブレット）
-enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_SETTINGS, TB_HELP, TB_COUNT };
+enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_SETTINGS, TB_HELP, TB_SHARE,
+                   TB_COUNT };
 
 // 画面のボタンの位置: 右に速度、左に行き先、下にメニュー（画面の高さに合わせた大きさ）
 static Rectangle TouchButtonRect(const Cam& c, int i) {
@@ -2442,7 +2561,7 @@ static Rectangle TouchButtonRect(const Cam& c, int i) {
         case TB_TARGET: return {12, c.H * 0.30f, s * 1.5f, s * 0.8f};
         case TB_WARP: return {12, c.H * 0.30f + s * 0.8f + g, s * 1.5f, s * 0.8f};
         case TB_AUTO: return {12, c.H * 0.30f + (s * 0.8f + g) * 2, s * 1.5f, s * 0.8f};
-        default: {   // ツアー・イベント・設定・説明: 左上のパネルの下に横に並べる
+        default: {   // ツアー・イベント・設定・説明・共有: 左上のパネルの下に横に並べる
             int k = i - TB_TOUR;
             float w = s * 1.15f;
             return {12 + k * (w + g), 160, w, s * 0.55f};
@@ -2504,7 +2623,7 @@ static void DrawTouchButtons(const App& app) {
     if (!app.touchUI) return;
     const Cam& c = app.cam;
     static const UiId LABEL[TB_COUNT] = {UI_TB_THRUST, UI_TB_BRAKE, UI_TB_STOP, UI_TB_TARGET, UI_TB_WARP, UI_TB_AUTO,
-                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_SETTINGS, UI_TB_HELP};
+                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_SETTINGS, UI_TB_HELP, UI_TB_SHARE};
     for (int i = 0; i < TB_COUNT; i++) {
         Rectangle r = TouchButtonRect(c, i);
         bool held = app.touchHeld == i;
@@ -2897,6 +3016,7 @@ static void TouchToPad(App& app, PadState& pad) {
         case TB_EVENTS: OpenEventsPage(app); app.eventsOpen = true; break;
         case TB_SETTINGS: app.settingsOpen = true; app.settingsSel = 0; break;
         case TB_HELP: pad.help = true; break;
+        case TB_SHARE: ShareScene(app); break;
         default:
             for (int i = 0; i < ENGINE_COUNT; i++)
                 if (CheckCollisionPointRec(app.tapPos, EngineButtonRect(c, i))) app.ship.engine = i;
@@ -3082,6 +3202,7 @@ static void HandleInput(App& app, double dt) {
             Toast(app, msg);
         }
     }
+    if (IsKeyPressed(KEY_F2)) ShareScene(app);
     if (IsKeyPressed(KEY_F9)) ChangeSetting(app, SET_QUALITY, 1, true);
     if (IsKeyPressed(KEY_I)) ChangeSetting(app, SET_INVERT, 1, true);
     if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
@@ -4754,6 +4875,12 @@ static void DrawHUD(App& app) {
     }
 
     Txt(T(UI_HELP_HINT), 12, c.H - 24, 15, {150, 170, 200, 220});
+#if defined(__EMSCRIPTEN__)
+    if (int pend = DeferredAssetsPending(); pend > 0) {
+        snprintf(b, sizeof b, T(UI_LOADING), pend);
+        Txt(b, 12, c.H - 64, 14, {255, 210, 120, 230});
+    }
+#endif
     snprintf(b, sizeof b, "%d FPS", GetFPS());
     Txt(b, 12, c.H - 44, 13, {110, 130, 160, 200});
 
@@ -4771,6 +4898,30 @@ static void DrawHUD(App& app) {
     }
     DrawTourPanel(app);
     DrawModalPanels(app);
+}
+
+// 後から届くデータ（ブラウザ版）: 読めるようになったものから組み込む。どれも、まだ組み込んでいない時だけ読む
+static void RefreshDeferredAssets(App& app) {
+    if (g_shapes.empty() && ShapesBin().data) {
+        LoadShapes();
+        for (Body& b : app.B)
+            for (size_t k = 0; k < g_shapes.size(); k++)
+                if (g_shapes[k].name == b.d.en) {
+                    b.shape = (int)k;
+                    b.outer = g_shapes[k].rmax;
+                }
+        for (const Shape& sh : g_shapes) {
+            double r = 1;
+            for (const Body& b : app.B)
+                if (b.shape >= 0 && g_shapes[b.shape].name == sh.name) r = b.d.radius;
+            app.shapeMesh.push_back(ShapeMesh(sh, r));
+        }
+    }
+    if (app.belt.a.empty() && AsteroidsBin().data) app.belt = LoadAsteroids();
+    if (app.maps.empty() && MapsBin().data) LoadBodyMaps(app);
+    if (!app.earthMonths.id && EarthMonthsJpg().data) app.earthMonths = LoadEmbeddedTexture(EarthMonthsJpg(), ".jpg");
+    if (!app.earthClouds.id && EarthCloudsJpg().data) app.earthClouds = LoadEmbeddedTexture(EarthCloudsJpg(), ".jpg");
+    if (!app.moonTex && MoonColorJpg().data && MoonDataPng().data) LoadMoonTextures(app);
 }
 
 // シェーダは GLSL 3.30 で書いてある。ブラウザ版 (WebGL2) では GLSL ES 3.00 に書き換える
@@ -4919,6 +5070,9 @@ int main(int argc, char** argv) {
             if (b.shape >= 0 && g_shapes[b.shape].name == sh.name) r = b.d.radius;
         app.shapeMesh.push_back(ShapeMesh(sh, r));
     }
+#if defined(__EMSCRIPTEN__)
+    StartDeferredAssetDownloads();   // 地図・形・月などは、起動してから裏で読み込む
+#endif
     app.ring = GenRing(72000.0f / 60268.0f, 142500.0f / 60268.0f, 720);   // D 環の内側〜F 環の外側
     app.shipShader = LoadShaderFromMemory(GlslForPlatform(SHIP_VS).c_str(), GlslForPlatform(SHIP_FS).c_str());
     app.locSunDir = GetShaderLocation(app.shipShader, "sunDir");
@@ -4958,6 +5112,15 @@ int main(int argc, char** argv) {
         V3 up = Norm(ShipWorld(app) - app.B[app.ship.ref].pos), sun = app.B[B_SUN].pos - ShipWorld(app);
         V3 h = Norm(sun - up * Dot(sun, up));
         app.ship.q = QuatFromBasis(h * std::cos(opt.faceSunEl * DEG) + up * std::sin(opt.faceSunEl * DEG), up);
+    }
+    {
+        std::string share = opt.share;
+#if defined(__EMSCRIPTEN__)
+        char* q = WebQuery();
+        if (share.empty()) share = q;
+        free(q);
+#endif
+        if (!share.empty()) ApplyShareQuery(app, share);
     }
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
     app.cockpit = opt.cockpit;
@@ -5059,6 +5222,10 @@ int main(int argc, char** argv) {
         if (app.toastTime > 0) app.toastTime -= dt;
 
 #if defined(__EMSCRIPTEN__)
+        if (static int lastPending = -1; DeferredAssetsPending() != lastPending) {   // ファイルが届くたびに組み込む
+            lastPending = DeferredAssetsPending();
+            RefreshDeferredAssets(app);
+        }
         {   // ページの大きさが変わったら描画の大きさも合わせる
             int w = WebViewW(), h = WebViewH();
             if (w != GetScreenWidth() || h != GetScreenHeight()) SetWindowSize(w, h);
