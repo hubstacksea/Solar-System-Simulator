@@ -31,7 +31,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Itokawa](docs/screenshots/itokawa.jpg) Itokawa in its real shape | ![Saturn's rings from Voyager data](docs/screenshots/saturn_rings.jpg) Saturn's rings with the density measured by Voyager 2 |
 | ![International Space Station](docs/screenshots/iss.jpg) The International Space Station above Earth | ![Gravity mode](docs/screenshots/gravity_mode.jpg) Gravity mode (R key): the predicted orbit around Earth |
 | ![Browser version](docs/screenshots/browser.jpg) The browser version (WebGL2) | ![Touch controls on a phone](docs/screenshots/touch.jpg) Touch controls on a phone in landscape (during the tour) |
-| ![First-run guide](docs/screenshots/first_run.jpg) The guide shown on the first launch | |
+| ![First-run guide](docs/screenshots/first_run.jpg) The guide shown on the first launch | ![Share link](docs/screenshots/share_link.jpg) A scene opened from a share link (above Mars; F2 copies one) |
 
 ## Getting started
 
@@ -93,11 +93,11 @@ open build/SolarSystemVoyager.app
 
 ### Automatic builds and releases (GitHub Actions)
 
-Pushing a tag such as `v2.4.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages.
+Pushing a tag such as `v2.5.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages.
 
 ```sh
-git tag v2.4.0
-git push origin master v2.4.0
+git tag v2.5.0
+git push origin master v2.5.0
 ```
 
 ### Browser version (Emscripten)
