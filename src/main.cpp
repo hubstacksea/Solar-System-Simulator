@@ -128,7 +128,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP6, "F : 機首を向ける    T : 自動操縦    Shift+T : 自動操縦(エンジン自動選択)", "F : face target    T : autopilot    Shift+T : autopilot (auto engine)") \
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
-    X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : 天文イベント", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : astronomical events") \
+    X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期", "[ / ] : time scale    P : pause    Backspace : sync to now") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    Ctrl+Q : quit") \
@@ -182,6 +182,8 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(EV_FLYBY, "%sが%sに最接近", "%s: closest approach to %s") \
     X(EV_ARRIVE, "%sが%sに到着（周回開始）", "%s arrives at %s (orbit insertion)") \
     X(EV_END, "%sの運用終了（%sへ突入）", "%s: end of mission (enters %s)") \
+    X(EV_ARRIVE_SMALL, "%sが%sに到着", "%s arrives at %s") \
+    X(EV_END_LAND, "%sの運用終了（%sに降下）", "%s: end of mission (descends to %s)") \
     X(EV_ALT, "高度 %s", "altitude %s") \
     X(EV_NOTE, "簡易計算のため、時刻は数分〜数十分、日食の位置は数百 km ずれることがあります。太陽面通過は 150 年先まで", "Simplified calculation: times may be off by minutes, solar eclipse locations by a few hundred km. Transits up to 150 years ahead") \
     X(EV_SEARCHING, "計算中…", "Calculating...") \
@@ -194,6 +196,10 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(EV_SHADOW, "木星面を%sの影が通過", "Shadow of %s crosses Jupiter") \
     X(EV_CENTER, "食の中心 %s付近", "centered near %s") \
     X(EV_GO, "ワープ: %s  %s", "Warp: %s  %s") \
+    X(TOUR, "ツアー %d / %d", "Tour %d / %d") \
+    X(TOUR_KEYS, "Enter : 次へ    Shift+Enter : 前へ    U : ツアー終了", "Enter : next    Shift+Enter : previous    U : end tour") \
+    X(TOUR_END, "ツアー終了", "Tour ended") \
+    X(TOUR_NONE, "ツアーの場面が見つかりません", "No tour stops found") \
     X(DATE_TITLE, "日時を指定（UTC）", "Set date and time (UTC)") \
     X(DATE_KEYS, "数字を入力    Backspace : 1 文字消す    Enter : 決定    Esc / Y : 取消", "Type digits    Backspace : delete    Enter : apply    Esc / Y : cancel") \
     X(DATE_SET, "日時: %s", "Date: %s") \
@@ -960,6 +966,8 @@ struct Options {
     bool listEvents = false;    // 天文イベントを出力して終了（確認用）
     int gotoEvent = -1;         // 1 秒後に天文イベントへワープ（確認用、1〜）
     double probeView = 0;       // ワープの後、ターゲットの探査機をこの距離 m から斜めに見る（確認用）
+    double faceSunEl = NAN;     // 太陽の方位を向き、この仰角 deg を見る（--at と使う確認用）
+    int tour = 0;               // 1 秒後に自動ツアーをこの場面から始める（確認用、1〜）
     bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
     int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星, 2: 探査機（確認用）
     double timeScale = 1;
@@ -985,6 +993,8 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--show-date") o.showDate = true;
         else if (a == "--goto-event") o.gotoEvent = atoi(next());
         else if (a == "--probe-view") o.probeView = atof(next());
+        else if (a == "--face-sun") o.faceSunEl = atof(next());
+        else if (a == "--tour") o.tour = atoi(next());
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -1059,6 +1069,11 @@ struct App {
     std::vector<AstroEvent> events;
     int eventSel = 0;
     int warpEvent = -1;                   // イベントへのワープ中はその番号
+    bool tourOn = false;                  // 自動ツアー（U キー）
+    int tourIdx = 0;
+    double tourTime = 0;                  // 今の場面に着いてからの実時間 秒
+    std::vector<AstroEvent> tourEvents;
+    std::vector<int> tourStops;           // tourEvents の各場面の TOUR の番号
     bool dateOpen = false;                // 日時指定（Y キー）
     std::string dateDigits;               // 入力中の数字（YYYYMMDDhhmm）
     double warpPhase = 0;   // 光の筋の流れ（強さに応じて進む）
@@ -1075,6 +1090,8 @@ struct App {
     Texture2D moonColor{}, moonData{};    // 月の実データ
     bool moonTex = false;
     Texture2D milkyWay{};                 // 天の川の光（赤道座標の全天画像）
+    Shader skyShader{};                   // 大気の中から見た空
+    int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyDensity = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
@@ -1500,9 +1517,21 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
         for (const ProbeSeg& sg : S) {
             if (sg.body <= 0) continue;
             bool orbiter = sg.t.back() - sg.t.front() > 200;
+            if (orbiter && app.B[sg.body].d.kind == KIND_ROCKY && app.B[sg.body].d.a_au > 0 && sg.body > B_MOON) {
+                // 彗星・小惑星への到着は区間の始まり（周回や待機の開始）
+                AstroEvent ev;
+                ev.kind = EV_ARRIVE;
+                ev.t = sg.t.front();
+                ev.probe = (int)i;
+                ev.body = sg.body;
+                ev.dist = Len(sg.p.front());
+                out.push_back(ev);
+                continue;
+            }
+            // フライバイは区間で一番近い点、周回機は最初の近点（軌道投入。2 周目以降の方が近いことがある）
             size_t best = 0;
             for (size_t j = 0; j < sg.t.size(); j++) {
-                if (orbiter && sg.t[j] > sg.t.front() + 200) break;
+                if (orbiter && best > 0 && Len(sg.p[j]) > Len(sg.p[best])) break;
                 if (Len(sg.p[j]) < Len(sg.p[best])) best = j;
             }
             if (best == 0) continue;  // 打ち上げ直後の地球からの出発
@@ -1515,7 +1544,7 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
             ev.dist = f(ev.t);
             out.push_back(ev);
         }
-        if (!d.probeCoast && !S.empty() && S.back().body > 0) {
+        if (d.probeEnd && !S.empty() && S.back().body > 0) {
             AstroEvent ev;
             ev.kind = EV_END;
             ev.t = S.back().t.back() - 10.0 / 1440;
@@ -1544,8 +1573,10 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
         case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_PERIHELION), name(ev.body)); break;
         case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_COMET_EARTH), name(ev.body)); break;
         case EV_FLYBY: snprintf(b, sizeof b, T(UI_EV_FLYBY), name(ev.probe), name(ev.body)); break;
-        case EV_ARRIVE: snprintf(b, sizeof b, T(UI_EV_ARRIVE), name(ev.probe), name(ev.body)); break;
-        default: snprintf(b, sizeof b, T(UI_EV_END), name(ev.probe), name(ev.body)); break;
+        case EV_ARRIVE:
+            snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_ARRIVE_SMALL : UI_EV_ARRIVE), name(ev.probe), name(ev.body));
+            break;
+        default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
 }
@@ -1652,6 +1683,7 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         app.ship.local = out * 0.035 - side * 0.022 + up * 0.006;
         app.ship.q = QuatFromBasis(aim - (pr.pos + app.ship.local), up);
         app.target = ev.probe;
+        app.eventZoom = ev.body > B_PLUTO;   // 彗星・小惑星は小さいのでズームして見る（探査機はマーカーで示す）
     } else if (ev.kind <= EV_SOLAR_PARTIAL) {
         // 食の中心の上空 12,000 km から見下ろす
         PlaceAt(app, B_EARTH, ev.lat, ev.lon, 12000);
@@ -1746,6 +1778,150 @@ static void OpenEventsPage(App& app) {
     app.eventSel = 0;
     for (size_t i = 0; i < app.events.size(); i++)
         if (std::fabs(app.events[i].t - app.tDays) < std::fabs(app.events[app.eventSel].t - app.tDays)) app.eventSel = (int)i;
+}
+
+// ---------------------------------------------------------------- 自動ツアー（U キー）
+// イベント一覧の名場面を年代順に巡る。各場面は一覧（0: 天文, 1: 彗星, 2: 探査機）の種類・天体名・日付で探す
+struct TourStop {
+    int page, kind;
+    const char* who;    // 探査機か彗星の英語名（天文イベントは nullptr）
+    const char* body;   // 探査機の相手の天体の英語名（nullptr: 問わない）
+    const char* date;   // "YYYYMMDD"（UTC、±2 日で探す）
+    const char* jp;
+    const char* en;     // 説明（\n で改行）
+};
+static const TourStop TOUR[] = {
+    {2, EV_FLYBY, "Pioneer 10", "Jupiter", "19731204",
+     "人類で初めて木星に接近した探査機。小惑星帯を越えて飛べることを確かめ、\n木星を取り巻く強い放射線帯を測った",
+     "The first spacecraft to fly past Jupiter. It proved that a probe could cross the asteroid belt\nand measured Jupiter's intense radiation belts"},
+    {2, EV_FLYBY, "Voyager 1", "Jupiter", "19790305",
+     "イオの活火山と木星の細い環を発見した。このあと土星を経て、\n2012 年に人工物で初めて太陽圏の外へ出た",
+     "It discovered Io's active volcanoes and Jupiter's faint ring. After Saturn it went on to become,\nin 2012, the first human-made object to leave the heliosphere"},
+    {1, EV_PERIHELION, "Halley", nullptr, "19860209",
+     "76 年ごとに戻ってくる周期彗星。1986 年の回帰では、\nジオットなど 5 機の探査機が核に迫った",
+     "The periodic comet that returns every 76 years. During its 1986 return,\nfive spacecraft including Giotto flew past its nucleus"},
+    {2, EV_FLYBY, "Voyager 2", "Neptune", "19890825",
+     "海王星を訪れた唯一の探査機。北極の上空 約 5,000 km をかすめ、\n大暗斑やトリトンの間欠泉を撮影した",
+     "The only spacecraft to visit Neptune. It skimmed about 5,000 km above the north pole\nand imaged the Great Dark Spot and the geysers of Triton"},
+    {1, EV_COMET_EARTH, "Hyakutake", nullptr, "19960325",
+     "地球から 0.1 AU（約 1,500 万 km）を通り、空に長い尾を引いた大彗星。\n日本のアマチュア天文家、百武裕司さんが発見した",
+     "A great comet that passed 0.1 AU (15 million km) from Earth with a long tail across the sky.\nDiscovered by the Japanese amateur astronomer Yuji Hyakutake"},
+    {1, EV_PERIHELION, "Hale-Bopp", nullptr, "19970401",
+     "核の直径が約 60 km もある巨大な彗星。1 年半近く肉眼で見え、\n20 世紀で最も多くの人に見られた彗星と言われる",
+     "A giant comet with a nucleus about 60 km across. Visible to the naked eye for a record 18 months,\nit was perhaps the most widely seen comet of the 20th century"},
+    {2, EV_ARRIVE, "Cassini", "Saturn", "20040701",
+     "環の隙間をくぐって土星を回る軌道に入った。13 年間の観測で、\nエンケラドゥスの地下の海から噴き出す水を見つけた",
+     "It passed through a gap in the rings into orbit around Saturn. Over 13 years\nit found water jets erupting from the subsurface ocean of Enceladus"},
+    {2, EV_ARRIVE, "Rosetta", "Churyumov-Gerasimenko", "20140806",
+     "彗星を初めて周回した探査機。11 月には着陸機フィラエを\n核の表面に降ろした",
+     "The first spacecraft to orbit a comet. In November it sent\nthe lander Philae down to the surface of the nucleus"},
+    {2, EV_FLYBY, "New Horizons", "Pluto", "20150714",
+     "冥王星を初めて間近に見た探査機。ハート形に広がる窒素の氷の平原\n「スプートニク平原」を撮影した",
+     "The first close look at Pluto. It revealed the heart-shaped\nnitrogen-ice plain, Sputnik Planitia"},
+    {2, EV_ARRIVE, "Juno", "Jupiter", "20160705",
+     "北極と南極の上を通る軌道から木星の雲のすぐ上をかすめ、\n極に並ぶ巨大な渦の群れや、木星の内部を調べている",
+     "From a polar orbit it skims just above Jupiter's clouds, studying the clusters\nof giant cyclones at the poles and the planet's interior"},
+    {2, EV_END, "Cassini", "Saturn", "20170915",
+     "燃料が尽きる前に、生命がいるかもしれない衛星を汚さないよう、\n土星の大気へ自ら突入して運用を終えた",
+     "Before its fuel ran out, it plunged into Saturn's atmosphere\nso that it could never contaminate moons that might harbour life"},
+    {2, EV_ARRIVE, "Hayabusa2", "Ryugu", "20180627",
+     "直径 約 900 m のそろばん玉形の小惑星に到着。2 回の着地で岩石を採り、\n2020 年 12 月に地球へ届けた",
+     "It reached this 900 m spinning-top-shaped asteroid, collected samples in two touchdowns\nand delivered them to Earth in December 2020"},
+    {0, EV_SOLAR_TOTAL, nullptr, nullptr, "20270802",
+     "北アフリカから中東を通る皆既日食。皆既は最長 6 分 23 秒続き、\n今世紀でも有数の長さ",
+     "A total eclipse crossing North Africa and the Middle East. Totality lasts up to 6 min 23 s,\none of the longest of this century"},
+    {0, EV_TRANSIT, nullptr, nullptr, "20321113",
+     "水星が太陽の前を横切る太陽面通過。地球から見えるのは 100 年に 13 回ほどで、\n次は 2039 年",
+     "Mercury crosses the face of the Sun. Seen from Earth this happens about 13 times a century;\nthe next one is in 2039"},
+    {1, EV_PERIHELION, "Halley", nullptr, "20610728",
+     "ハレー彗星の次の近日点。今度は地球から見やすい位置関係になり、\n1986 年より明るく見えると予想されている",
+     "Halley's next perihelion. This time Earth is better placed,\nand the comet is expected to look brighter than in 1986"},
+};
+static const double TOUR_STOP_SEC = 15;
+
+// ツアーの場面をイベント一覧から探す（見つからない場面は飛ばす）
+static void BuildTour(App& app) {
+    app.tourEvents.clear();
+    app.tourStops.clear();
+    for (int i = 0; i < (int)(sizeof TOUR / sizeof TOUR[0]); i++) {
+        const TourStop& st = TOUR[i];
+        double t = ParseDateDigits(st.date);
+        std::vector<AstroEvent> list = st.page == 0 ? FindEvents(app, t - 3) : st.page == 1 ? app.cometEvents : app.probeEvents;
+        for (const AstroEvent& ev : list) {
+            if (ev.kind != st.kind || std::fabs(ev.t - t) > 2) continue;
+            int who = ev.probe >= 0 ? ev.probe : ev.body;
+            if (st.who && (who < 0 || std::strcmp(app.B[who].d.en, st.who) != 0)) continue;
+            if (st.body && ev.probe >= 0 && std::strcmp(app.B[ev.body].d.en, st.body) != 0) continue;
+            app.tourEvents.push_back(ev);
+            app.tourStops.push_back(i);
+            break;
+        }
+    }
+}
+
+static void GoTourStop(App& app, int i) {
+    if (i < 0 || i >= (int)app.tourEvents.size() || app.warpT >= 0) return;
+    app.tourIdx = i;
+    app.tourTime = 0;
+    app.paused = false;
+    app.timeIdx = 0;
+    const AstroEvent& ev = app.tourEvents[i];
+    StartWarp(app, EventBody(ev), false);
+    app.events.assign(1, ev);   // ワープの瞬間に ApplyEvent で使う
+    app.warpEvent = 0;
+}
+
+static void StartTour(App& app) {
+    BuildTour(app);
+    if (app.tourEvents.empty()) {
+        Toast(app, T(UI_TOUR_NONE));
+        return;
+    }
+    app.tourOn = true;
+    app.autopilot = false;
+    GoTourStop(app, 0);
+}
+
+static void StopTour(App& app) {
+    app.tourOn = false;
+    Toast(app, T(UI_TOUR_END));
+}
+
+// 場面に着いてから TOUR_STOP_SEC 秒たったら次へ。最後の場面のあとは終了
+static void UpdateTour(App& app, double dt) {
+    if (!app.tourOn || app.warpT >= 0) return;
+    app.tourTime += dt;
+    if (app.tourTime < TOUR_STOP_SEC) return;
+    if (app.tourIdx + 1 < (int)app.tourEvents.size()) GoTourStop(app, app.tourIdx + 1);
+    else StopTour(app);
+}
+
+static void DrawTourPanel(const App& app) {
+    if (!app.tourOn || app.tourIdx >= (int)app.tourEvents.size()) return;
+    const Cam& c = app.cam;
+    const AstroEvent& ev = app.tourEvents[app.tourIdx];
+    const TourStop& st = TOUR[app.tourStops[app.tourIdx]];
+    std::string desc = TR(st.jp, st.en);
+    std::vector<std::string> lines;
+    for (size_t a = 0; a <= desc.size();) {
+        size_t b = std::min(desc.find('\n', a), desc.size());
+        lines.push_back(desc.substr(a, b - a));
+        a = b + 1;
+    }
+    // 右下の速度計に重ならないよう、左寄せで置く
+    float w = std::min(c.W - 300, 900.0f), h = 84 + lines.size() * 22.0f, x = 12, y = c.H - 96 - h;
+    DrawRectangleRounded({x, y, w, h}, 0.08f, 6, {0, 8, 20, 210});
+    DrawRectangleRoundedLinesEx({x, y, w, h}, 0.08f, 6, 1.5f, {90, 130, 180, 255});
+    char head[96];
+    snprintf(head, sizeof head, T(UI_TOUR), app.tourIdx + 1, (int)app.tourEvents.size());
+    Txt((std::string(head) + "    " + FmtDate(ev.t).substr(0, 16) + " UTC").c_str(), x + 18, y + 10, 15, {170, 200, 230, 255});
+    Txt(EventTitle(app, ev).c_str(), x + 18, y + 30, 21, {255, 220, 120, 255});
+    for (size_t i = 0; i < lines.size(); i++) Txt(lines[i].c_str(), x + 18, y + 60 + i * 22.0f, 16, {215, 228, 245, 255});
+    Txt(T(UI_TOUR_KEYS), x + w - 18 - TxtW(T(UI_TOUR_KEYS), 13), y + 12, 13, {150, 170, 190, 255});
+    if (app.warpT < 0) {   // 次の場面までの残り
+        float k = (float)std::min(1.0, app.tourTime / TOUR_STOP_SEC);
+        DrawRectangle((int)(x + 18), (int)(y + h - 10), (int)((w - 36) * k), 3, {255, 220, 120, 200});
+    }
 }
 
 // 一覧・入力欄が開いている間のキー操作。開いていれば true（ほかの操作は止める）
@@ -1973,6 +2149,12 @@ static void HandleInput(App& app, double dt) {
     PadState pad = ReadPad(app);
     app.padZoom = pad.zoom;
     if (HandleModalInput(app)) return;
+    if (IsKeyPressed(KEY_U)) {
+        if (app.tourOn) StopTour(app);
+        else StartTour(app);
+    }
+    if (app.tourOn && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)))
+        GoTourStop(app, app.tourIdx + (shift ? -1 : 1));
     if (IsKeyPressed(KEY_K)) {
         OpenEventsPage(app);
         app.eventsOpen = true;
@@ -2553,6 +2735,74 @@ static void DrawMilkyWay(const App& app) {
     rlEnableDepthTest();
 }
 
+// 大気のある天体（地球・火星）の空: 高さ 0 から top km まで、スケールハイト H km で薄くなる
+struct SkyAtmosphere { int body; double top, H; Vector3 beta, mie; };
+static const SkyAtmosphere SKY_ATM[] = {
+    {B_EARTH, 120, 8.5, {0.10f, 0.23f, 0.56f}, {1.0f, 0.95f, 0.9f}},
+    {B_MARS, 80, 11.1, {0.16f, 0.11f, 0.07f}, {0.45f, 0.65f, 1.0f}},   // 塵で昼は黄褐色、夕方は太陽のまわりが青白い
+};
+
+// カメラのいる大気（なければ nullptr）と、空気の濃さ・その場所の真上・太陽の高さ（sin）
+static const SkyAtmosphere* CameraAtmosphere(const App& app, double* density, V3* up, double* sunEl) {
+    const Cam& c = app.cam;
+    for (const SkyAtmosphere& a : SKY_ATM) {
+        const Body& b = app.B[a.body];
+        V3 rel = c.pos - b.pos;
+        double alt = Len(rel) - SurfaceRadius(b, Norm(rel));
+        if (alt > a.top) continue;
+        *density = std::exp(-std::max(0.0, alt) / a.H) * std::min(1.0, (a.top - alt) / (a.top * 0.3));
+        *up = Norm(rel);
+        *sunEl = Dot(*up, Norm(app.B[B_SUN].pos - c.pos));
+        return &a;
+    }
+    return nullptr;
+}
+
+// 昼の空の明るさ（0: 宇宙・夜、1: 昼の地表）。星座名などの表示を消すのに使う
+static double SkyDaylight(const App& app) {
+    double density, sunEl;
+    V3 up;
+    if (!CameraAtmosphere(app, &density, &up, &sunEl)) return 0;
+    double light = std::max(0.0, std::min(1.0, (sunEl + 0.17) / 0.2));
+    return std::min(1.0, density * 2.0) * light;
+}
+
+static void DrawSkyAtmosphere(const App& app) {
+    double density, sunEl;
+    V3 up;
+    const SkyAtmosphere* a = CameraAtmosphere(app, &density, &up, &sunEl);
+    if (!a || !app.skyShader.id || density < 1e-3) return;
+    const Cam& c = app.cam;
+    SetPassProjection(c, 1.0, 1e6);
+    rlDisableDepthTest();
+    rlDisableBackfaceCulling();
+    Vector3 u = ToF(up), sd = ToF(Norm(app.B[B_SUN].pos - c.pos));
+    float dens = (float)density;
+    BeginShaderMode(app.skyShader);
+    SetShaderValue(app.skyShader, app.locSkyUp, &u, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.skyShader, app.locSkySun, &sd, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.skyShader, app.locSkyBeta, &a->beta, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.skyShader, app.locSkyMie, &a->mie, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.skyShader, app.locSkyDensity, &dens, SHADER_UNIFORM_FLOAT);
+    const int NU = 48, NV = 24;
+    const double R = 1e5;
+    rlBegin(RL_QUADS);
+    rlColor4ub(255, 255, 255, 255);
+    auto vtx = [&](int i, int j) {
+        double lo = 2 * PI * i / NU, la = PI * (0.5 - (double)j / NV);
+        V3 p = V3(std::cos(la) * std::cos(lo), std::sin(la), std::cos(la) * std::sin(lo)) * R;
+        rlVertex3f((float)p.x, (float)p.y, (float)p.z);
+    };
+    for (int j = 0; j < NV; j++)
+        for (int i = 0; i < NU; i++) {
+            vtx(i, j); vtx(i, j + 1); vtx(i + 1, j + 1); vtx(i + 1, j);
+        }
+    rlEnd();
+    EndShaderMode();
+    rlEnableBackfaceCulling();
+    rlEnableDepthTest();
+}
+
 // ---------------------------------------------------------------- 音楽の選曲
 // 一番近い天体（表面までの距離）の曲。月以外の衛星は母惑星の曲。冥王星とカロン・準惑星・小惑星・彗星は無音
 // （冥王星の曲は後年の別の作曲者の作品で著作権が残っている）
@@ -2881,7 +3131,7 @@ static bool Occluded(const App& app, V3 from, V3 to, int self) {
 
 // 星座名と恒星の名前。画質を下げてもにじまないよう、縮小描画の後に重ねる（天体に隠れる名前は出さない）
 static void DrawSkyLabels(const App& app) {
-    if (app.skyMode != 2) return;
+    if (app.skyMode != 2 || SkyDaylight(app) > 0.3) return;
     const Cam& c = app.cam;
     auto hidden = [&](V3 dir) { return Occluded(app, c.pos, c.pos + dir * 1e13, -1); };
     for (const Constellation& con : app.sky.cons) {
@@ -3347,6 +3597,7 @@ static void DrawHUD(App& app) {
         for (int i = 0; i < lines; i++)
             Txt(T((UiId)(UI_HELP1 + i)), hx + 24, hy + 44 + i * 26.0f, i >= 12 ? 15 : 17, i >= 12 ? Color{170, 220, 190, 255} : Color{215, 228, 245, 255});
     }
+    DrawTourPanel(app);
     DrawModalPanels(app);
 }
 
@@ -3399,6 +3650,7 @@ int main(int argc, char** argv) {
     for (const Engine& e : ENGINES) allText += e.jp;
     for (const Constellation& c : app.sky.cons) allText += c.jp;
     for (const StarName& n : app.sky.names) allText += n.jp;
+    for (const TourStop& st : TOUR) allText += st.jp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
     // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）
@@ -3431,6 +3683,12 @@ int main(int argc, char** argv) {
     LoadEarthTextures(app);
     LoadMoonTextures(app);
     app.milkyWay = LoadEmbeddedTexture(MilkyWayJpg(), ".jpg");
+    app.skyShader = LoadShaderFromMemory(SKY_VS, SKY_FS);
+    app.locSkyUp = GetShaderLocation(app.skyShader, "up");
+    app.locSkySun = GetShaderLocation(app.skyShader, "sunDir");
+    app.locSkyBeta = GetShaderLocation(app.skyShader, "beta");
+    app.locSkyMie = GetShaderLocation(app.skyShader, "mieTint");
+    app.locSkyDensity = GetShaderLocation(app.skyShader, "density");
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
     app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
@@ -3468,6 +3726,11 @@ int main(int argc, char** argv) {
     if (opt.gotoTarget >= 0 && opt.gotoTarget < (int)app.B.size()) app.target = opt.gotoTarget;
     if (!std::isnan(opt.atLat)) PlaceAt(app, app.target, opt.atLat, opt.atLon, opt.atAlt);
     if (opt.face) FaceTarget(app);
+    if (!std::isnan(opt.faceSunEl)) {
+        V3 up = Norm(ShipWorld(app) - app.B[app.ship.ref].pos), sun = app.B[B_SUN].pos - ShipWorld(app);
+        V3 h = Norm(sun - up * Dot(sun, up));
+        app.ship.q = QuatFromBasis(h * std::cos(opt.faceSunEl * DEG) + up * std::sin(opt.faceSunEl * DEG), up);
+    }
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
     app.cockpit = opt.cockpit;
     app.camYaw = opt.camYaw; app.camPitch = opt.camPitch; app.camDist = opt.camDist;
@@ -3514,6 +3777,13 @@ int main(int argc, char** argv) {
             app.ship.q = QuatFromBasis(dir * -1.0 - Y_UP * (0.0025 / (opt.probeView / 1000.0)), Y_UP);  // 操縦席の高さの分だけ下を向く
             app.padZoom = true;
         }
+        if (opt.tour > 0 && frame == 60) {
+            StartTour(app);
+            if (app.tourOn && opt.tour > 1 && opt.tour <= (int)app.tourEvents.size()) {
+                app.warpT = -1;   // 1 つ目へのワープを取り消して指定の場面へ
+                GoTourStop(app, opt.tour - 1);
+            }
+        }
         if (opt.gotoBookmark > 0 && frame == 60) {
             std::vector<Bookmark> bms = LoadBookmarks(app);
             if (opt.gotoBookmark <= (int)bms.size()) {
@@ -3522,6 +3792,7 @@ int main(int argc, char** argv) {
             }
         }
         UpdateWarp(app, dt);
+        UpdateTour(app, dt);
         UpdateAutopilot(app, dt);
         if (opt.shot && frame * dt < opt.throttleSec) {
             const Engine& e = ENGINES[app.ship.engine];
@@ -3568,6 +3839,13 @@ int main(int argc, char** argv) {
             if (lowRes) rlScalef(rk, rk, 1);   // EndMode3D で modelview が単位行列に戻るので、縮小を掛け直す
         }
         DrawStars(app);
+        {
+            Camera3D sky = {{0, 0, 0}, {0, 0, -1}, {0, 1, 0}, 60, CAMERA_PERSPECTIVE};
+            BeginMode3D(sky);
+            DrawSkyAtmosphere(app);   // 昼は星を隠す
+            EndMode3D();
+            if (lowRes) rlScalef(rk, rk, 1);
+        }
         DrawSunGlowAndDots(app);  // 3D より先に描き、手前の天体や自機で隠れるようにする
 
         Camera3D dummy = {{0, 0, 0}, {0, 0, -1}, {0, 1, 0}, 60, CAMERA_PERSPECTIVE};
@@ -3630,6 +3908,7 @@ int main(int argc, char** argv) {
     for (Mesh& m : app.probeMesh) UnloadMesh(m);
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
+    UnloadShader(app.skyShader);
     if (app.earthTex) { UnloadTexture(app.earthColor); UnloadTexture(app.earthData); }
     if (app.moonTex) { UnloadTexture(app.moonColor); UnloadTexture(app.moonData); }
     if (app.milkyWay.id) UnloadTexture(app.milkyWay);

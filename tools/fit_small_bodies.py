@@ -17,7 +17,11 @@ import urllib.request
 
 UA = "SolarSystemVoyager-orbit-fit/1.0 (https://github.com/hubstacksea/Solar-System-Simulator)"
 BODIES = [("Ceres", "1;"), ("Vesta", "4;"), ("Eris", "136199;"), ("Halley", "DES=1P;CAP;NOFRAG"),
-          ("Hale-Bopp", "DES=C/1995 O1;CAP;NOFRAG"), ("Hyakutake", "DES=C/1996 B2;CAP;NOFRAG")]
+          ("Hale-Bopp", "DES=C/1995 O1;CAP;NOFRAG"), ("Hyakutake", "DES=C/1996 B2;CAP;NOFRAG"),
+          ("Churyumov-Gerasimenko", "DES=67P;CAP;NOFRAG", "2012-01-01", "2018-01-01", "2 d"),
+          ("Ryugu", "162173;", "2012-01-01", "2024-01-01", "5 d")]
+# 名前のあとに期間と刻みがあるものは、その期間だけで合わせる（木星や地球への接近で軌道が変わり、
+# 長い期間では合わないもの。探査機が訪れた頃を優先する）
 J2000 = 2451545.0
 START, STOP, STEP = "1980-01-01", "2070-01-01", "20 d"
 D = math.radians
@@ -108,15 +112,16 @@ def fit(p, samples):
 
 def main():
     print("// tools/fit_small_bodies.py の出力: a [AU], e, i, L, ϖ, Ω [deg] と 1 世紀あたりの変化率")
-    for name, cmd in BODIES:
+    for name, cmd, *span in BODIES:
+        start, stop, step = span if span else (START, STOP, STEP)
         if len(sys.argv) > 1 and name not in sys.argv[1:]:
             continue
         el = horizons(cmd, EPHEM_TYPE="ELEMENTS", TLIST="'%s'" % J2000)[0]
         e, i, node, w, M, a = (float(el[k]) for k in (2, 4, 5, 6, 9, 11))
         n = float(el[8])  # deg/日
         p = [a, e, i, (M + w + node) % 360, (w + node) % 360, node, 0, 0, 0, n * 36525, 0, 0]
-        vec = horizons(cmd, EPHEM_TYPE="VECTORS", START_TIME="'%s'" % START, STOP_TIME="'%s'" % STOP,
-                       STEP_SIZE="'%s'" % STEP, VEC_TABLE="1")
+        vec = horizons(cmd, EPHEM_TYPE="VECTORS", START_TIME="'%s'" % start, STOP_TIME="'%s'" % stop,
+                       STEP_SIZE="'%s'" % step, VEC_TABLE="1")
         samples = [(float(v[0]) - J2000, (float(v[2]), float(v[3]), float(v[4]))) for v in vec]
         r0 = residuals(p, samples)
         p, r = fit(p, samples)

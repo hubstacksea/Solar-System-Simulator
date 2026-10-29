@@ -122,6 +122,21 @@ public:
         }
     }
 
+    // 向きのある直方体。ax, ay, az は中心から各面までのベクトル（互いに直交）
+    void OBox(Vector3 c0, Vector3 ax, Vector3 ay, Vector3 az, Color c, ShipMat m) {
+        const Vector3 A[3] = {ax, ay, az};
+        for (int f = 0; f < 6; f++) {
+            Vector3 n = Vector3Scale(A[f / 2], f % 2 ? -1.0f : 1.0f), a = A[(f / 2 + 1) % 3], b = A[(f / 2 + 2) % 3];
+            Vector3 cn = Vector3Add(c0, n), nn = Vector3Normalize(n);
+            int k = Add(Vector3Subtract(Vector3Subtract(cn, a), b), nn, c, m);
+            Add(Vector3Subtract(Vector3Add(cn, a), b), nn, c, m);
+            Add(Vector3Add(Vector3Add(cn, a), b), nn, c, m);
+            Add(Vector3Add(Vector3Subtract(cn, a), b), nn, c, m);
+            Tri(k, k + 1, k + 2);
+            Tri(k, k + 2, k + 3);
+        }
+    }
+
     // 放物面アンテナ: 縁の中心 rimCenter、開口の向き dir（凹面が向く方向）、半径 r、深さ depth
     void Dish(Vector3 rimCenter, Vector3 dir, float r, float depth, Color c, ShipMat m) {
         dir = Vector3Normalize(dir);
@@ -211,7 +226,7 @@ private:
 // 探査機の機体モデル。単位 m。-Z が姿勢の基準（パーカーは耐熱シールドを太陽へ、ほかは高利得アンテナを地球へ向ける）
 enum ProbeModel {
     PM_VOYAGER = 0, PM_PIONEER, PM_GALILEO, PM_GALILEO_PROBE, PM_CASSINI, PM_CASSINI_HUYGENS, PM_NEW_HORIZONS, PM_PARKER,
-    PM_COUNT
+    PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_COUNT
 };
 
 inline Mesh GenProbeMesh(int model) {
@@ -335,6 +350,57 @@ inline Mesh GenProbeMesh(int model) {
         }
         mb.Box({0, 0.5f, 0.4f}, {0.25f, 0.06f, 0.25f}, white, SM_PAINT);   // 冷却用ラジエーター
         mb.Tube({0, 0, 1.0f}, {0, 0, 3.0f}, 0.02f, 5, metal, SM_METAL);
+        break;
+    }
+    case PM_JUNO: {
+        // ジュノー: 六角形の本体の上に直径 2.5 m のアンテナ、120° おきに 3 枚の太陽電池パネル（1 枚 約 9 m、
+        // 1 枚の先は磁力計のブーム）。パネルは本体の側面から水平に伸びる
+        mb.Dish({0, 0, -1.25f}, {0, 0, -1}, 1.25f, 0.4f, white, SM_PAINT);
+        mb.Prism({0, 0, -0.85f}, {0, 0, 0.6f}, 1.75f, 6, 0, gold, SM_METAL);
+        mb.Box({0, 0, 0.75f}, {0.8f, 0.8f, 0.15f}, dark, SM_METAL);      // 放射線から守る電子機器室
+        for (int i = 0; i < 3; i++) {
+            float ang = PI / 6 + 2 * PI * i / 3;
+            Vector3 dir = {cosf(ang), sinf(ang), 0}, side = {-sinf(ang), cosf(ang), 0};
+            int segs = i == 0 ? 3 : 4;   // 磁力計の付く 1 枚は 3 枚つなぎ + 磁力計の台
+            for (int k = 0; k < segs; k++) {
+                Vector3 c0 = Vector3Add(Vector3Scale(dir, 1.6f + k * 2.25f + 1.1f), {0, 0, -0.1f});
+                mb.OBox(c0, Vector3Scale(dir, 1.1f), Vector3Scale(side, 1.35f), {0, 0, 0.03f}, panel, SM_GLASS);
+            }
+            if (i == 0) {
+                Vector3 c0 = Vector3Add(Vector3Scale(dir, 1.6f + 3 * 2.25f + 0.6f), {0, 0, -0.1f});
+                mb.OBox(c0, Vector3Scale(dir, 0.6f), Vector3Scale(side, 0.3f), {0, 0, 0.25f}, metal, SM_METAL);
+            }
+        }
+        break;
+    }
+    case PM_ROSETTA: {
+        // ロゼッタ: 箱形の本体（2.8 × 2.1 × 2.0 m）、側面に直径 2.2 m の高利得アンテナ、両側に長さ 14 m の
+        // 太陽電池パネル（5 枚つなぎ）。フィラエ（着陸機）は 2014 年 11 月 12 日に切り離し
+        mb.Box({0, 0, 0}, {1.0f, 1.05f, 1.4f}, gold, SM_METAL);
+        mb.Tube({0, 0, -1.0f}, {0, 0, -1.6f}, 0.05f, 8, metal, SM_METAL);
+        mb.Dish({0, 0, -2.0f}, {0, 0, -1}, 1.1f, 0.35f, white, SM_PAINT);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 1.0f, 0, 0}, {sx * 1.6f, 0, 0}, 0.05f, 6, metal, SM_METAL);
+            for (int k = 0; k < 5; k++)
+                mb.Box({sx * (2.9f + k * 2.55f), 0, 0}, {1.25f, 0.03f, 1.1f}, panel, SM_GLASS);
+        }
+        break;
+    }
+    case PM_HAYABUSA2: {
+        // はやぶさ2: 箱形の本体（1.0 × 1.6 × 1.25 m）、上面に 2 枚の平面アンテナ、両側に 3 枚つなぎの太陽電池パネル、
+        // 下面にサンプラーホーン（円錐の筒）。-Z（地球）を向くのはアンテナのある面
+        mb.Box({0, 0, 0}, {0.8f, 0.5f, 0.62f}, gold, SM_METAL);
+        mb.Box({-0.35f, 0, -0.66f}, {0.3f, 0.3f, 0.04f}, white, SM_PAINT);   // 平面アンテナ（Ka 帯・X 帯）
+        mb.Box({0.35f, 0, -0.66f}, {0.25f, 0.25f, 0.04f}, white, SM_PAINT);
+        mb.Tube({0, -0.5f, 0}, {0, -1.5f, 0}, 0.08f, 10, metal, SM_METAL);   // サンプラーホーン
+        mb.Tube({0, -1.5f, 0}, {0, -1.55f, 0}, 0.14f, 10, metal, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            for (int k = 0; k < 3; k++)
+                mb.Box({sx * (1.4f + k * 1.15f), 0.3f, 0}, {0.55f, 0.02f, 0.55f}, panel, SM_GLASS);
+        }
+        mb.Tube({0, 0, 0.62f}, {0, 0, 0.78f}, 0.3f, 12, dark, SM_METAL);   // イオンエンジン
         break;
     }
     default: {

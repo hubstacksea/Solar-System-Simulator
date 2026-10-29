@@ -60,6 +60,7 @@ struct BodyDef {
     int probe = -1;            // 探査機: assets/probes.bin の番号（位置は記録された軌跡から求める）
     bool probeCoast = false;   // 探査機: データの終わりより後も等速直線運動で外へ進む（太陽系を脱出する機体）
     int probeModel = 0;        // 探査機: 機体の形（src/ship_model.h の ProbeModel）
+    bool probeEnd = false;     // 探査機: データの終わりが運用終了（天体への突入・着地）
     int style = S_GENERIC;
 };
 
@@ -216,6 +217,12 @@ inline std::vector<BodyDef> BuildSolarSystem() {
          -3.61013831, -0.00002048, -0.608259, 12.445837, 1.618030, 1.211445},  // ±0.22°
         {"Hyakutake", 1988.32581128, 0.99988433, 124.927752, 318.334357, 318.319476, 188.099666,
          3.06403800, -0.00000317, 0.112184, 0.405531, -0.000062, -0.055328},  // ±0.13°
+        // 以下の 2 つは探査機が訪れた頃だけで合わせた値（チュリュモフ・ゲラシメンコ彗星は 2012〜2018 年、
+        // リュウグウは 2012〜2024 年）。木星や地球への接近で軌道が変わるので、離れた年ほどずれる
+        {"Churyumov-Gerasimenko", 3.47365237, 0.63517690, 6.999529, 271.639269, 62.952908, 50.481488,
+         -0.05679580, 0.03909233, 0.271663, 5580.268350, -0.559222, -2.552549},  // ±0.07°
+        {"Ryugu", 1.18742232, 0.18899094, 5.909952, 34.280403, 102.779918, 252.062251,
+         0.01359665, 0.00718100, -0.171581, 27738.673544, 1.422512, -2.967596},  // ±0.93°
     };
     //                       名前                          半径    扁平率  質量
     //                       自転軸RA  Dec   自転周期[日]
@@ -246,13 +253,28 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     hyakutake.comet = true;
     hyakutake.cometScale = 0.8f;
     v.push_back(hyakutake);
+    // チュリュモフ・ゲラシメンコ彗星（ロゼッタが 2014〜2016 年に周回）とリュウグウ（はやぶさ2 が 2018〜2019 年に滞在）
+    BodyDef cg = MakePlanet("チュリュモフ・ゲラシメンコ彗星", "Churyumov-Gerasimenko", 1.65, 0.0, 1e13, 0, 0, 0, 0, 0, 0,
+                            69.3, 64.1, 0.5178,
+                            KIND_ROCKY, {0.22f, 0.21f, 0.20f}, {0.10f, 0.10f, 0.09f});
+    cg.comet = true;
+    cg.cometScale = 0.3f;
+    v.push_back(cg);
+    v.push_back(MakePlanet("リュウグウ", "Ryugu", 0.448, 0.0, 4.5e11, 0, 0, 0, 0, 0, 0,
+                           96.4, -66.4, 0.3178,
+                           KIND_ROCKY, {0.20f, 0.19f, 0.18f}, {0.10f, 0.09f, 0.09f}));
     // ---- 探査機（並びは tools/make_probe_assets.py と同じ） ----
-    //   機体の形: 0 ボイジャー, 1 パイオニア, 2 ガリレオ, 4 カッシーニ, 6 ニュー・ホライズンズ, 7 パーカー（ProbeModel）
-    static const struct { const char* jp; const char* en; bool coast; int model; } PROBES[] = {
-        {"ボイジャー1号", "Voyager 1", true, 0}, {"ボイジャー2号", "Voyager 2", true, 0},
-        {"パイオニア10号", "Pioneer 10", true, 1}, {"パイオニア11号", "Pioneer 11", true, 1},
-        {"ガリレオ", "Galileo", false, 2}, {"カッシーニ", "Cassini", false, 4},
-        {"ニュー・ホライズンズ", "New Horizons", true, 6}, {"パーカー・ソーラー・プローブ", "Parker Solar Probe", false, 7},
+    //   coast: データの後も直進する, end: データの終わりが運用終了（天体への突入・着地）
+    //   機体の形: 0 ボイジャー, 1 パイオニア, 2 ガリレオ, 4 カッシーニ, 6 ニュー・ホライズンズ, 7 パーカー,
+    //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2（ProbeModel）
+    static const struct { const char* jp; const char* en; bool coast, end; int model; } PROBES[] = {
+        {"ボイジャー1号", "Voyager 1", true, false, 0}, {"ボイジャー2号", "Voyager 2", true, false, 0},
+        {"パイオニア10号", "Pioneer 10", true, false, 1}, {"パイオニア11号", "Pioneer 11", true, false, 1},
+        {"ガリレオ", "Galileo", false, true, 2}, {"カッシーニ", "Cassini", false, true, 4},
+        {"ニュー・ホライズンズ", "New Horizons", true, false, 6},
+        {"パーカー・ソーラー・プローブ", "Parker Solar Probe", false, false, 7},
+        {"ジュノー", "Juno", false, false, 8}, {"ロゼッタ", "Rosetta", false, true, 9},
+        {"はやぶさ2", "Hayabusa2", false, false, 10},
     };
     for (int i = 0; i < (int)(sizeof PROBES / sizeof PROBES[0]); i++) {
         BodyDef d{};
@@ -260,7 +282,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         d.radius = 0.002; d.mass = 1000;
         d.rotPeriod = 1e9;
         d.kind = KIND_PROBE; d.c1 = {0.85f, 0.82f, 0.70f}; d.c2 = d.c1;
-        d.probe = i; d.probeCoast = PROBES[i].coast; d.probeModel = PROBES[i].model;
+        d.probe = i; d.probeCoast = PROBES[i].coast; d.probeModel = PROBES[i].model; d.probeEnd = PROBES[i].end;
         v.push_back(d);
     }
     for (BodyDef& d : v)

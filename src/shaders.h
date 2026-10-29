@@ -604,3 +604,47 @@ void main() {
     finalColor = vec4(col, 1.0);
 }
 )";
+
+// 大気の中から見た空の色（地球・火星）。カメラを囲む球に描き、視線の方向ごとに単一散乱の近似で色を求める:
+//  - レイリー散乱（地球は青、火星は塵で黄褐色）: 視線方向の空気の量が多いほど、太陽の光の色で明るくなる
+//  - ミー散乱: 太陽のまわりの明るい光（火星では夕方に青白くなる）
+//  - 太陽の光は、太陽の方向の空気の量に応じて赤くなる（朝焼け・夕焼け）。太陽が沈むと暗くなる
+// アルファは空の明るさから決め、昼は背景の星を隠し、夜は透明になる
+static const char* SKY_VS = R"(
+#version 330
+in vec3 vertexPosition;
+uniform mat4 mvp;
+out vec3 fragDir;
+void main() {
+    fragDir = vertexPosition;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)";
+
+static const char* SKY_FS = R"(
+#version 330
+in vec3 fragDir;
+uniform vec3 up;        // その場所の真上
+uniform vec3 sunDir;
+uniform vec3 beta;      // 天頂方向の空気 1 つ分で散乱する割合（色ごと）
+uniform vec3 mieTint;
+uniform float density;  // 高さによる空気の濃さ（地表 1）
+out vec4 finalColor;
+void main() {
+    vec3 d = normalize(fragDir);
+    float mu = max(dot(d, up), 0.0);
+    float sunEl = dot(sunDir, up);
+    float cosT = dot(d, sunDir);
+    float airV = density / (mu + 0.06);
+    // 地平線近くの太陽の光は、上空の薄い空気を通って散乱する分が多いので、空気の量に上限を付ける
+    float airS = min(density / (max(sunEl, 0.0) + 0.06), 7.0);
+    vec3 sunCol = exp(-beta * airS);
+    vec3 ray = sunCol * (1.0 - exp(-beta * airV)) * 0.75 * (1.0 + cosT * cosT);
+    float g = max(cosT, 0.0);
+    vec3 mie = sunCol * mieTint * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));
+    float light = smoothstep(-0.17, 0.03, sunEl);   // 太陽が地平線の下 10° まで薄明が残る
+    vec3 col = 1.0 - exp(-(ray * 3.0 + mie) * light);   // 明るい所が白く飛ばないように丸める
+    float a = clamp(max(col.r, max(col.g, col.b)) * 2.5, 0.0, 1.0);
+    finalColor = vec4(min(col / max(a, 1e-3), vec3(1.0)), a);
+}
+)";

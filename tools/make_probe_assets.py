@@ -30,12 +30,17 @@ AU = 149597870.7
 MSUN = 1.989e30
 J2000 = 2451545.0
 
-# シミュレータの惑星番号: Horizons の ID, 軌道長半径 [AU], 質量 [kg]（影響圏の半径 = a (m / M)^0.4）
-PLANETS = {2: (299, 0.72333566, 4.867e24), 3: (399, 1.00000261, 5.972e24), 5: (599, 5.20288700, 1.898e27),
-           6: (699, 9.53667594, 5.683e26), 7: (799, 19.18916464, 8.681e25), 8: (899, 30.06992276, 1.024e26),
-           9: (999, 39.48211675, 1.303e22)}
+# シミュレータの天体番号: Horizons の ID, 軌道長半径 [AU], 質量 [kg]（影響圏の半径 = a (m / M)^0.4）
+# 彗星・小惑星は影響圏が小さすぎるので、4 番目の値を相対位置で持つ範囲の半径 [km] にする
+PLANETS = {2: (299, 0.72333566, 4.867e24), 3: (399, 1.00000261, 5.972e24), 4: (499, 1.52371034, 6.417e23),
+           5: (599, 5.20288700, 1.898e27), 6: (699, 9.53667594, 5.683e26), 7: (799, 19.18916464, 8.681e25),
+           8: (899, 30.06992276, 1.024e26), 9: (999, 39.48211675, 1.303e22),
+           37: (1000012, 3.47, 1e13, 1e5),        # チュリュモフ・ゲラシメンコ彗星 (67P)
+           38: ("162173;", 1.19, 4.5e11, 1e5)}    # リュウグウ
 
-# 名前, Horizons ID, データの範囲（UTC）, 惑星への接近: (惑星番号, 探す範囲の始まり, 終わり, 刻み)
+# 名前, Horizons ID, データの範囲（UTC）, 天体への接近: (天体番号, 探す範囲の始まり, 終わり, 刻み[, ホームポジション km])
+# ホームポジション: Horizons ではその天体を中心にできず、探査機と天体の軌道も別々の解で数 km〜十数 km 食い違うので、
+# 範囲の間は天体から地球の方向へこの距離の点に置く（はやぶさ2 はリュウグウの地球側 20 km を基本の待機位置にした）
 PROBES = [
     ("Voyager 1", -31, "1977-09-05 14:10", "2099-12-31", [
         (3, "1977-09-05 14:10", "1977-09-15", "10m"), (5, "1979-01-01", "1979-06-01", "10m"),
@@ -66,6 +71,16 @@ PROBES = [
                                        ("2020-07-03", "2020-07-20"), ("2021-02-12", "2021-03-01"),
                                        ("2021-10-08", "2021-10-25"), ("2023-08-13", "2023-08-30"),
                                        ("2024-10-29", "2024-11-15")]]),
+    ("Juno", -61, "2011-08-05 17:30", "2028-09-01", [
+        (3, "2011-08-05 17:30", "2011-08-12", "10m"), (3, "2013-10-01", "2013-10-20", "10m"),
+        (5, "2016-06-01", "2028-09-01", "10m")]),
+    ("Rosetta", -226, "2004-03-02 09:40", "2016-09-30 10:39", [
+        (3, "2004-03-02 09:40", "2004-03-10", "10m"), (3, "2005-02-25", "2005-03-15", "10m"),
+        (4, "2007-02-15", "2007-03-10", "10m"), (3, "2007-11-05", "2007-11-25", "10m"),
+        (3, "2009-11-05", "2009-11-25", "10m"), (37, "2014-08-06 09:00", "2016-09-30 10:39", "10m")]),
+    ("Hayabusa2", -37, "2014-12-03 06:20", "2026-12-31", [
+        (3, "2014-12-03 06:20", "2014-12-12", "10m"), (3, "2015-11-25", "2015-12-12", "10m"),
+        (38, "2018-06-27 09:00", "2019-11-13 01:00", "1h", 20.0), (3, "2020-11-28", "2020-12-12", "10m")]),
 ]
 COARSE = "1d"
 # 太陽に極端に近づく機体は太陽中心の区間も細かく取る（パーカーは近日点で 1 日に 140° 近く回り込む）
@@ -115,6 +130,8 @@ def horizons(work, cmd, center, jd0, jd1, step):
                     time.sleep(10 * (attempt + 1))
             else:
                 raise SystemExit("Horizons に接続できません")
+            if b"$$SOE" not in data:   # データの範囲外などのエラーはキャッシュしない
+                raise SystemExit(json.loads(data)["result"][-600:])
             with open(path + ".part", "wb") as f:
                 f.write(data)
             os.rename(path + ".part", path)
@@ -173,8 +190,26 @@ def decimate(samples, tol):
 
 
 def soi(idx):
-    _, a, m = PLANETS[idx]
-    return a * AU * (m / MSUN) ** 0.4
+    _, a, m, *radius = PLANETS[idx]
+    return radius[0] if radius else a * AU * (m / MSUN) ** 0.4
+
+
+def home_position(work, idx, ja, jb, step, dist):
+    """天体から地球の方向へ dist km の点（相対位置と、太陽中心の位置）"""
+    body = horizons(work, PLANETS[idx][0], "10", ja, jb, step)
+    earth = horizons(work, 399, "10", ja, jb, step)
+    rel, hel = [], []
+    for (t, pb, vb), (_, pe, _) in zip(body, earth):
+        d = [pe[k] - pb[k] for k in range(3)]
+        n = math.sqrt(sum(x * x for x in d))
+        rel.append([t, tuple(x / n * dist for x in d)])
+    for i, r in enumerate(rel):   # 相対速度は差分で（ほぼ 0）
+        a, b = rel[max(0, i - 1)], rel[min(len(rel) - 1, i + 1)]
+        dt = (b[0] - a[0]) * 86400.0
+        r.append(tuple((b[1][k] - a[1][k]) / dt for k in range(3)))
+    for (t, p, v), (_, pb, vb) in zip(rel, body):
+        hel.append((t, tuple(pb[k] + p[k] for k in range(3)), tuple(vb[k] + v[k] for k in range(3))))
+    return [tuple(r) for r in rel], hel
 
 
 def main():
@@ -188,10 +223,13 @@ def main():
         helio = horizons(work, cmd, "10", jd0, jd1, COARSE_BY_PROBE.get(name, COARSE))
         windows = []   # (惑星番号, 相対位置の点, 始まりと終わりの惑星の位置)
         fine_helio = []
-        for planet, a, b, step in encounters:
+        for planet, a, b, step, *home in encounters:
             ja, jb = max(jd0, jd_of(a)), min(jd1, jd_of(b))
-            rel = horizons(work, cmd, PLANETS[planet][0], ja, jb, step)
-            hel = horizons(work, cmd, "10", ja, jb, step)
+            if home:
+                rel, hel = home_position(work, planet, ja, jb, step, home[0])
+            else:
+                rel = horizons(work, cmd, PLANETS[planet][0], ja, jb, step)
+                hel = horizons(work, cmd, "10", ja, jb, step)
             assert len(rel) == len(hel), (name, planet)
             R = soi(planet)
             inside = [math.sqrt(sum(x * x for x in r[1])) < R for r in rel]
