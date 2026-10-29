@@ -29,6 +29,8 @@
 | ![小惑星帯とトロヤ群](docs/screenshots/asteroid_belt.jpg) 15 AU 上から見た小惑星帯（輪）と木星のトロヤ群（緑） | ![大赤斑の見える木星](docs/screenshots/jupiter_map.jpg) Cassini の地図による木星（右下に大赤斑） |
 | ![地上から見た皆既日食](docs/screenshots/eclipse_ground.jpg) 2027年8月2日の皆既日食を地上から（コロナ） | ![DART の衝突 1 分前](docs/screenshots/dart_impact.jpg) DART の衝突 1 分前のディディモスとディモルフォス |
 | ![イトカワ](docs/screenshots/itokawa.jpg) 実際の形のイトカワ | ![Voyager の観測による土星の環](docs/screenshots/saturn_rings.jpg) Voyager 2 の観測による濃淡の土星の環 |
+| ![国際宇宙ステーション](docs/screenshots/iss.jpg) 地球の上空を回る国際宇宙ステーション | ![重力モード](docs/screenshots/gravity_mode.jpg) 重力モード（R キー）: 地球を回る軌道の予測線 |
+| ![ブラウザ版](docs/screenshots/browser.jpg) ブラウザ版（WebGL2） | |
 
 ## ブラウザ版
 
