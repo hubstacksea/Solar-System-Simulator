@@ -32,13 +32,18 @@
 | ![国際宇宙ステーション](docs/screenshots/iss.jpg) 地球の上空を回る国際宇宙ステーション | ![重力モード](docs/screenshots/gravity_mode.jpg) 重力モード（R キー）: 地球を回る軌道の予測線 |
 | ![ブラウザ版](docs/screenshots/browser.jpg) ブラウザ版（WebGL2） | |
 
+## はじめての方へ
+
+最初の起動時に、操作と見どころの短い案内（4 ページ）が出ます（Enter / タップで次へ、Esc で閉じる）。あとから見る時は H キーの操作説明を開いてください。
+
 ## ブラウザ版
 
 インストールせずにブラウザで試せます: **https://hubstacksea.github.io/Solar-System-Simulator/**
 
 - WebGL2 が使えるブラウザ（Chrome / Edge / Firefox / Safari の最近の版）で動きます。最初に約 33 MB のデータを読み込みます
 - 音楽は入っていません（効果音は鳴ります）。日本語は同梱のフォント（Noto Sans JP）で表示します
-- 画面をクリックするとマウスで機首を操作できます（Esc で解除）。設定やブックマークはブラウザを閉じると消えます
+- 画面をクリックするとマウスで機首を操作できます（Esc で解除）。設定やブックマークはブラウザに保存されます
+- スマホ・タブレットでは画面にボタンが出ます: ドラッグで機首の向き、右の「加速」「減速」「停止」、左の「ターゲット」「ワープ」「自動操縦」、上の「ツアー」「イベント」「設定」「説明」、下のエンジン欄をタップで切り替え。画質は最初「低」になり、縦の画面が小さい時は縦 720 ピクセル相当で描いて縮めて表示します
 - 描画が重い場合は F9 で画質を下げてください
 
 ## ビルド
@@ -65,6 +70,15 @@ cmake --build build
 ```
 
 DLL 不要の単体 exe になります。コンソールを出したい場合は `-DSOLAR_CONSOLE=ON`。
+
+### 自動ビルドとリリース（GitHub Actions）
+
+`v2.4.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。
+
+```sh
+git tag v2.4.0
+git push origin master v2.4.0
+```
 
 ### ブラウザ版（Emscripten）
 

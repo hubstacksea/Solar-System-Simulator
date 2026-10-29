@@ -126,6 +126,11 @@ else()
   set(CPACK_RPM_PACKAGE_AUTOREQ ON)
   set(CPACK_RPM_PACKAGE_REQUIRES "libX11, libXrandr, libXi, libXcursor, libXinerama, libglvnd-glx")
   set(CPACK_RPM_SPEC_MORE_DEFINE "%define _build_id_links none")
+  # 変更履歴は自前で 1 行だけ書く（CPack の既定の履歴には CPack 作者の名前とアドレスが入るため）
+  string(TIMESTAMP RPM_DATE "%a %b %d %Y" UTC)
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/rpm_changelog.txt"
+       "* ${RPM_DATE} hubstacksea - ${PROJECT_VERSION}-1\n- Solar System Voyager ${PROJECT_VERSION} (https://github.com/hubstacksea/Solar-System-Simulator)\n")
+  set(CPACK_RPM_CHANGELOG_FILE "${CMAKE_CURRENT_BINARY_DIR}/rpm_changelog.txt")
   # 既存のシステムディレクトリを rpm の所有物にしない
   set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
       /usr/share/applications /usr/share/icons /usr/share/icons/hicolor

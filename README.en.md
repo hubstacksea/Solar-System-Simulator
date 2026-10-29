@@ -32,13 +32,18 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![International Space Station](docs/screenshots/iss.jpg) The International Space Station above Earth | ![Gravity mode](docs/screenshots/gravity_mode.jpg) Gravity mode (R key): the predicted orbit around Earth |
 | ![Browser version](docs/screenshots/browser.jpg) The browser version (WebGL2) | |
 
+## Getting started
+
+On the first launch a short guide (4 pages) introduces the controls and highlights (Enter or tap for next, Esc to close). Later, open the controls with H.
+
 ## Browser version
 
 Try it in your browser without installing anything: **https://hubstacksea.github.io/Solar-System-Simulator/**
 
 - Runs in browsers with WebGL2 (recent Chrome / Edge / Firefox / Safari). About 33 MB of data is loaded first
 - Music is not included (sound effects are). Japanese text uses the bundled Noto Sans JP font
-- Click the view to steer with the mouse (Esc to release). Settings and bookmarks are lost when the browser is closed
+- Click the view to steer with the mouse (Esc to release). Settings and bookmarks are kept in the browser
+- On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Settings / Help at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down
 - If it runs slowly, lower the quality with F9
 
 ## Building
@@ -65,6 +70,15 @@ cmake --build build
 ```
 
 The result is a standalone exe that needs no DLLs. Add `-DSOLAR_CONSOLE=ON` if you want a console window.
+
+### Automatic builds and releases (GitHub Actions)
+
+Pushing a tag such as `v2.4.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages.
+
+```sh
+git tag v2.4.0
+git push origin master v2.4.0
+```
 
 ### Browser version (Emscripten)
 

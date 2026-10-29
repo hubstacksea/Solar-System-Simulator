@@ -6,7 +6,7 @@
 <title>Solar System Voyager</title>
 <style>
   html, body { margin: 0; height: 100%; background: #01020a; color: #c8d6ea; font-family: system-ui, sans-serif; overflow: hidden; }
-  #canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+  #canvas { display: block; width: 100vw; height: 100vh; outline: none; touch-action: none; }
   #status { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
   #bar { width: min(420px, 80vw); height: 6px; background: #1a2638; border-radius: 3px; overflow: hidden; }
   #fill { width: 0; height: 100%; background: #78c8ff; }
@@ -20,9 +20,7 @@
 <div id="credit">Solar System Voyager — (c) 2026 hubstacksea — MIT License —
   <a href="https://github.com/hubstacksea/Solar-System-Simulator">github.com/hubstacksea/Solar-System-Simulator</a></div>
 <script>
-  // canvas の大きさを画面に合わせる（raylib がこの大きさで描く）
-  function fit() { const c = document.getElementById('canvas'); c.width = innerWidth; c.height = innerHeight; }
-  fit(); addEventListener('resize', fit);
+  // 描画の大きさはプログラムがページの大きさに合わせて決め、CSS で画面いっぱいに表示する
   var Module = {
     canvas: document.getElementById('canvas'),
     setStatus: function (t) {

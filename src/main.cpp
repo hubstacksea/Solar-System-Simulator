@@ -41,6 +41,24 @@
 extern "C" void SIM_GLAPI glClear(unsigned int mask);  // 深度だけをクリアするため直接呼ぶ
 static const unsigned int GL_DEPTH_BIT = 0x00000100;
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+// ブラウザ版: 設定はブラウザの localStorage に保存する。画面は縦 720 ピクセル未満なら拡大した解像度で描いて
+// CSS で縮める（スマホでも HUD が収まる）。指で操作する端末かどうかも調べる
+EM_JS_DEPS(solar_voyager, "$stringToNewUTF8");
+EM_JS(char*, WebLoadConfig, (), {
+    var s = "";
+    try { s = localStorage.getItem("solar_voyager.cfg") || ""; } catch (e) {}
+    return stringToNewUTF8(s);
+});
+EM_JS(void, WebSaveConfig, (const char* s), {
+    try { localStorage.setItem("solar_voyager.cfg", UTF8ToString(s)); } catch (e) {}
+});
+EM_JS(int, WebCoarsePointer, (), { return (window.matchMedia && matchMedia("(pointer: coarse)").matches) ? 1 : 0; });
+EM_JS(int, WebViewW, (), { return Math.round(window.innerWidth * Math.max(1, 720 / window.innerHeight)); });
+EM_JS(int, WebViewH, (), { return Math.round(window.innerHeight * Math.max(1, 720 / window.innerHeight)); });
+#endif
+
 // ---------------------------------------------------------------- 定数
 static const double AU_KM = 149597870.7;
 static const double C_KMS = 299792.458;
@@ -219,6 +237,33 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(SET_INVERT, "マウス上下反転", "Invert mouse") \
     X(SET_FULLSCREEN, "フルスクリーン", "Fullscreen") \
     X(SET_ON, "オン", "On") \
+    X(TB_THRUST, "加速", "Thrust") \
+    X(TB_BRAKE, "減速", "Brake") \
+    X(TB_STOP, "停止", "Stop") \
+    X(TB_TARGET, "ターゲット", "Target") \
+    X(TB_WARP, "ワープ", "Warp") \
+    X(TB_AUTO, "自動操縦", "Autopilot") \
+    X(TB_TOUR, "ツアー", "Tour") \
+    X(TB_EVENTS, "イベント", "Events") \
+    X(TB_SETTINGS, "設定", "Settings") \
+    X(TB_HELP, "説明", "Help") \
+    X(INTRO_KEYS, "Enter / → : 次へ    ← : 前へ    Esc : 閉じる（次からは表示しません。H キーの操作説明はいつでも見られます）", "Enter / Right : next    Left : back    Esc : close (not shown again; H shows the controls at any time)") \
+    X(INTRO_TAP, "タップで次へ    右上の × で閉じる（次からは表示しません）", "Tap for next    × at the top right closes (not shown again)") \
+    X(INTRO_T1, "Solar System Voyager へようこそ", "Welcome to Solar System Voyager") \
+    X(INTRO_A1, "太陽・惑星・衛星・小天体・探査機を実寸・実距離で配置した宇宙を、自由に飛び回れます。", "Fly freely through the Solar System with the Sun, planets, moons, small bodies and spacecraft at true size and distance.") \
+    X(INTRO_B1, "天体の位置は PC の時刻で計算され、等倍ではいまこの瞬間の配置です。", "Positions are computed from your clock: at x1 you see the Solar System as it is right now.") \
+    X(INTRO_T2, "機体を動かす", "Flying") \
+    X(INTRO_A2, "マウス・矢印キーで機首の向き、W で加速・S で減速、1〜7 でエンジン（自動車〜光速）を切り替えます。", "Mouse or arrow keys steer, W accelerates and S brakes, 1-7 switch engines (from a car up to the speed of light).") \
+    X(INTRO_A2T, "画面をドラッグして機首の向き、右の「加速」「減速」で速度、下のエンジン欄をタップして切り替えます。", "Drag the view to steer, use Thrust and Brake on the right, and tap the engine bar at the bottom to switch engines.") \
+    X(INTRO_B2, "宇宙はとても広いので、遠くへは光速でも何時間もかかります。そんな時はワープを使いましょう。", "Space is vast: even at light speed distant worlds take hours. That is what warp is for.") \
+    X(INTRO_T3, "目的地へワープ", "Warping to a destination") \
+    X(INTRO_A3, "Tab でターゲットを選び、G でワープ（Shift+G は地表のすぐ上へ）、T で自動操縦します。", "Choose a target with Tab, press G to warp (Shift+G to just above the surface), or T for the autopilot.") \
+    X(INTRO_A3T, "「ターゲット」で行き先を選び、「ワープ」で一瞬で移動、「自動操縦」で飛んで行きます。", "Pick a destination with Target, then Warp to jump there or Autopilot to fly there.") \
+    X(INTRO_B3, "Y キーで日時を指定すると、過去や未来の天体の配置へ移れます。", "Set any date with Y to see the Solar System in the past or the future.") \
+    X(INTRO_T4, "見どころを巡る", "Highlights") \
+    X(INTRO_A4, "U で自動ツアー（探査機の名場面・大彗星・日食などを説明付きで順に）、K でイベント一覧（日食・探査機のできごと）。", "U starts a guided tour (spacecraft highlights, great comets, eclipses and more), K opens the event list.") \
+    X(INTRO_A4T, "「ツアー」で名場面を説明付きで順に巡り、「イベント」で日食や探査機のできごとへワープできます。", "Tour visits the highlights with captions; Events warps you to eclipses and spacecraft encounters.") \
+    X(INTRO_B4, "F10（「設定」）で画質・言語・重力モードなど、H（「説明」）で操作の一覧を見られます。", "F10 (Settings) changes quality, language, gravity mode and more; H (Help) lists all the controls.") \
     X(SET_PHYSICS, "飛行モード", "Flight model") \
     X(SET_ARCADE, "アーケード", "Arcade") \
     X(SET_GRAVITY, "重力", "Gravity") \
@@ -1184,12 +1229,18 @@ static std::vector<std::pair<std::string, std::string>> g_cfg;
 
 static void LoadSettings() {
     g_cfg.clear();
+#if defined(__EMSCRIPTEN__)
+    char* text = WebLoadConfig();
+    std::string t = text;
+    free(text);
+#else
     std::string path = ConfigPath();
     if (!FileExists(path.c_str())) return;
     char* text = LoadFileText(path.c_str());
     if (!text) return;
     std::string t = text;
     UnloadFileText(text);
+#endif
     size_t pos = 0;
     while (pos < t.size()) {
         size_t e = t.find('\n', pos);
@@ -1220,7 +1271,11 @@ static void SetSetting(const std::string& key, const std::string& value) {
 static void SaveSettings() {
     std::string body;
     for (auto& kv : g_cfg) body += kv.first + "=" + kv.second + "\n";
+#if defined(__EMSCRIPTEN__)
+    WebSaveConfig(body.c_str());
+#else
     SaveFileText(ConfigPath().c_str(), (char*)body.c_str());
+#endif
 }
 
 // 言語を切り替える。日本語フォントが無ければ英語のまま
@@ -1253,6 +1308,8 @@ struct Options {
     int photo = 0;              // 写真モード 0〜2（確認用）
     bool settings = false;      // 設定画面を開いた状態で始める（確認用）
     bool physics = false;       // 重力モードで始める（確認用）
+    bool intro = false;         // 初回の案内を出して始める（確認用）
+    bool touch = false;         // 画面のボタンを出して始める（確認用）
     bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
     int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星, 2: 探査機（確認用）
     double timeScale = 1;
@@ -1283,6 +1340,8 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--photo") o.photo = atoi(next());
         else if (a == "--settings") o.settings = true;
         else if (a == "--physics") o.physics = true;
+        else if (a == "--intro") o.intro = true;
+        else if (a == "--touch") o.touch = true;
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -1360,6 +1419,14 @@ struct App {
     int eventSel = 0;
     int warpEvent = -1;                   // イベントへのワープ中はその番号
     int photoMode = 0;                    // 写真モード（Z キー）0: 通常, 1: 表示を隠す, 2: 表示と自機を隠す
+    bool touchUI = false;                 // 指で操作する（画面のボタンとドラッグ。タッチを検出すると有効になる）
+    Vector2 touchDrag = {0, 0};           // このフレームのドラッグ量（機首の向き）
+    int touchHeld = -1;                   // 押し続けているボタン
+    bool touchWasDown = false, touchMoved = false;
+    Vector2 touchStart = {0, 0}, touchPrev = {0, 0};
+    bool tapped = false;                  // このフレームで指を離した（動かさずに）
+    Vector2 tapPos = {0, 0};
+    int introPage = -1;                   // 初回の案内のページ（-1: 表示しない）
     bool physics = false;                 // 重力モード（R キー）: 天体の重力を受けて飛ぶ（オフ: 機首の向きへ進むアーケード式）
     bool tourOn = false;                  // 自動ツアー（U キー）
     int tourIdx = 0;
@@ -2362,8 +2429,214 @@ static std::string SettingValue(const App& app, int item) {
     }
 }
 
+// ---------------------------------------------------------------- タッチ操作（スマホ・タブレット）
+enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_SETTINGS, TB_HELP, TB_COUNT };
+
+// 画面のボタンの位置: 右に速度、左に行き先、下にメニュー（画面の高さに合わせた大きさ）
+static Rectangle TouchButtonRect(const Cam& c, int i) {
+    float s = std::max(56.0f, c.H * 0.1f), g = s * 0.15f;
+    switch (i) {
+        case TB_THRUST: return {c.W - s * 1.35f - 12, c.H * 0.30f, s * 1.35f, s * 1.1f};
+        case TB_BRAKE: return {c.W - s * 1.35f - 12, c.H * 0.30f + s * 1.1f + g, s * 1.35f, s * 0.9f};
+        case TB_STOP: return {c.W - s * 1.35f - 12, c.H * 0.30f + s * 2.0f + g * 2, s * 1.35f, s * 0.6f};
+        case TB_TARGET: return {12, c.H * 0.30f, s * 1.5f, s * 0.8f};
+        case TB_WARP: return {12, c.H * 0.30f + s * 0.8f + g, s * 1.5f, s * 0.8f};
+        case TB_AUTO: return {12, c.H * 0.30f + (s * 0.8f + g) * 2, s * 1.5f, s * 0.8f};
+        default: {   // ツアー・イベント・設定・説明: 左上のパネルの下に横に並べる
+            int k = i - TB_TOUR;
+            float w = s * 1.15f;
+            return {12 + k * (w + g), 160, w, s * 0.55f};
+        }
+    }
+}
+
+static int TouchButtonAt(const Cam& c, Vector2 p) {
+    for (int i = 0; i < TB_COUNT; i++)
+        if (CheckCollisionPointRec(p, TouchButtonRect(c, i))) return i;
+    return -1;
+}
+
+// エンジン欄の各エンジンの位置（DrawEngineBar と同じ）
+static Rectangle EngineButtonRect(const Cam& c, int i) {
+    float bw = std::min(118.0f, (c.W - 300) / ENGINE_COUNT), bh = 40;
+    float total = bw * ENGINE_COUNT, x0 = std::max(10.0f, (c.W - total) * 0.5f - 60), y0 = c.H - bh - 14;
+    return {x0 + i * bw + 2, y0, bw - 4, bh};
+}
+
+// 毎フレーム最初に: 指の状態から、押しているボタン・ドラッグ量・タップを求める
+static void UpdateTouch(App& app) {
+    const Cam& c = app.cam;
+    int n = GetTouchPointCount();
+    if (n > 0 && !app.touchUI) {
+        app.touchUI = true;
+        app.mouseCaptured = false;
+        EnableCursor();
+    }
+    app.touchDrag = {0, 0};
+    app.tapped = false;
+    if (!app.touchUI) return;
+    bool down = n > 0;
+    Vector2 p = down ? GetTouchPosition(0) : app.touchPrev;
+    if (down && !app.touchWasDown) {
+        app.touchStart = app.touchPrev = p;
+        app.touchMoved = false;
+        app.touchHeld = TouchButtonAt(c, p);
+    } else if (down) {
+        Vector2 d = Vector2Subtract(p, app.touchPrev);
+        if (Vector2Distance(p, app.touchStart) > 12) app.touchMoved = true;
+        if (app.touchHeld < 0) app.touchDrag = d;   // ボタン以外の所のドラッグで機首を向ける
+        app.touchPrev = p;
+    } else if (app.touchWasDown) {
+        if (!app.touchMoved) {
+            app.tapped = true;
+            app.tapPos = app.touchStart;
+        }
+        app.touchHeld = -1;
+    }
+    app.touchWasDown = down;
+}
+
+static void StartTour(App& app);
+static void StopTour(App& app);
+static void OpenEventsPage(App& app);
+
+static void DrawTouchButtons(const App& app) {
+    if (!app.touchUI) return;
+    const Cam& c = app.cam;
+    static const UiId LABEL[TB_COUNT] = {UI_TB_THRUST, UI_TB_BRAKE, UI_TB_STOP, UI_TB_TARGET, UI_TB_WARP, UI_TB_AUTO,
+                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_SETTINGS, UI_TB_HELP};
+    for (int i = 0; i < TB_COUNT; i++) {
+        Rectangle r = TouchButtonRect(c, i);
+        bool held = app.touchHeld == i;
+        bool on = (i == TB_AUTO && app.autopilot) || (i == TB_TOUR && app.tourOn);
+        DrawRectangleRounded(r, 0.3f, 6, held ? Color{70, 110, 170, 220} : on ? Color{40, 90, 70, 200} : Color{0, 12, 30, 150});
+        DrawRectangleRoundedLinesEx(r, 0.3f, 6, 1.5f, {110, 150, 200, 200});
+        float fs = std::min(r.height * 0.36f, 20.0f);
+        TxtC(T(LABEL[i]), r.x + r.width / 2, r.y + (r.height - fs) / 2, fs, {225, 235, 250, 255});
+    }
+}
+
+// ---------------------------------------------------------------- 初回の案内
+static const int INTRO_PAGES = 4;
+
+static void CloseIntro(App& app) {
+    app.introPage = -1;
+    SetSetting("intro", "1");
+    SaveSettings();
+}
+
+static void DrawIntro(const App& app) {
+    if (app.introPage < 0) return;
+    const Cam& c = app.cam;
+    static const UiId TITLE[INTRO_PAGES] = {UI_INTRO_T1, UI_INTRO_T2, UI_INTRO_T3, UI_INTRO_T4};
+    static const UiId BODY_A[INTRO_PAGES] = {UI_INTRO_A1, UI_INTRO_A2, UI_INTRO_A3, UI_INTRO_A4};
+    static const UiId BODY_AT[INTRO_PAGES] = {UI_INTRO_A1, UI_INTRO_A2T, UI_INTRO_A3T, UI_INTRO_A4T};
+    static const UiId BODY_B[INTRO_PAGES] = {UI_INTRO_B1, UI_INTRO_B2, UI_INTRO_B3, UI_INTRO_B4};
+    int pg = app.introPage;
+    float w = std::min(c.W - 20, 900.0f), h = 250, x = (c.W - w) / 2, y = (c.H - h) / 2;
+    DrawRectangle(0, 0, (int)c.W, (int)c.H, {0, 0, 0, 110});
+    DrawRectangleRounded({x, y, w, h}, 0.05f, 6, {0, 10, 28, 240});
+    DrawRectangleRoundedLinesEx({x, y, w, h}, 0.05f, 6, 1.5f, {110, 160, 220, 255});
+    char b[32];
+    snprintf(b, sizeof b, "%d / %d", pg + 1, INTRO_PAGES);
+    Txt(b, x + 18, y + 14, 15, {150, 170, 190, 255});
+    TxtC(T(TITLE[pg]), c.W * 0.5f, y + 22, 26, {255, 220, 120, 255});
+    // 本文は幅に合わせて折り返す（日本語は 1 文字ずつ、英語は単語ごと）
+    auto wrap = [&](const char* text, float ty, float fs, Color col) {
+        std::string s = text, line;
+        float maxw = w - 60;
+        size_t i = 0;
+        while (i < s.size()) {
+            size_t len = 1;
+            unsigned char ch = (unsigned char)s[i];
+            if (ch >= 0xF0) len = 4; else if (ch >= 0xE0) len = 3; else if (ch >= 0xC0) len = 2;
+            if (ch < 0x80 && ch != ' ') {   // 英単語はまとめる
+                len = 0;
+                while (i + len < s.size() && (unsigned char)s[i + len] < 0x80 && s[i + len] != ' ') len++;
+            }
+            std::string piece = s.substr(i, len);
+            if (!line.empty() && TxtW((line + piece).c_str(), fs) > maxw) {
+                TxtC(line.c_str(), c.W * 0.5f, ty, fs, col);
+                ty += fs * 1.5f;
+                line.clear();
+                if (piece == " ") { i += len; continue; }
+            }
+            line += piece;
+            i += len;
+        }
+        if (!line.empty()) TxtC(line.c_str(), c.W * 0.5f, ty, fs, col);
+        return ty + fs * 1.5f;
+    };
+    float ty = wrap(T(app.touchUI ? BODY_AT[pg] : BODY_A[pg]), y + 72, 19, {225, 235, 250, 255});
+    wrap(T(BODY_B[pg]), ty + 8, 17, {170, 200, 230, 255});
+    TxtC(T(app.touchUI ? UI_INTRO_TAP : UI_INTRO_KEYS), c.W * 0.5f, y + h - 30, 13, {150, 170, 190, 255});
+    if (app.touchUI) TxtC("×", x + w - 24, y + 8, 26, {200, 210, 230, 255});
+}
+
 // 一覧・入力欄が開いている間のキー操作。開いていれば true（ほかの操作は止める）
 static bool HandleModalInput(App& app) {
+    const Cam& c = app.cam;
+    if (app.introPage >= 0) {
+        bool next = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_SPACE);
+        if (app.tapped) {
+            float w = std::min(c.W - 20, 900.0f), h = 250, x = (c.W - w) / 2, y = (c.H - h) / 2;
+            if (CheckCollisionPointRec(app.tapPos, {x + w - 50, y, 50, 50})) { CloseIntro(app); return true; }
+            next = true;
+        }
+        if (IsKeyPressed(KEY_LEFT) && app.introPage > 0) app.introPage--;
+        if (IsKeyPressed(KEY_ESCAPE)) { CloseIntro(app); return true; }
+        if (next) {
+            if (++app.introPage >= INTRO_PAGES) CloseIntro(app);
+        }
+        return true;
+    }
+    if (app.settingsOpen && app.tapped) {
+        // タッチ: 項目をタップすると変わる。パネルの外をタップすると閉じる
+        float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        if (!CheckCollisionPointRec(app.tapPos, {x, y, w, h})) {
+            app.settingsOpen = false;
+        } else {
+            int row = (int)std::floor((app.tapPos.y - (y + 68)) / 30.0f);
+            if (row >= 0 && row < SET_COUNT) {
+                app.settingsSel = row;
+                ChangeSetting(app, row, 1, false);
+            }
+        }
+        return true;
+    }
+    if (app.eventsOpen && app.tapped) {
+        // タッチ: 行をタップで選び、選んでいる行をもう一度タップでワープ。見出しをタップでページ切替、外で閉じる
+        int n = (int)app.events.size();
+        int rows = std::max(1, std::min(n, 14));
+        float w = std::min(c.W - 20, 900.0f), h = 96 + rows * 28.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        if (!CheckCollisionPointRec(app.tapPos, {x, y, w, h})) {
+            app.eventsOpen = false;
+            return true;
+        }
+        if (app.tapPos.y < y + 64) {
+            app.eventsPage = (app.eventsPage + 1) % 3;
+            OpenEventsPage(app);
+            return true;
+        }
+        int first = std::max(0, std::min(app.eventSel - rows / 2, n - rows));
+        int row = first + (int)std::floor((app.tapPos.y - (y + 65)) / 28.0f);
+        if (row >= 0 && row < n) {
+            if (row == app.eventSel && app.warpT < 0) {
+                const AstroEvent& ev = app.events[row];
+                StartWarp(app, EventBody(ev), false);
+                app.warpEvent = row;
+                app.eventsOpen = false;
+            } else {
+                app.eventSel = row;
+            }
+        }
+        return true;
+    }
+    if ((app.showHelp || app.dateOpen) && app.tapped) {
+        app.showHelp = false;
+        app.dateOpen = false;
+        return true;
+    }
     if (app.settingsOpen) {
         if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) app.settingsSel = (app.settingsSel + 1) % SET_COUNT;
         if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) app.settingsSel = (app.settingsSel + SET_COUNT - 1) % SET_COUNT;
@@ -2474,6 +2747,7 @@ static void DrawModalPanels(const App& app) {
         TxtC((FormatDateDigits(app.dateDigits) + " UTC").c_str(), c.W * 0.5f, y + 52, 32, {255, 255, 255, 255});
         TxtC(T(UI_DATE_KEYS), c.W * 0.5f, y + 108, 15, {170, 200, 230, 255});
     }
+    DrawIntro(app);
 }
 
 static void FaceTarget(App& app) {
@@ -2606,6 +2880,30 @@ static PadState ReadPad(App& app) {
     return p;
 }
 
+// タッチのボタンをパッドの入力に重ねる（押し続ける加速・減速と、タップで動くボタン）
+static void TouchToPad(App& app, PadState& pad) {
+    if (!app.touchUI) return;
+    if (app.touchHeld == TB_THRUST) pad.throttle = 1;
+    if (app.touchHeld == TB_BRAKE) pad.brake = 1;
+    if (!app.tapped) return;
+    const Cam& c = app.cam;
+    int b = TouchButtonAt(c, app.tapPos);
+    switch (b) {
+        case TB_STOP: pad.stop = true; break;
+        case TB_TARGET: pad.nextTarget = true; break;
+        case TB_WARP: pad.warp = true; break;
+        case TB_AUTO: pad.autopilot = true; break;
+        case TB_TOUR: if (app.tourOn) StopTour(app); else StartTour(app); break;
+        case TB_EVENTS: OpenEventsPage(app); app.eventsOpen = true; break;
+        case TB_SETTINGS: app.settingsOpen = true; app.settingsSel = 0; break;
+        case TB_HELP: pad.help = true; break;
+        default:
+            for (int i = 0; i < ENGINE_COUNT; i++)
+                if (CheckCollisionPointRec(app.tapPos, EngineButtonRect(c, i))) app.ship.engine = i;
+            break;
+    }
+}
+
 // 自機の加速・移動に使う経過時間（時間倍率を反映、停止中は 0）
 static double SimDt(const App& app, double dt) { return app.paused ? 0.0 : dt * TIME_SCALES[app.timeIdx]; }
 
@@ -2613,9 +2911,11 @@ static void HandleInput(App& app, double dt) {
     Ship& s = app.ship;
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    UpdateTouch(app);
     PadState pad = ReadPad(app);
     app.padZoom = pad.zoom;
     if (HandleModalInput(app)) return;
+    TouchToPad(app, pad);
     if (IsKeyPressed(KEY_Z)) {
         app.photoMode = (app.photoMode + 1) % 3;
         Toast(app, T((UiId)(UI_PHOTO_0 + app.photoMode)));
@@ -2640,7 +2940,7 @@ static void HandleInput(App& app, double dt) {
         app.mouseCaptured = !app.mouseCaptured;
         if (app.mouseCaptured) DisableCursor(); else EnableCursor();
     }
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !app.mouseCaptured) {
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !app.mouseCaptured && !app.touchUI) {
         app.mouseCaptured = true;
         DisableCursor();
     }
@@ -2657,6 +2957,12 @@ static void HandleInput(App& app, double dt) {
         const double sens = 0.0022 * zoomK;
         yaw -= md.x * sens;
         pitch -= md.y * sens * (app.invertY ? -1 : 1);
+    }
+    if (app.touchUI) {   // タッチ: ドラッグした向きへ機首を向ける
+        const double sens = 0.004 * zoomK;
+        yaw -= app.touchDrag.x * sens;
+        pitch -= app.touchDrag.y * sens * (app.invertY ? -1 : 1);
+        if (Vector2Length(app.touchDrag) > 4) manual = true;
     }
     double kr = 1.1 * dt * zoomK;
     if (IsKeyDown(KEY_UP)) pitch += kr;
@@ -4354,6 +4660,7 @@ static void DrawHUD(App& app) {
         DrawModalPanels(app);
         return;
     }
+    DrawTouchButtons(app);
     const Ship& s = app.ship;
     const Engine& e = ENGINES[s.engine];
     V3 sw = ShipWorld(app);
@@ -4505,8 +4812,14 @@ int main(int argc, char** argv) {
         return 0;
     }
     LoadSettings();
+#if defined(__EMSCRIPTEN__)
+    // ブラウザ版: 大きさはページに合わせて毎フレーム自分で変える（raylib の自動の変更は縮小表示に対応しない）
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
+    InitWindow(WebViewW(), WebViewH(), "Solar System Voyager");
+#else
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Solar System Voyager");
+#endif
     SetExitKey(KEY_NULL);
     {
         EmbeddedFile f = IconPng();
@@ -4542,6 +4855,12 @@ int main(int argc, char** argv) {
     std::string q = GetSetting("quality");
     if (!q.empty()) app.quality = std::max(0, std::min(2, atoi(q.c_str())));
     if (opt.quality >= 0) app.quality = std::min(2, opt.quality);
+#if defined(__EMSCRIPTEN__)
+    if (WebCoarsePointer()) {   // スマホ・タブレット: 画面のボタンを出し、画質の設定がなければ低にする
+        app.touchUI = true;
+        if (q.empty()) app.quality = 0;
+    }
+#endif
     app.skyMode = std::max(0, std::min(2, atoi(GetSetting("sky").c_str())));
     if (opt.sky >= 0) app.skyMode = std::min(2, opt.sky);
     // 効果音（自動スクリーンショットでは鳴らさない）
@@ -4648,6 +4967,8 @@ int main(int argc, char** argv) {
     app.showHelp = opt.help;
     app.photoMode = std::max(0, std::min(2, opt.photo));
     app.settingsOpen = opt.settings;
+    if ((GetSetting("intro") != "1" && !opt.shot) || opt.intro) app.introPage = 0;   // 初回だけ案内を出す
+    if (opt.touch) app.touchUI = true;
     if (app.physics || opt.physics) {   // 重力モードで始める時は、今いる天体のまわりの円軌道に乗せる
         app.physics = false;
         SetPhysics(app, true);
@@ -4737,6 +5058,12 @@ int main(int argc, char** argv) {
         UpdateCamera(app);
         if (app.toastTime > 0) app.toastTime -= dt;
 
+#if defined(__EMSCRIPTEN__)
+        {   // ページの大きさが変わったら描画の大きさも合わせる
+            int w = WebViewW(), h = WebViewH();
+            if (w != GetScreenWidth() || h != GetScreenHeight()) SetWindowSize(w, h);
+        }
+#endif
         BeginDrawing();
         // 画質「低」: 星空と 3D を縮小バッファに描いて拡大する（HUD は等倍）
         bool lowRes = QUALITY_SCALE[app.quality] < 1.0f;

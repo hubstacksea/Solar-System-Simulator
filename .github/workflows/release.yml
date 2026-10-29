@@ -1,0 +1,142 @@
+# Solar System Voyager — Copyright (c) 2026 hubstacksea
+# MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
+#
+# タグ（v1.2.3 の形）を push すると:
+#   1. Linux (.deb / .rpm)・Windows (.7z、Linux からクロスビルド)・ブラウザ版 (Emscripten) を作る
+#   2. GitHub のリリースを作ってパッケージを添付する
+#   3. ブラウザ版を gh-pages ブランチへ置き、GitHub Pages で公開する
+# Actions タブから手動で動かした時（workflow_dispatch）は、ビルドだけしてリリースと公開はしない
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  EMSDK_VERSION: "3.1.74"
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build rpm \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+      - name: Build and package
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+          cd build && cpack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            build/*.deb
+            build/*.rpm
+
+  windows:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build mingw-w64 p7zip-full
+      - name: Cross-build and package
+        run: |
+          cmake -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-win
+          cd build-win && cpack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: build-win/*.7z
+
+  web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSDK_VERSION"
+      - name: Build the browser version
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-web -j
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: |
+            build-web/index.html
+            build-web/index.js
+            build-web/index.wasm
+            build-web/index.data
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, web]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          V="${TAG#v}"
+          cat > notes.md <<NOTES
+          Solar System Voyager ${V}
+
+          | File | Platform |
+          |---|---|
+          | \`SolarSystemVoyager-${V}-win64.7z\` | Windows 64-bit (portable: extract and run \`solar_voyager.exe\`) |
+          | \`solar-voyager_${V}_amd64.deb\` | Debian / Ubuntu (\`sudo apt install ./solar-voyager_${V}_amd64.deb\`) |
+          | \`solar-voyager-${V}-1.x86_64.rpm\` | Fedora / RHEL / openSUSE (\`sudo dnf install ./solar-voyager-${V}-1.x86_64.rpm\`) |
+
+          Browser version: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+          Requires OpenGL 3.3 (WebGL2 for the browser version). See README for controls.
+          NOTES
+          sed -i 's/^          //' notes.md
+          gh release create "$TAG" --title "Solar System Voyager $TAG" --notes-file notes.md \
+            dist/windows/*.7z dist/linux/*.deb dist/linux/*.rpm
+      - name: Publish the browser version to gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir site
+          cp dist/web/index.* site/
+          cp LICENSE THIRD_PARTY_NOTICES.md site/
+          cp web/OFL.txt site/OFL-NotoSansJP.txt
+          touch site/.nojekyll
+          cat > site/README.md <<'README'
+          # Solar System Voyager — browser version
+
+          This branch holds the files served by GitHub Pages. They are built from the `master` branch with
+          Emscripten by the Release workflow (see README.md there).
+
+          (c) 2026 hubstacksea — MIT License (LICENSE). Data sources and third-party licenses: THIRD_PARTY_NOTICES.md.
+          The Japanese font is a subset of Noto Sans JP under the SIL Open Font License 1.1 (OFL-NotoSansJP.txt).
+          https://github.com/hubstacksea/Solar-System-Simulator
+          README
+          sed -i 's/^          //' site/README.md
+          cd site
+          git init -q -b gh-pages
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898299+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Browser version ${TAG}"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
