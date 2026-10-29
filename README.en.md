@@ -30,7 +30,8 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Total solar eclipse from the ground](docs/screenshots/eclipse_ground.jpg) The total eclipse of 2 August 2027 from the ground (corona) | ![One minute before DART's impact](docs/screenshots/dart_impact.jpg) Didymos and Dimorphos one minute before DART's impact |
 | ![Itokawa](docs/screenshots/itokawa.jpg) Itokawa in its real shape | ![Saturn's rings from Voyager data](docs/screenshots/saturn_rings.jpg) Saturn's rings with the density measured by Voyager 2 |
 | ![International Space Station](docs/screenshots/iss.jpg) The International Space Station above Earth | ![Gravity mode](docs/screenshots/gravity_mode.jpg) Gravity mode (R key): the predicted orbit around Earth |
-| ![Browser version](docs/screenshots/browser.jpg) The browser version (WebGL2) | |
+| ![Browser version](docs/screenshots/browser.jpg) The browser version (WebGL2) | ![Touch controls on a phone](docs/screenshots/touch.jpg) Touch controls on a phone in landscape (during the tour) |
+| ![First-run guide](docs/screenshots/first_run.jpg) The guide shown on the first launch | |
 
 ## Getting started
 
