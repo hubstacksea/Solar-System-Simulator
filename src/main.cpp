@@ -131,7 +131,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
-    X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode") \
+    X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード    R : 重力モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode    R : gravity mode") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F9 : quality    F10 : settings    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
@@ -219,6 +219,14 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(SET_INVERT, "マウス上下反転", "Invert mouse") \
     X(SET_FULLSCREEN, "フルスクリーン", "Fullscreen") \
     X(SET_ON, "オン", "On") \
+    X(SET_PHYSICS, "飛行モード", "Flight model") \
+    X(SET_ARCADE, "アーケード", "Arcade") \
+    X(SET_GRAVITY, "重力", "Gravity") \
+    X(PHYS_ON, "重力モード: 天体の重力を受けて飛びます（W / S で機首の向きに加減速、X で相対停止）", "Gravity mode: you now fall under the bodies' gravity (W / S thrust along the nose, X stops relative motion)") \
+    X(PHYS_OFF, "アーケードモード: 機首の向きへ進みます", "Arcade mode: you fly where the nose points") \
+    X(PHYS_ORBIT, "近点 高度 %s / 遠点 高度 %s / 周期 %s（%s のまわり）", "periapsis %s / apoapsis %s / period %s (around %s)") \
+    X(PHYS_ESCAPE, "%s の重力から脱出する軌道", "escape trajectory from %s") \
+    X(PHYS_SLOW, "重力の計算が追いつかないので、時間の進みを抑えています", "Time is slowed so the gravity calculation can keep up") \
     X(SET_OFF, "オフ", "Off") \
     X(SET_Q0, "低（解像度 60%）", "Low (60% resolution)") \
     X(SET_Q1, "中", "Medium") \
@@ -540,6 +548,29 @@ static V3 ProbePosAt(const BodyDef& d, double t, F planetAt, bool* active, int* 
     return pos + s.v.back() * coast;
 }
 
+// 地球を回る人工衛星の地球中心の位置 km（描画座標）。TLE の平均軌道要素を 2 体問題で進め、地球の扁平（J2）による
+// 昇交点と近地点の移動と、平均運動の変化（大気の抵抗）を加える。SGP4 より粗いが、元期の近くでは数 km〜数十 km
+static V3 SatellitePos(const BodyDef& d, double t) {
+    const double MU = 398600.4418, J2 = 1.08263e-3, RE = 6378.137;
+    double dt = t - d.tleEpoch, dts = dt * 86400.0;
+    double n0 = d.tleN * 2 * PI / 86400.0;   // rad/s
+    double a = std::cbrt(MU / (n0 * n0)), e = d.tleE, inc = d.tleI * DEG;
+    double p = a * (1 - e * e), k = 1.5 * J2 * (RE / p) * (RE / p) * n0;
+    double node = d.tleNode * DEG - k * std::cos(inc) * dts;
+    double argp = d.tleArgp * DEG + k * (2 - 2.5 * std::sin(inc) * std::sin(inc)) * dts;
+    double dd = std::max(-365.0, std::min(365.0, dt));   // 平均運動の変化は 1 年分まで
+    double M = std::remainder(d.tleM * DEG + n0 * dts + 2 * PI * d.tleNdot * dd * dd, 2 * PI);
+    double E = M;
+    for (int i = 0; i < 8; i++) E -= (E - e * std::sin(E) - M) / (1 - e * std::cos(E));
+    double xp = a * (std::cos(E) - e), yp = a * std::sqrt(1 - e * e) * std::sin(E);
+    double cw = std::cos(argp), sw = std::sin(argp), cO = std::cos(node), sO = std::sin(node), cI = std::cos(inc), sI = std::sin(inc);
+    double x = (cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp;
+    double y = (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp;
+    double z = (sw * sI) * xp + (cw * sI) * yp;
+    const double eps = 23.4392911 * DEG;   // 赤道座標 → 黄道座標 → 描画座標
+    return EclToRender(x, y * std::cos(eps) + z * std::sin(eps), -y * std::sin(eps) + z * std::cos(eps));
+}
+
 static void EquatorBasis(V3 pole, V3* e1, V3* e2) {
     V3 a = Cross(Y_UP, pole);
     if (Len(a) < 1e-6) a = V3(1, 0, 0);
@@ -569,9 +600,9 @@ static std::vector<Body> InitBodies() {
             b.primeOffset = std::atan2(-Dot(Q, b.ez), Dot(Q, b.ex));
         }
         b.outer = d.rings ? d.radius * 2.37 : d.radius;
-        if (d.probe >= 0) {
+        if (d.probe >= 0 || d.tleN > 0) {
             b.soi = 2000;    // 近くにいる自機は探査機と一緒に移動する
-            b.outer = 0.03;  // 機体の大きさ（アンテナやブームを含めて約 30 m 以内。ワープの到着距離に使う）
+            b.outer = d.tleN > 0 ? 0.06 : 0.03;  // 機体の大きさ（ISS は端から端まで 109 m。ワープの到着距離に使う）
         } else if (d.parent == 0) {
             b.soi = d.a_au * AU_KM * std::pow(d.mass / B[0].d.mass, 0.4);
             // 離心率の大きい軌道は、離心近点角の等間隔だけでは近日点付近が粗いので、真近点角の等間隔の点も混ぜる
@@ -615,6 +646,12 @@ static std::vector<Body> InitBodies() {
     }
     // 探査機: 惑星中心の区間の境目での、シミュレータの惑星と実際の惑星の差
     if (g_probes.empty()) LoadProbeTracks();
+    // 人工衛星は軌跡の代わりに軌道要素で動く。探査機と同じ扱いにするため、空の軌跡の番号を割り当てる
+    for (Body& b : B)
+        if (b.d.tleN > 0 && b.d.probe < 0) {
+            b.d.probe = (int)g_probes.size();
+            g_probes.emplace_back();
+        }
     // ディモルフォスの公転の位置: 衝突の瞬間に、DART の最後の点から衝突までまっすぐ進んだ所にいるように合わせる
     for (Body& m : B) {
         if (m.d.moonPeriod2 <= 0) continue;
@@ -641,6 +678,9 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
         const BodyDef& d = b.d;
         if (d.parent < 0) {
             b.pos = V3();
+        } else if (d.tleN > 0) {
+            b.pos = B[B_EARTH].pos + SatellitePos(d, t);
+            b.active = t >= d.launch;
         } else if (d.probe >= 0) {
             // 惑星は先に更新済み（探査機は配列の最後）
             b.pos = ProbePosAt(d, t, [&](int i) { return B[i].pos; }, &b.active);
@@ -1056,7 +1096,8 @@ struct Ship {
     int ref = B_EARTH;  // 基準系の天体（自機はこの天体と一緒に公転移動する）
     V3 local;           // 基準天体からの相対位置 km
     Quaternion q = QuaternionIdentity();
-    double speed = 0;   // km/s（機首方向）
+    double speed = 0;   // km/s（機首方向。重力モードでは速度ベクトルの大きさ）
+    V3 vel;             // 重力モード: 基準天体に対する速度 km/s
     int engine = 0;
     bool thrusting = false;
 };
@@ -1211,6 +1252,7 @@ struct Options {
     int tour = 0;               // 1 秒後に自動ツアーをこの場面から始める（確認用、1〜）
     int photo = 0;              // 写真モード 0〜2（確認用）
     bool settings = false;      // 設定画面を開いた状態で始める（確認用）
+    bool physics = false;       // 重力モードで始める（確認用）
     bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
     int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星, 2: 探査機（確認用）
     double timeScale = 1;
@@ -1240,6 +1282,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--tour") o.tour = atoi(next());
         else if (a == "--photo") o.photo = atoi(next());
         else if (a == "--settings") o.settings = true;
+        else if (a == "--physics") o.physics = true;
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -1317,6 +1360,7 @@ struct App {
     int eventSel = 0;
     int warpEvent = -1;                   // イベントへのワープ中はその番号
     int photoMode = 0;                    // 写真モード（Z キー）0: 通常, 1: 表示を隠す, 2: 表示と自機を隠す
+    bool physics = false;                 // 重力モード（R キー）: 天体の重力を受けて飛ぶ（オフ: 機首の向きへ進むアーケード式）
     bool tourOn = false;                  // 自動ツアー（U キー）
     int tourIdx = 0;
     double tourTime = 0;                  // 今の場面に着いてからの実時間 秒
@@ -2229,9 +2273,12 @@ static void DrawTourPanel(const App& app) {
     }
 }
 
+static void SetPhysics(App& app, bool on);
+static V3 CircularVelocity(const App& app);
+
 // ---------------------------------------------------------------- 設定（F10 キー。それぞれのキー操作も同じ関数を使う）
 enum SettingItem { SET_LANG, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_ORBITS, SET_ASTEROIDS, SET_MARKERS,
-                   SET_INVERT, SET_FULLSCREEN, SET_COUNT };
+                   SET_INVERT, SET_PHYSICS, SET_FULLSCREEN, SET_COUNT };
 
 // 項目を dir（+1 / -1）の向きに変える。変えたらすぐ保存し、知らせを出すかは toast で選ぶ
 static void ChangeSetting(App& app, int item, int dir, bool toast) {
@@ -2286,6 +2333,11 @@ static void ChangeSetting(App& app, int item, int dir, bool toast) {
             SetSetting("invert", onoff(app.invertY));
             if (toast) Toast(app, T(app.invertY ? UI_INVERT_ON : UI_INVERT_OFF));
             break;
+        case SET_PHYSICS:
+            SetPhysics(app, !app.physics);
+            SetSetting("physics", onoff(app.physics));
+            if (toast) Toast(app, T(app.physics ? UI_PHYS_ON : UI_PHYS_OFF));
+            break;
         case SET_FULLSCREEN:
             ToggleBorderlessWindowed();
             break;
@@ -2305,6 +2357,7 @@ static std::string SettingValue(const App& app, int item) {
         case SET_ASTEROIDS: return onoff(app.showAsteroids);
         case SET_MARKERS: return onoff(app.showMoonMarkers);
         case SET_INVERT: return onoff(app.invertY);
+        case SET_PHYSICS: return T(app.physics ? UI_SET_GRAVITY : UI_SET_ARCADE);
         default: return onoff(IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE));
     }
 }
@@ -2371,7 +2424,7 @@ static void DrawModalPanels(const App& app) {
     const Cam& c = app.cam;
     if (app.settingsOpen) {
         static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY, UI_SET_ORBITS,
-                                             UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT, UI_SET_FULLSCREEN};
+                                             UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT, UI_SET_PHYSICS, UI_SET_FULLSCREEN};
         float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
@@ -2477,6 +2530,7 @@ static void UpdateWarp(App& app, double dt) {
             app.warpBookmark = -1;
             app.warpEvent = -1;
             app.warpJumped = true;
+            if (app.physics) app.ship.vel = CircularVelocity(app);   // 重力モード: 着いた天体のまわりの円軌道に乗せる
         }
     } else if (app.warpT >= WARP_CHARGE + WARP_ARRIVE) {
         app.warpT = -1;
@@ -2661,6 +2715,16 @@ static void HandleInput(App& app, double dt) {
         double over = (std::fabs(s.speed) - lim) * std::exp(-3.0 * dt);
         s.speed = sign * (over < lim * 1e-4 ? lim : lim + over);
     }
+    if (app.physics && !app.autopilot && !warping) {
+        // 重力モード: 噴射は機首の向き（S は逆噴射）に速度を変える。X は基準天体に対して止まる
+        V3 f = ShipFwd(s);
+        s.vel += f * (acc * (throttle - brake) * sdt);
+        if (IsKeyPressed(KEY_X) || pad.stop) s.vel = V3();
+        double v = Len(s.vel);
+        if (v > C_KMS * 0.999) s.vel = s.vel * (C_KMS * 0.999 / v);
+        s.speed = Len(s.vel);
+    }
+    if (IsKeyPressed(KEY_R)) ChangeSetting(app, SET_PHYSICS, 1, true);
 
     // ターゲット
     int n = (int)app.B.size();
@@ -2826,8 +2890,132 @@ static void UpdateAutopilot(App& app, double dt) {
     else app.apPhase = UI_AP_CRUISE;
 }
 
+// ---------------------------------------------------------------- 重力モード
+static const double G_KM = 6.674e-20;   // 万有引力定数 km³/(kg s²)
+
+// 重力を及ぼす天体（10²⁰ kg 以上: 太陽・惑星・大きな衛星・冥王星・カロン・準惑星の一部）
+static bool Massive(const Body& b) { return b.d.probe < 0 && b.d.mass > 1e20; }
+
+// 基準天体 ref の中心から見た位置 r の点の加速度 km/s²（各天体の位置は今の時刻のまま。ref 自身が受ける加速度を
+// 差し引くので、ref と一緒に動く座標系での運動になる）
+static V3 GravityAccel(const App& app, int ref, V3 r) {
+    V3 a, aref;
+    const V3 p0 = app.B[ref].pos;
+    for (const Body& b : app.B) {
+        if (!Massive(b)) continue;
+        double gm = G_KM * b.d.mass;
+        V3 d = (b.pos - p0) - r;
+        double L = Len(d);
+        if (L > 1e-3) a += d * (gm / (L * L * L));
+        if (&b != &app.B[ref]) {
+            V3 e = b.pos - p0;
+            double M = Len(e);
+            aref += e * (gm / (M * M * M));
+        }
+    }
+    return a - aref;
+}
+
+// 計算の刻み s: 近い天体ほど細かく（その天体のまわりの自由落下の時間の 1/50）
+static double PhysicsStep(const App& app, V3 w) {
+    double best = 3600.0 * 24;
+    for (const Body& b : app.B) {
+        if (!Massive(b)) continue;
+        double r = std::max(Len(w - b.pos), b.d.radius);
+        best = std::min(best, 0.02 * std::sqrt(r * r * r / (G_KM * b.d.mass)));
+    }
+    return std::max(best, 0.05);
+}
+static const int PHYS_MAX_STEPS = 3000;   // 1 フレームの刻みの上限（超える時は時間の進みを抑える）
+
+// 基準天体のまわりの円軌道の速度（重力モードに入った時・ワープで着いた時）。地表近くでは止まる
+static V3 CircularVelocity(const App& app) {
+    const Ship& s = app.ship;
+    const Body& b = app.B[s.ref];
+    if (!Massive(b)) return V3();
+    double r = Len(s.local);
+    if (r < SurfaceRadius(b, Norm(s.local)) + 1.0) return V3();
+    V3 radial = Norm(s.local), dir = ShipFwd(s) - radial * Dot(ShipFwd(s), radial);
+    if (Len(dir) < 1e-6) dir = Cross(radial, Y_UP);
+    if (Len(dir) < 1e-6) dir = V3(1, 0, 0);
+    return Norm(dir) * std::sqrt(G_KM * b.d.mass / r);
+}
+
+// 天体の速度 km/s（1 分後の位置との差。基準天体が変わった時の速度の付け替えに使う）
+static V3 BodyVelocity(const App& app, int i) {
+    std::vector<Body> B = app.B;
+    UpdateBodies(B, app.tDays + 60.0 / 86400);
+    return (B[i].pos - app.B[i].pos) * (1.0 / 60.0);
+}
+
+// 重力と噴射のもとで dt 秒進める（速度ベルレ法）。地表に当たったら止まる
+static void IntegrateShip(App& app, double dt) {
+    Ship& s = app.ship;
+    if (dt <= 0) return;
+    int n = std::min(PHYS_MAX_STEPS, std::max(1, (int)std::ceil(dt / PhysicsStep(app, ShipWorld(app)))));
+    double h = dt / n;
+    V3 a = GravityAccel(app, s.ref, s.local);
+    for (int k = 0; k < n; k++) {
+        s.vel += a * (h * 0.5);
+        s.local += s.vel * h;
+        a = GravityAccel(app, s.ref, s.local);
+        s.vel += a * (h * 0.5);
+        for (const Body& b : app.B) {
+            V3 rel = ShipWorld(app) - b.pos;
+            double d = Len(rel);
+            if (d > b.d.radius * 1.2 + 1 || b.d.probe >= 0) continue;
+            V3 dir = rel * (1.0 / d);
+            double rs = SurfaceRadius(b, dir) + MinAltitude(b);
+            if (d < rs) {
+                SetShipWorld(app, b.pos + dir * rs);
+                double vin = Dot(s.vel, dir);
+                if (vin < 0) s.vel = s.vel - dir * vin;   // 地面に向かう成分を消し、地面の上を滑らせて摩擦で止める
+                s.vel = s.vel * std::exp(-2.0 * h);
+            }
+        }
+    }
+}
+
+// 今の時刻の 2 体問題の軌道（基準天体のまわり）: 近点・遠点の高度と周期。脱出軌道なら false
+static bool OrbitInfo(const App& app, double* peri, double* apo, double* period) {
+    const Ship& s = app.ship;
+    const Body& b = app.B[s.ref];
+    if (!Massive(b)) return false;
+    double mu = G_KM * b.d.mass, r = Len(s.local), v2 = Dot(s.vel, s.vel);
+    double energy = v2 / 2 - mu / r;
+    if (energy >= 0) return false;
+    double a = -mu / (2 * energy);
+    V3 hvec = Cross(s.local, s.vel);
+    double e = std::sqrt(std::max(0.0, 1 - Dot(hvec, hvec) / (mu * a)));
+    *peri = a * (1 - e) - b.d.radius;
+    *apo = a * (1 + e) - b.d.radius;
+    *period = 2 * PI * std::sqrt(a * a * a / mu);
+    return true;
+}
+
+static void SetPhysics(App& app, bool on) {
+    if (on == app.physics) return;
+    app.physics = on;
+    if (on) {
+        app.ship.vel = ShipFwd(app.ship) * app.ship.speed;
+        if (Len(app.ship.vel) < 1e-6) app.ship.vel = CircularVelocity(app);
+    } else {
+        app.ship.speed = std::max(0.0, Dot(app.ship.vel, ShipFwd(app.ship)));
+    }
+    app.autopilot = false;
+}
+
 static void UpdateShip(App& app, double dt) {
     Ship& s = app.ship;
+    if (app.physics && !app.autopilot && app.warpT < 0) {
+        int oldRef = s.ref;
+        IntegrateShip(app, dt);
+        s.speed = Len(s.vel);
+        UpdateReferenceFrame(app);
+        if (s.ref != oldRef) s.vel += BodyVelocity(app, oldRef) - BodyVelocity(app, s.ref);   // 速度を新しい基準天体に対する値へ
+        return;
+    }
+    if (app.physics) s.vel = s.speed > 1e-9 ? ShipFwd(s) * s.speed : CircularVelocity(app);   // 自動操縦・ワープの後に引き継ぐ
     double step = s.speed * dt;
     if (app.autopilot && step > app.apRemain) step = app.apRemain;  // 大きな時間倍率でも行き過ぎない
     s.local += ShipFwd(s) * step;
@@ -2910,6 +3098,62 @@ static void DrawOrbits(App& app) {
             Vector3 p0 = ToF(center + b.orbit[k] - c.pos), p1 = ToF(center + b.orbit[k + 1] - c.pos);
             rlVertex3f(p0.x, p0.y, p0.z);
             rlVertex3f(p1.x, p1.y, p1.z);
+        }
+        rlEnd();
+    }
+    // 重力モード: これから飛ぶ軌道の予測（基準天体と一緒に動く座標で、軌道 1 周分か 30 日分。天体の位置は今のまま）
+    if (app.physics && app.warpT < 0 && !app.autopilot && Len(app.ship.vel) > 1e-9) {
+        double peri, apo, period;
+        double T = OrbitInfo(app, &peri, &apo, &period) ? std::min(period * 1.02, 2 * 365.25 * 86400.0) : 30 * 86400.0;
+        V3 r = app.ship.local, v = app.ship.vel;
+        const Body& rb = app.B[app.ship.ref];
+        const int N = 720, MAXSUB = 12000;
+        int used = 0;
+        rlCheckRenderBatchLimit(N * 2 + 2);
+        rlBegin(RL_LINES);
+        V3 prev = rb.pos + r;
+        for (int k = 1; k <= N && used < MAXSUB; k++) {
+            double left = T / N;
+            while (left > 0 && used < MAXSUB) {
+                double h = std::min(left, PhysicsStep(app, rb.pos + r) * 2);
+                V3 a = GravityAccel(app, app.ship.ref, r);
+                v += a * (h * 0.5);
+                r += v * h;
+                v += GravityAccel(app, app.ship.ref, r) * (h * 0.5);
+                left -= h;
+                used++;
+            }
+            bool hit = false;
+            for (const Body& b : app.B)
+                if (b.d.probe < 0 && Len(rb.pos + r - b.pos) < b.d.radius) hit = true;
+            V3 pnt = rb.pos + r;
+            unsigned char al = (unsigned char)(200 * (1.0 - 0.7 * k / N));
+            rlColor4ub(120, 230, 255, al);
+            Vector3 p0 = ToF(prev - c.pos), p1 = ToF(pnt - c.pos);
+            rlVertex3f(p0.x, p0.y, p0.z);
+            rlVertex3f(p1.x, p1.y, p1.z);
+            prev = pnt;
+            if (hit) break;   // 天体に当たる所まで
+        }
+        rlEnd();
+    }
+    // 地球を回る人工衛星の軌道（今の軌道要素で 1 周分。地球の近く 10 万 km 以内でだけ）
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        if (b.d.tleN <= 0 || !b.active || Len(c.pos - app.B[B_EARTH].pos) > 1e5) continue;
+        if (Len(c.pos - b.pos) < 0.1) continue;
+        const int N = 180;
+        double P = 1.0 / b.d.tleN;
+        rlCheckRenderBatchLimit(N * 2 + 2);
+        rlBegin(RL_LINES);
+        rlColor4ub(255, 196, 120, (unsigned char)((int)i == app.target ? 150 : 60));
+        V3 prev = app.B[B_EARTH].pos + SatellitePos(b.d, app.tDays);
+        for (int k = 1; k <= N; k++) {
+            V3 pnt = app.B[B_EARTH].pos + SatellitePos(b.d, app.tDays + P * k / N);
+            Vector3 p0 = ToF(prev - c.pos), p1 = ToF(pnt - c.pos);
+            rlVertex3f(p0.x, p0.y, p0.z);
+            rlVertex3f(p1.x, p1.y, p1.z);
+            prev = pnt;
         }
         rlEnd();
     }
@@ -3561,7 +3805,7 @@ static void DrawShipPass(App& app, double dt) {
     if (!app.cockpit) {
         V3 sw = ShipWorld(app);
         V3 rel = sw - c.pos;
-        double target = s.thrusting ? 1.0 : (std::fabs(s.speed) > 0 ? 0.25 : 0.0);
+        double target = s.thrusting ? 1.0 : (!app.physics && std::fabs(s.speed) > 0 ? 0.25 : 0.0);   // 重力モードの慣性飛行では噴射しない
         app.glow += (target - app.glow) * std::min(1.0, dt * 6);
 
         SetShipLighting(app, sw);
@@ -3613,11 +3857,16 @@ static void DrawProbes(App& app) {
         SetShaderValue(app.shipShader, app.locEngGlow, &off, SHADER_UNIFORM_FLOAT);
         SetShaderValue(app.shipShader, app.locNavBlink, &off, SHADER_UNIFORM_FLOAT);
         // パーカーは耐熱シールドを太陽へ、ほかは高利得アンテナを地球へ向ける
+        // パーカーと JWST は太陽へ、地球を回る人工衛星は進む向き（上が天頂）、ほかは高利得アンテナを地球へ向ける
         int pm = b.d.probeModel;
-        V3 aim = (pm == PM_PARKER ? app.B[B_SUN].pos : app.B[B_EARTH].pos) - b.pos;
+        V3 aim = (pm == PM_PARKER || pm == PM_JWST ? app.B[B_SUN].pos : app.B[B_EARTH].pos) - b.pos, upHint = Y_UP;
+        if (b.d.tleN > 0) {
+            aim = SatellitePos(b.d, app.tDays + 1.0 / 86400) - SatellitePos(b.d, app.tDays);
+            upHint = Norm(b.pos - app.B[B_EARTH].pos);
+        }
         if (pm == PM_GALILEO && app.tDays < GALILEO_PROBE_RELEASE) pm = PM_GALILEO_PROBE;
         if (pm == PM_CASSINI && app.tDays < HUYGENS_RELEASE) pm = PM_CASSINI_HUYGENS;
-        Quaternion q = QuatFromBasis(Len(aim) > 1 ? aim : V3(1, 0, 0), Y_UP);
+        Quaternion q = QuatFromBasis(Len(aim) > 1e-6 ? aim : V3(1, 0, 0), upHint);
         Matrix model = MatrixMultiply(MatrixMultiply(MatrixScale(0.001f, 0.001f, 0.001f), QuaternionToMatrix(q)),
                                       MatrixTranslate((float)rel.x, (float)rel.y, (float)rel.z));
         rlDisableBackfaceCulling();
@@ -4002,7 +4251,7 @@ static void DrawSpeedometer(const App& app) {
     }
     // 現在速度の円弧と針
     double u = std::min(1.08, std::fabs(s.speed) / vmax);
-    bool over = std::fabs(s.speed) > vmax * 1.001;
+    bool over = !app.physics && std::fabs(s.speed) > vmax * 1.001;   // 重力モードでは最高速度の制限はない
     Color needle = over ? Color{255, 80, 60, 255} : (s.speed < 0 ? Color{255, 170, 60, 255} : Color{90, 230, 255, 255});
     if (u > 0.002) DrawRing(ctr, R - 3, R + 4, 135, (float)(135 + 270 * std::min(1.0, u)), 60, Fade(needle, 0.8f));
     float a = (float)((135 + 270 * u) * DEG);
@@ -4145,6 +4394,18 @@ static void DrawHUD(App& app) {
     std::string ts = app.paused ? T(UI_PAUSED) : (app.timeIdx == 0 ? std::string("x1 (") + T(UI_REALTIME) + ")" : TIME_SCALE_NAMES[app.timeIdx]);
     snprintf(b, sizeof b, "%s %s", T(UI_TSCALE), ts.c_str());
     Txt(b, x, y, fs, app.paused ? Color{255, 160, 80, 255} : (app.timeIdx == 0 ? Color{140, 230, 160, 255} : Color{255, 210, 120, 255}));
+    if (app.physics && Massive(app.B[s.ref])) {
+        // 重力モード: 基準天体のまわりの軌道（パネルの下に）
+        double peri, apo, period;
+        const char* nm = TR(app.B[s.ref].d.jp, app.B[s.ref].d.en);
+        if (OrbitInfo(app, &peri, &apo, &period))
+            snprintf(b, sizeof b, T(UI_PHYS_ORBIT), FmtDist(peri).c_str(), FmtDist(apo).c_str(), FmtDuration(period).c_str(), nm);
+        else
+            snprintf(b, sizeof b, T(UI_PHYS_ESCAPE), nm);
+        float tw = TxtW(b, 15) + 16;
+        DrawRectangleRounded({6, lh * 6 + 24, tw, 26}, 0.3f, 6, {0, 10, 25, 150});
+        Txt(b, 14, lh * 6 + 28, 15, {150, 230, 255, 255});
+    }
 
     // 右上: ターゲット情報
     const Body& tb = app.B[app.target];
@@ -4205,6 +4466,17 @@ static void DrawHUD(App& app) {
     DrawModalPanels(app);
 }
 
+// シェーダは GLSL 3.30 で書いてある。ブラウザ版 (WebGL2) では GLSL ES 3.00 に書き換える
+static std::string GlslForPlatform(const char* src) {
+    std::string s = src;
+#if defined(__EMSCRIPTEN__)
+    size_t p = s.find("#version 330");
+    if (p != std::string::npos)   // #version は 1 行目に置く必要がある（ソースは改行から始まる）
+        s = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n" + s.substr(p + 12);
+#endif
+    return s;
+}
+
 // ---------------------------------------------------------------- main
 int main(int argc, char** argv) {
     Options opt = ParseArgs(argc, argv);
@@ -4251,6 +4523,7 @@ int main(int argc, char** argv) {
     app.showOrbits = GetSetting("orbits") != "0";
     app.showMoonMarkers = GetSetting("markers") != "0";
     app.invertY = GetSetting("invert") == "1";
+    app.physics = GetSetting("physics") == "1";
 
     // フォント
     std::string allText = "°²·×〜";
@@ -4277,7 +4550,7 @@ int main(int argc, char** argv) {
         sfx::MusicInit(GetSetting("music") == "0");
     }
 
-    app.shader = LoadShaderFromMemory(PLANET_VS, PLANET_FS);
+    app.shader = LoadShaderFromMemory(GlslForPlatform(PLANET_VS).c_str(), GlslForPlatform(PLANET_FS).c_str());
     app.locLight = GetShaderLocation(app.shader, "lightDir");
     app.locLightObj = GetShaderLocation(app.shader, "lightDirObj");
     app.locC1 = GetShaderLocation(app.shader, "color1");
@@ -4311,7 +4584,7 @@ int main(int argc, char** argv) {
     LoadBodyMaps(app);
     app.locMapInfo = GetShaderLocation(app.shader, "mapInfo");
     app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");
-    app.skyShader = LoadShaderFromMemory(SKY_VS, SKY_FS);
+    app.skyShader = LoadShaderFromMemory(GlslForPlatform(SKY_VS).c_str(), GlslForPlatform(SKY_FS).c_str());
     app.locSkyUp = GetShaderLocation(app.skyShader, "up");
     app.locSkySun = GetShaderLocation(app.skyShader, "sunDir");
     app.locSkyBeta = GetShaderLocation(app.skyShader, "beta");
@@ -4328,7 +4601,7 @@ int main(int argc, char** argv) {
         app.shapeMesh.push_back(ShapeMesh(sh, r));
     }
     app.ring = GenRing(72000.0f / 60268.0f, 142500.0f / 60268.0f, 720);   // D 環の内側〜F 環の外側
-    app.shipShader = LoadShaderFromMemory(SHIP_VS, SHIP_FS);
+    app.shipShader = LoadShaderFromMemory(GlslForPlatform(SHIP_VS).c_str(), GlslForPlatform(SHIP_FS).c_str());
     app.locSunDir = GetShaderLocation(app.shipShader, "sunDir");
     app.locSunColor = GetShaderLocation(app.shipShader, "sunColor");
     app.locFillDir = GetShaderLocation(app.shipShader, "fillDir");
@@ -4375,6 +4648,10 @@ int main(int argc, char** argv) {
     app.showHelp = opt.help;
     app.photoMode = std::max(0, std::min(2, opt.photo));
     app.settingsOpen = opt.settings;
+    if (app.physics || opt.physics) {   // 重力モードで始める時は、今いる天体のまわりの円軌道に乗せる
+        app.physics = false;
+        SetPhysics(app, true);
+    }
     app.probeEvents = FindProbeEvents(app);
     app.cometEvents = FindCometEvents(app);
     app.eventsPage = std::max(0, std::min(2, opt.eventsPage));
@@ -4438,6 +4715,14 @@ int main(int argc, char** argv) {
             app.ship.thrusting = true;
         }
         double simDt = SimDt(app, dt);
+        if (app.physics && !app.autopilot && app.warpT < 0) {
+            // 重力の計算の刻みが上限を超えるほど速い時は、時間の進みを抑える
+            double maxDt = PhysicsStep(app, ShipWorld(app)) * PHYS_MAX_STEPS;
+            if (simDt > maxDt) {
+                simDt = maxDt;
+                if (app.toastTime <= 0) Toast(app, T(UI_PHYS_SLOW));
+            }
+        }
         app.tDays += simDt / 86400.0;
         UpdateBodies(app.B, app.tDays);
         UpdateShip(app, simDt);

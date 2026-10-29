@@ -21,12 +21,34 @@ if(NOT raylib_FOUND)
   set(SUPPORT_SCREEN_CAPTURE OFF CACHE BOOL "" FORCE)
   set(SUPPORT_GIF_RECORDING OFF CACHE BOOL "" FORCE)
   set(SUPPORT_FILEFORMAT_JPG ON CACHE BOOL "" FORCE)   # 地球の地表画像
+  if(EMSCRIPTEN)
+    # ブラウザ版: WebGL2（シェーダは GLSL ES 3.00 に書き換えて読む）
+    set(PLATFORM Web CACHE STRING "" FORCE)
+    set(OPENGL_VERSION "ES 3.0" CACHE STRING "" FORCE)
+  endif()
   FetchContent_Declare(raylib
     URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   FetchContent_MakeAvailable(raylib)
 endif()
 
+if(EMSCRIPTEN)
+  # ブラウザ版: データは実行ファイルに埋め込まず、.data ファイルにまとめてページと一緒に配る
+  add_executable(solar_voyager src/main.cpp src/embedded_assets_web.cpp src/platform_paths.cpp)
+  option(SOLAR_WEB_MUSIC "ブラウザ版に音楽を入れる（約 17 MB 増える）" OFF)
+  set(WEB_LINK -sUSE_GLFW=3 -sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 -sSTACK_SIZE=4194304
+      -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
+      "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/assets@/assets"
+      "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/web/NotoSansJP-subset.ttf@/assets/font.ttf"
+      "--exclude-file=*.ico" "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
+  if(NOT SOLAR_WEB_MUSIC)
+    list(APPEND WEB_LINK "--exclude-file=*.ogg")
+  endif()
+  target_link_options(solar_voyager PRIVATE ${WEB_LINK})
+  set_target_properties(solar_voyager PROPERTIES SUFFIX ".html" OUTPUT_NAME "index")
+  target_compile_definitions(solar_voyager PRIVATE APP_VERSION="${PROJECT_VERSION}")
+  target_link_libraries(solar_voyager PRIVATE raylib)
+else()
 add_executable(solar_voyager src/main.cpp src/embedded_assets.cpp src/platform_paths.cpp)
 if(WIN32)
   # exe のファイルアイコンとバージョン情報
@@ -56,6 +78,7 @@ elseif(UNIX AND NOT APPLE)
   find_package(OpenGL REQUIRED)
   target_link_libraries(solar_voyager PRIVATE OpenGL::GL m)
 endif()
+endif()   # EMSCRIPTEN
 
 # ---- インストール / パッケージ (cpack) ------------------------------------
 # Windows: 7z アーカイブ（展開してそのまま使うポータブル版）

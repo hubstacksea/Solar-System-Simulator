@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar System Voyager</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #01020a; color: #c8d6ea; font-family: system-ui, sans-serif; overflow: hidden; }
+  #canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+  #status { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+  #bar { width: min(420px, 80vw); height: 6px; background: #1a2638; border-radius: 3px; overflow: hidden; }
+  #fill { width: 0; height: 100%; background: #78c8ff; }
+  #credit { position: fixed; bottom: 6px; width: 100%; text-align: center; font-size: 12px; color: #6f8099; pointer-events: none; }
+  #credit a { color: #8fb4dc; pointer-events: auto; }
+</style>
+</head>
+<body>
+<canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+<div id="status"><div id="msg">読み込み中 / Loading…</div><div id="bar"><div id="fill"></div></div></div>
+<div id="credit">Solar System Voyager — (c) 2026 hubstacksea — MIT License —
+  <a href="https://github.com/hubstacksea/Solar-System-Simulator">github.com/hubstacksea/Solar-System-Simulator</a></div>
+<script>
+  // canvas の大きさを画面に合わせる（raylib がこの大きさで描く）
+  function fit() { const c = document.getElementById('canvas'); c.width = innerWidth; c.height = innerHeight; }
+  fit(); addEventListener('resize', fit);
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    setStatus: function (t) {
+      const m = t.match(/\((\d+(\.\d+)?)\/(\d+)\)/);
+      if (m) document.getElementById('fill').style.width = (100 * m[1] / m[3]) + '%';
+      if (!t) { document.getElementById('status').style.display = 'none'; document.getElementById('credit').style.display = 'none'; }
+    },
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

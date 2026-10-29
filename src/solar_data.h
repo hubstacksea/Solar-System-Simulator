@@ -65,6 +65,10 @@ struct BodyDef {
     bool probeCoast = false;   // 探査機: データの終わりより後も等速直線運動で外へ進む（太陽系を脱出する機体）
     int probeModel = 0;        // 探査機: 機体の形（src/ship_model.h の ProbeModel）
     bool probeEnd = false;     // 探査機: データの終わりが運用終了（天体への突入・着地）
+    // 地球を回る人工衛星（ISS・ハッブル）: 平均軌道要素 TLE（tleN > 0 の時に使う）。地球中心・J2000 赤道座標とみなす
+    double tleEpoch = 0, tleN = 0, tleNdot = 0;   // 元期（J2000 からの日数）, 平均運動 周/日, その変化の半分 周/日²
+    double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
+    double launch = -1e9;      // 打ち上げ（J2000 からの日数）。これより前は表示しない
     int style = S_GENERIC;
 };
 
@@ -296,7 +300,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     // ---- 探査機（並びは tools/make_probe_assets.py と同じ） ----
     //   coast: データの後も直進する, end: データの終わりが運用終了（天体への突入・着地）
     //   機体の形: 0 ボイジャー, 1 パイオニア, 2 ガリレオ, 4 カッシーニ, 6 ニュー・ホライズンズ, 7 パーカー,
-    //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2, 11 オシリス・レックス, 12 DART（ProbeModel）
+    //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2, 11 オシリス・レックス, 12 DART, 13 JWST（ProbeModel）
     static const struct { const char* jp; const char* en; bool coast, end; int model; } PROBES[] = {
         {"ボイジャー1号", "Voyager 1", true, false, 0}, {"ボイジャー2号", "Voyager 2", true, false, 0},
         {"パイオニア10号", "Pioneer 10", true, false, 1}, {"パイオニア11号", "Pioneer 11", true, false, 1},
@@ -306,6 +310,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         {"ジュノー", "Juno", false, false, 8}, {"ロゼッタ", "Rosetta", false, true, 9},
         {"はやぶさ2", "Hayabusa2", false, false, 10},
         {"オシリス・レックス", "OSIRIS-REx", false, false, 11}, {"DART", "DART", false, true, 12},
+        {"ジェイムズ・ウェッブ宇宙望遠鏡", "James Webb Space Telescope", false, false, 13},
     };
     for (int i = 0; i < (int)(sizeof PROBES / sizeof PROBES[0]); i++) {
         BodyDef d{};
@@ -314,6 +319,25 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         d.rotPeriod = 1e9;
         d.kind = KIND_PROBE; d.c1 = {0.85f, 0.82f, 0.70f}; d.c2 = d.c1;
         d.probe = i; d.probeCoast = PROBES[i].coast; d.probeModel = PROBES[i].model; d.probeEnd = PROBES[i].end;
+        v.push_back(d);
+    }
+    // ---- 地球を回る人工衛星（探査機の後ろ）。軌道要素は tools/fetch_tle.py で CelesTrak から取得した値。
+    // 元期から離れるほどずれる（大気の抵抗と軌道の引き上げのため、ISS は数日で数百 km、数か月で軌道上の位置が分からなくなる）
+    static const struct { const char* jp; const char* en; int model; double launch; double epoch, n, ndot, e, i, node, argp, M; } SATELLITES[] = {
+        {"国際宇宙ステーション", "ISS", 14, -407.22,   // 1998-11-20 ザーリャ打ち上げ
+         9796.966991, 15.49088092, 5.372e-05, 0.00070383, 51.6335, 0.5562, 319.9799, 40.0670},  // 2026-10-28T11:12:28
+        {"ハッブル宇宙望遠鏡", "Hubble", 15, -3538.0,   // 1990-04-25 放出
+         9796.714128, 15.32103159, 4.476e-05, 0.00019062, 28.4737, 250.4520, 186.0800, 173.9774},  // 2026-10-28T05:08:20
+    };
+    for (const auto& st : SATELLITES) {
+        BodyDef d{};
+        d.jp = st.jp; d.en = st.en; d.parent = 0;
+        d.radius = 0.002; d.mass = 4e5;
+        d.rotPeriod = 1e9;
+        d.kind = KIND_PROBE; d.c1 = {0.85f, 0.82f, 0.70f}; d.c2 = d.c1;
+        d.probeModel = st.model; d.launch = st.launch;
+        d.tleEpoch = st.epoch; d.tleN = st.n; d.tleNdot = st.ndot; d.tleE = st.e; d.tleI = st.i;
+        d.tleNode = st.node; d.tleArgp = st.argp; d.tleM = st.M;
         v.push_back(d);
     }
     for (BodyDef& d : v)

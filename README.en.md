@@ -30,6 +30,15 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Total solar eclipse from the ground](docs/screenshots/eclipse_ground.jpg) The total eclipse of 2 August 2027 from the ground (corona) | ![One minute before DART's impact](docs/screenshots/dart_impact.jpg) Didymos and Dimorphos one minute before DART's impact |
 | ![Itokawa](docs/screenshots/itokawa.jpg) Itokawa in its real shape | ![Saturn's rings from Voyager data](docs/screenshots/saturn_rings.jpg) Saturn's rings with the density measured by Voyager 2 |
 
+## Browser version
+
+Try it in your browser without installing anything: **https://hubstacksea.github.io/Solar-System-Simulator/**
+
+- Runs in browsers with WebGL2 (recent Chrome / Edge / Firefox / Safari). About 33 MB of data is loaded first
+- Music is not included (sound effects are). Japanese text uses the bundled Noto Sans JP font
+- Click the view to steer with the mouse (Esc to release). Settings and bookmarks are lost when the browser is closed
+- If it runs slowly, lower the quality with F9
+
 ## Building
 
 CMake downloads the raylib 5.5 source automatically and links it statically (network access is needed on the first build only).
@@ -54,6 +63,16 @@ cmake --build build
 ```
 
 The result is a standalone exe that needs no DLLs. Add `-DSOLAR_CONSOLE=ON` if you want a console window.
+
+### Browser version (Emscripten)
+
+```sh
+emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release   # add -DSOLAR_WEB_MUSIC=ON to include the music
+cmake --build build-web -j
+python3 -m http.server -d build-web 8000                 # open http://localhost:8000/
+```
+
+Put `build-web/index.html`, `index.js`, `index.wasm` and `index.data` on any web server. The data is not embedded but packed into `index.data`, and the shaders are rewritten for WebGL2 (GLSL ES 3.00) at startup. The Japanese font `web/NotoSansJP-subset.ttf` is made by `tools/make_web_font.py`.
 
 ### Cross-building the Windows version on Linux
 
@@ -98,6 +117,7 @@ After building, run `cpack` in the build directory.
 | P / Backspace | Pause time / sync to current time at x1 |
 | Y | Set the date and time (UTC; type the digits and press Enter) |
 | F10 | Settings (language, quality, sound effects, music, constellations, orbit lines, asteroids, markers, invert mouse, fullscreen; Up/Down to select, Left/Right / Enter to change, saved at once) |
+| R | Switch the flight model (arcade / gravity). In gravity mode you fall under the bodies' gravity: W / S thrust along the nose and X stops relative to the reference body. The predicted trajectory is drawn, with the periapsis and apoapsis altitudes and the period |
 | Z | Photo mode (each press: hide gauges and markers → hide the ship too → back to normal; orbit lines are toggled with O) |
 | U | Guided tour: 15 scenes (spacecraft highlights, great comets, an eclipse and more) in chronological order with captions, 15 seconds each. Enter for next, Shift+Enter for previous, U again to stop |
 | K | Event list (select one and press Enter to warp to that time and place). Tab / Shift+Tab switches pages: astronomical events (solar and lunar eclipses, planetary conjunctions and oppositions over the next 3 years, the next shadow transit of each Galilean moon across Jupiter, and transits of Mercury and Venus up to 150 years ahead), comets (perihelia and closest approaches to Earth) and spacecraft events (closest approaches, orbit insertions, end of mission) |
@@ -172,6 +192,8 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 - **Earth**: built from real NASA data — continents, coastlines, elevation (relief shading), ocean depth (shallow-water color), sea ice and city lights at night (about 10 km resolution, with finer detail filled in procedurally). Its rotation follows Greenwich sidereal time, so the regions in daylight and the lit cities at night match the PC clock. The surface colors follow the date using all 12 months of Blue Marble (winter snow, green rainy seasons and so on), and clouds come from NASA's global cloud image (one day's distribution) with finer streaks added
 - **Moon**: real NASA data (LRO color and LOLA elevation, about 3–5 km resolution). Maria, craters and ray systems are where they really are; smaller craters are filled in procedurally
 - **Music**: plays a piece for the nearest body: Holst's *The Planets* for the planets (the parent planet's movement near its moons), Grieg's "Morning Mood" for the Sun, the first movement of Beethoven's "Pastoral" Symphony for Earth and Debussy's "Clair de lune" for the Moon. It gets louder as you approach and fades out at the edge of the sphere of influence (1 AU for the Sun). Tracks crossfade when they change and resume where they left off when you return. Nothing plays near Pluto (the later Pluto movement by another composer is still under copyright), nor near the dwarf planets, asteroids and comets
+- **Spacecraft around Earth**: the International Space Station and the Hubble Space Telescope are computed from CelesTrak orbital elements (TLE of 28 October 2026), including the drift of the orbital plane caused by Earth's oblateness (within about 35 km of Horizons). They drift further off the farther you go from that epoch: the ISS by hundreds of km within days, losing its position along the orbit within months. The James Webb Space Telescope follows its JPL Horizons trajectory around the L2 point 1.5 million km from Earth (until October 2031). Select them with Tab and warp with G
+- **Gravity mode**: toggled in the settings or with the R key. You fall under the gravity of the Sun, the planets, the large moons and every body above 10²⁰ kg; when you switch it on or arrive by warp you are placed on a circular orbit around the current body. Body positions are updated every frame and held still within the frame while the motion is integrated in small steps (if time runs too fast for those steps, the time scale is held back automatically)
 - **Asteroids and other small bodies**: about 100,000 objects from the JPL Small-Body Database — the main belt (about 60,000 of the brightest), the outer belt including the Hildas, near-Earth asteroids, Jupiter Trojans, Centaurs and trans-Neptunian objects — move on their orbits (two-body motion) and are drawn as points. From afar you can see the ring of the main belt and the two Trojan swarms 60° ahead of and behind Jupiter. They are shown with the orbit lines (O key) and can be turned off in the settings
 - **Spacecraft**: Voyager 1 and 2, Pioneer 10 and 11, Galileo, Cassini, New Horizons, Parker Solar Probe, Juno, Rosetta, Hayabusa2, OSIRIS-REx and DART fly their real paths from JPL Horizons, from launch to end of mission (spacecraft leaving the Solar System keep coasting after the data ends in 2050–2100). Inside a planet's sphere of influence they move relative to the planet, so flybys of Jupiter, Neptune and the rest happen at the real distance, direction and time (encounters with moons can be off by a few thousand km because of the moons' position errors). Rosetta orbits Comet Churyumov-Gerasimenko and descends to its nucleus on 30 September 2016; Juno orbits Jupiter from 5 July 2016 (predicted trajectory after September 2026, data until September 2028). While Hayabusa2 stays at Ryugu (27 June 2018 – 13 November 2019) it is placed at its usual station, the home position 20 km from Ryugu toward Earth, because in Horizons the spacecraft and Ryugu come from separate solutions that put them only a few km apart. Their paths are shown with the orbit lines (O key), brighter where they have already flown. Each spacecraft has its own simple model (Voyager, Pioneer, Galileo, Cassini, New Horizons, Parker, Juno, Rosetta, Hayabusa2) with the high-gain antenna pointed at Earth (Parker keeps its heat shield toward the Sun). Cassini carries the Huygens probe until 25 December 2004, Galileo its atmospheric probe until 13 July 1995. Their markers are toggled together with the moon markers (L key). OSIRIS-REx stays at Bennu from December 2018 to May 2021 and brings back a sample, and DART impacts Dimorphos on 26 September 2022 (the K list and the tour warp you to one minute before the impact). The original Hayabusa is not included, because its trajectory up to Itokawa and most of its return trip are not publicly available
 - **Astronomical events**: from the K-key list you can warp, at the right moment, to a solar eclipse (12,000 km above the center of the eclipse; total and annular eclipses can also be watched from the ground at the center, where the corona appears and the sky darkens enough to show stars during totality), a lunar eclipse (beside the Moon), a moon's shadow crossing Jupiter (right above the shadow) or a planet at opposition (from the Earth side, fully lit like a full moon). Times are computed with simplified formulas and are typically within about 15 minutes of the real eclipses; the center of a solar eclipse is within a few hundred km. Transits are viewed from the line joining Earth and the planet (the same geometry as seen from Earth, but with the planet larger), conjunctions from just outside Earth, both with a zoomed view (right-click or move to return to the normal view). Mutual events of Jupiter's moons are not included: the moons' position errors are larger than the moons themselves
@@ -191,6 +213,7 @@ The images in `assets/` are made from NASA / NOAA data by `tools/make_earth_asse
 - City lights: NASA Earth Observatory, Black Marble 2016
 - Moon color and elevation: NASA's Scientific Visualization Studio, CGI Moon Kit (LROC WAC / LOLA)
 - Planet and moon maps: global mosaics from the USGS Astrogeology Science Center map service ([planetarymaps.usgs.gov](https://planetarymaps.usgs.gov/)) (Jupiter from Cassini PIA07782 (NASA/JPL/Space Science Institute), MESSENGER, Viking MDIM 2.1 colorized by NASA Ames, Dawn, Galileo / Voyager, Cassini, Voyager 2, New Horizons) and Mars elevations from the NASA PDS MGS MOLA MEGDR, fetched and converted by `tools/make_planet_maps.py` (requires Pillow and NumPy; downloads about 25 MB). The longitude of Jupiter's Great Red Spot follows the observations compiled by [Project Pluto](https://www.projectpluto.com/grs_lon.txt) (JUPOS since 1964)
+- Orbital elements of the ISS and the Hubble Space Telescope: [CelesTrak](https://celestrak.org/) (fetched by `tools/fetch_tle.py`). JWST trajectory: NASA/JPL Horizons
 - Orbital elements of asteroids and other small bodies: JPL Small-Body Database (fetched and converted by `tools/make_asteroid_assets.py`; requires NumPy; downloads about 20 MB)
 - Spacecraft trajectories: NASA/JPL Horizons (fetched and thinned out by `tools/make_probe_assets.py`; Rosetta from ESA and Hayabusa2 from JAXA orbit determination)
 - Starry sky: stars from the Hipparcos catalogue (ESA), and the lines, names and star names of the 88 constellations, from [d3-celestial](https://github.com/ofrohn/d3-celestial) (Olaf Frohn, BSD 3-Clause), converted by `tools/make_sky_assets.py`

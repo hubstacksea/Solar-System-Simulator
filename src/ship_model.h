@@ -228,7 +228,7 @@ private:
 // 探査機の機体モデル。単位 m。-Z が姿勢の基準（パーカーは耐熱シールドを太陽へ、ほかは高利得アンテナを地球へ向ける）
 enum ProbeModel {
     PM_VOYAGER = 0, PM_PIONEER, PM_GALILEO, PM_GALILEO_PROBE, PM_CASSINI, PM_CASSINI_HUYGENS, PM_NEW_HORIZONS, PM_PARKER,
-    PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_OSIRIS_REX, PM_DART, PM_COUNT
+    PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_OSIRIS_REX, PM_DART, PM_JWST, PM_ISS, PM_HUBBLE, PM_COUNT
 };
 
 inline Mesh GenProbeMesh(int model) {
@@ -435,6 +435,66 @@ inline Mesh GenProbeMesh(int model) {
             mb.Tube({sx * 0.9f, 0, -1.2f}, {sx * 9.4f, 0, -1.2f}, 0.04f, 6, metal, SM_METAL);
             mb.Tube({sx * 0.9f, 0, 1.2f}, {sx * 9.4f, 0, 1.2f}, 0.04f, 6, metal, SM_METAL);
         }
+        break;
+    }
+    case PM_JWST: {
+        // JWST: 5 層の日よけ（約 21 × 14 m の菱形を少しずつ離して重ねる）を太陽（-Z）へ向け、その陰に
+        // 18 枚の六角形の金の鏡（直径 6.5 m）と、3 本の支柱の先の副鏡
+        for (int l = 0; l < 5; l++) {
+            float z = -0.6f - l * 0.25f, k = 1.0f - l * 0.03f;
+            Vector3 c0 = {0, 0, z};
+            mb.OBox(c0, {10.4f * k * 0.7071f, 7.0f * k * 0.7071f, 0}, {-10.4f * k * 0.7071f, 7.0f * k * 0.7071f, 0}, {0, 0, 0.01f},
+                    l == 0 ? Color{200, 160, 190, 255} : Color{215, 195, 205, 255}, SM_METAL);
+        }
+        mb.Box({0, 0, -1.9f}, {1.0f, 1.0f, 0.5f}, dark, SM_METAL);    // 本体（日よけの太陽側）
+        mb.Box({0, 0, -2.6f}, {2.0f, 0.02f, 0.9f}, panel, SM_GLASS);  // 太陽電池パネル
+        const Color mirror = {220, 175, 60, 255};
+        for (int ring = 0; ring < 3; ring++) {   // 中央 1 + 6 + 12 の六角形（中央は穴）
+            int cnt = ring == 0 ? 1 : ring * 6;
+            for (int k = 0; k < cnt; k++) {
+                if (ring == 0) continue;
+                float ang = 2 * PI * k / cnt + PI / 6, rr = 1.32f * ring;
+                Vector3 c0 = {cosf(ang) * rr, sinf(ang) * rr + 0.5f, 1.2f + 0.08f * ring * ring};
+                mb.Prism(c0, Vector3Add(c0, {0, 0, 0.12f}), 0.74f, 6, PI / 6, mirror, SM_METAL);
+            }
+        }
+        for (int i = 0; i < 3; i++) {
+            float ang = PI / 2 + 2 * PI * i / 3;
+            mb.Tube({cosf(ang) * 3.0f, sinf(ang) * 3.0f + 0.5f, 1.5f}, {0, 0.5f, 7.6f}, 0.05f, 6, metal, SM_METAL);
+        }
+        mb.Disc({0, 0.5f, 7.6f}, {0, 0, -1}, 0.37f, 12, mirror, SM_METAL);
+        break;
+    }
+    case PM_ISS: {
+        // 国際宇宙ステーション: 進む向き（-Z）に並ぶ居住・実験モジュール、それと直交する長さ 109 m のトラス（X）、
+        // トラスの両端の 8 枚の太陽電池パドル（1 枚 35 × 12 m）、白い放熱板。上（+Y）が天頂
+        const Color mod = {225, 222, 212, 255};
+        mb.Tube({0, 0, -22.0f}, {0, 0, 24.0f}, 2.1f, 16, mod, SM_PAINT);        // 米国・ロシアのモジュールの列
+        mb.Tube({-8.0f, 0, -14.0f}, {8.0f, 0, -14.0f}, 2.1f, 16, mod, SM_PAINT);  // 「きぼう」「コロンバス」の並び
+        mb.Tube({-8.0f, 0, -14.0f}, {-8.0f, 0, -20.0f}, 2.1f, 16, mod, SM_PAINT);
+        mb.Box({0, 3.2f, 2.0f}, {54.5f, 1.0f, 1.0f}, metal, SM_METAL);           // トラス
+        for (int sx = -1; sx <= 1; sx += 2)
+            for (int k = 0; k < 2; k++) {
+                float x = sx * (36.0f + k * 14.0f);
+                for (int sz = -1; sz <= 1; sz += 2)
+                    mb.Box({x, 3.2f, 2.0f + sz * 18.5f}, {5.8f, 0.05f, 17.0f}, {150, 110, 50, 255}, SM_GLASS);
+            }
+        for (int sx = -1; sx <= 1; sx += 2)   // 放熱板
+            mb.Box({sx * 20.0f, 3.2f, 9.0f}, {1.6f, 0.05f, 6.5f}, white, SM_PAINT);
+        break;
+    }
+    case PM_HUBBLE: {
+        // ハッブル宇宙望遠鏡: 長さ 13.2 m・直径 4.2 m の筒（前 -Z に開口とふた）、両側の太陽電池パネル（7.1 × 2.6 m）
+        mb.Tube({0, 0, -6.6f}, {0, 0, 4.0f}, 1.55f, 24, {205, 205, 210, 255}, SM_METAL);
+        mb.Tube({0, 0, 4.0f}, {0, 0, 6.6f}, 2.1f, 24, {190, 190, 196, 255}, SM_METAL);
+        mb.Disc({0, 0, -6.61f}, {0, 0, -1}, 1.45f, 24, black, SM_METAL);
+        mb.Box({0, 1.6f, -7.2f}, {1.6f, 0.03f, 0.9f}, white, SM_PAINT);   // 開口のふた
+        for (int sx = -1; sx <= 1; sx += 2) {
+            mb.Tube({sx * 2.1f, 0, 2.0f}, {sx * 2.6f, 0, 2.0f}, 0.06f, 6, metal, SM_METAL);
+            mb.Box({sx * 4.1f, 0, 2.0f}, {1.3f, 0.02f, 3.55f}, panel, SM_GLASS);
+        }
+        mb.Tube({0, 2.1f, 2.0f}, {0, 3.5f, 2.0f}, 0.04f, 6, metal, SM_METAL);
+        mb.Dish({0, 3.5f, 2.0f}, {0, 1, 0}, 0.65f, 0.15f, white, SM_PAINT);
         break;
     }
     default: {

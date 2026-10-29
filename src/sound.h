@@ -147,6 +147,7 @@ inline void MusicInit(bool off) {
     if (!g.ready) return;
     for (int i = 0; i < MUSIC_COUNT; i++) {
         EmbeddedFile f = MusicOgg(i);
+        if (!f.data) continue;   // 入っていない曲（ブラウザ版）
         gm.m[i] = LoadMusicStreamFromMemory(".ogg", f.data, (int)f.size);
         gm.ok[i] = IsMusicValid(gm.m[i]);
         if (gm.ok[i]) gm.m[i].looping = true;
