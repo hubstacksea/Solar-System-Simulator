@@ -56,8 +56,10 @@ struct BodyDef {
     float atmStrength = 0;
     bool rings = false;
     bool comet = false;        // 太陽に近づくとコマと尾が出る
+    float cometScale = 1;      // 彗星: コマと尾の大きさ・活動を始める距離の倍率（ハレー彗星 = 1）
     int probe = -1;            // 探査機: assets/probes.bin の番号（位置は記録された軌跡から求める）
     bool probeCoast = false;   // 探査機: データの終わりより後も等速直線運動で外へ進む（太陽系を脱出する機体）
+    int probeModel = 0;        // 探査機: 機体の形（src/ship_model.h の ProbeModel）
     int style = S_GENERIC;
 };
 
@@ -199,7 +201,8 @@ inline std::vector<BodyDef> BuildSolarSystem() {
 
     // ---- 準惑星・小惑星・彗星（衛星より後ろに置き、衛星の番号を変えない） ----
     // 軌道要素と変化率は tools/fit_small_bodies.py で JPL Horizons の 1980〜2070 年の位置に合わせた値
-    // （行末は太陽から見た方向の最大誤差）。自転軸が分かっていないエリスとハレー彗星は黄道北極に近い向きで代用
+    // （行末は太陽から見た方向の最大誤差）。自転軸が分かっていないエリスと彗星は黄道北極に近い向きで代用。
+    // 周期 3.3 年のエンケ彗星は木星の摂動と非重力効果で近日点の時刻が年ごとにずれ、この形では合わないので入れていない
     static const struct { const char* en; double a, e, i, L, varpi, node, da, de, di, dL, dvarpi, dnode; } SMALL[] = {
         {"Ceres", 2.76734676, 0.07783857, 10.593635, 160.766441, 153.247620, 80.544086,
          -0.00007500, -0.00055623, -0.012593, 7819.405235, 1.628721, -1.476294},  // ±0.59°
@@ -209,6 +212,10 @@ inline std::vector<BodyDef> BuildSolarSystem() {
          -0.14049099, -0.00135515, 0.005773, 64.644283, -0.093700, 0.081563},  // ±0.005°
         {"Halley", 17.87123378, 0.96704123, 162.236665, 237.311611, 171.040354, 59.046541,
          -0.03386758, -0.00036089, -0.293216, 478.708185, 1.661520, 0.992647},  // ±0.24°
+        {"Hale-Bopp", 222.53884755, 0.99590531, 89.433731, 53.312066, 53.014050, 282.363864,
+         -3.61013831, -0.00002048, -0.608259, 12.445837, 1.618030, 1.211445},  // ±0.22°
+        {"Hyakutake", 1988.32581128, 0.99988433, 124.927752, 318.334357, 318.319476, 188.099666,
+         3.06403800, -0.00000317, 0.112184, 0.405531, -0.000062, -0.055328},  // ±0.13°
     };
     //                       名前                          半径    扁平率  質量
     //                       自転軸RA  Dec   自転周期[日]
@@ -226,12 +233,26 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                                 KIND_ROCKY, {0.24f, 0.22f, 0.20f}, {0.12f, 0.11f, 0.10f});
     halley.comet = true;
     v.push_back(halley);
+    // ヘール・ボップ彗星（1997 年の大彗星、核の半径 約 30 km）と百武彗星（1996 年に地球から 0.1 AU を通過）
+    BodyDef haleBopp = MakePlanet("ヘール・ボップ彗星", "Hale-Bopp", 30, 0.0, 1.3e16, 0, 0, 0, 0, 0, 0,
+                                  270.0, 66.56, 0.473,
+                                  KIND_ROCKY, {0.24f, 0.22f, 0.20f}, {0.12f, 0.11f, 0.10f});
+    haleBopp.comet = true;
+    haleBopp.cometScale = 2.5f;
+    v.push_back(haleBopp);
+    BodyDef hyakutake = MakePlanet("百武彗星", "Hyakutake", 2.1, 0.0, 1e13, 0, 0, 0, 0, 0, 0,
+                                   270.0, 66.56, 0.261,
+                                   KIND_ROCKY, {0.24f, 0.22f, 0.20f}, {0.12f, 0.11f, 0.10f});
+    hyakutake.comet = true;
+    hyakutake.cometScale = 0.8f;
+    v.push_back(hyakutake);
     // ---- 探査機（並びは tools/make_probe_assets.py と同じ） ----
-    static const struct { const char* jp; const char* en; bool coast; } PROBES[] = {
-        {"ボイジャー1号", "Voyager 1", true}, {"ボイジャー2号", "Voyager 2", true},
-        {"パイオニア10号", "Pioneer 10", true}, {"パイオニア11号", "Pioneer 11", true},
-        {"ガリレオ", "Galileo", false}, {"カッシーニ", "Cassini", false},
-        {"ニュー・ホライズンズ", "New Horizons", true}, {"パーカー・ソーラー・プローブ", "Parker Solar Probe", false},
+    //   機体の形: 0 ボイジャー, 1 パイオニア, 2 ガリレオ, 4 カッシーニ, 6 ニュー・ホライズンズ, 7 パーカー（ProbeModel）
+    static const struct { const char* jp; const char* en; bool coast; int model; } PROBES[] = {
+        {"ボイジャー1号", "Voyager 1", true, 0}, {"ボイジャー2号", "Voyager 2", true, 0},
+        {"パイオニア10号", "Pioneer 10", true, 1}, {"パイオニア11号", "Pioneer 11", true, 1},
+        {"ガリレオ", "Galileo", false, 2}, {"カッシーニ", "Cassini", false, 4},
+        {"ニュー・ホライズンズ", "New Horizons", true, 6}, {"パーカー・ソーラー・プローブ", "Parker Solar Probe", false, 7},
     };
     for (int i = 0; i < (int)(sizeof PROBES / sizeof PROBES[0]); i++) {
         BodyDef d{};
@@ -239,7 +260,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         d.radius = 0.002; d.mass = 1000;
         d.rotPeriod = 1e9;
         d.kind = KIND_PROBE; d.c1 = {0.85f, 0.82f, 0.70f}; d.c2 = d.c1;
-        d.probe = i; d.probeCoast = PROBES[i].coast;
+        d.probe = i; d.probeCoast = PROBES[i].coast; d.probeModel = PROBES[i].model;
         v.push_back(d);
     }
     for (BodyDef& d : v)

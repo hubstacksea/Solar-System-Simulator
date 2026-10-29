@@ -6,16 +6,18 @@
 誤差は太陽から見た方向の角度で測る（遠日点付近の大きな距離に引きずられないように）。
 惑星の摂動でずれる分を変化率が吸収するので、Horizons の J2000 の接触軌道要素をそのまま使うより正確になる。
 
-使い方: python3 tools/fit_small_bodies.py
+使い方: python3 tools/fit_small_bodies.py [名前 ...]（省略するとすべて）
 """
 import json
 import math
 import re
+import sys
 import urllib.parse
 import urllib.request
 
 UA = "SolarSystemVoyager-orbit-fit/1.0 (https://github.com/hubstacksea/Solar-System-Simulator)"
-BODIES = [("Ceres", "1;"), ("Vesta", "4;"), ("Eris", "136199;"), ("Halley", "DES=1P;CAP;NOFRAG")]
+BODIES = [("Ceres", "1;"), ("Vesta", "4;"), ("Eris", "136199;"), ("Halley", "DES=1P;CAP;NOFRAG"),
+          ("Hale-Bopp", "DES=C/1995 O1;CAP;NOFRAG"), ("Hyakutake", "DES=C/1996 B2;CAP;NOFRAG")]
 J2000 = 2451545.0
 START, STOP, STEP = "1980-01-01", "2070-01-01", "20 d"
 D = math.radians
@@ -107,6 +109,8 @@ def fit(p, samples):
 def main():
     print("// tools/fit_small_bodies.py の出力: a [AU], e, i, L, ϖ, Ω [deg] と 1 世紀あたりの変化率")
     for name, cmd in BODIES:
+        if len(sys.argv) > 1 and name not in sys.argv[1:]:
+            continue
         el = horizons(cmd, EPHEM_TYPE="ELEMENTS", TLIST="'%s'" % J2000)[0]
         e, i, node, w, M, a = (float(el[k]) for k in (2, 4, 5, 6, 9, 11))
         n = float(el[8])  # deg/日

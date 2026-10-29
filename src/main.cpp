@@ -165,14 +165,25 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(MUSIC_8, "♪ ベートーヴェン 交響曲第6番「田園」第1楽章 Skidmore College Orchestra (Musopen)", "Now playing: Beethoven, Symphony No. 6 \"Pastoral\", I - Skidmore College Orchestra (Musopen)") \
     X(MUSIC_9, "♪ ドビュッシー「月の光」 ピアノ: Laurens Goedhart (2011, CC BY 3.0)", "Now playing: Debussy, Clair de lune - Laurens Goedhart, piano (2011, CC BY 3.0)") \
     X(EV_TITLE, "天文イベント", "Astronomical events") \
-    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 探査機    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / spacecraft    Esc / K : close") \
+    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 彗星 / 探査機    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / comets / spacecraft    Esc / K : close") \
     X(EV_PROBE_TITLE, "探査機のできごと", "Spacecraft events") \
+    X(EV_COMET_TITLE, "彗星", "Comets") \
+    X(EV_COMET_NOTE, "1980〜2070 年の近日点と地球への最接近。尾の長さは見た目の演出です", "Perihelia and closest approaches to Earth, 1980-2070. Tail lengths are illustrative") \
+    X(EV_PERIHELION, "%sが近日点を通過", "%s at perihelion") \
+    X(EV_COMET_EARTH, "%sが地球に最接近", "%s: closest approach to Earth") \
+    X(EV_FROM_SUN, "太陽から %s", "%s from the Sun") \
+    X(EV_FROM_EARTH, "地球から %s", "%s from Earth") \
+    X(EV_TRANSIT, "%sの太陽面通過", "Transit of %s") \
+    X(EV_TRANSIT_D, "太陽の中心から半径の %.2f 倍", "%.2f solar radii from the center") \
+    X(EV_CONJ, "%sと%sが接近", "Conjunction: %s and %s") \
+    X(EV_CONJ_D, "角距離 %.2f°", "separation %.2f°") \
+    X(EV_OPPOSITION, "%sが衝", "Opposition of %s") \
     X(EV_PROBE_NOTE, "軌跡は JPL Horizons のデータ。惑星への接近は実際の距離と向きで再現します", "Trajectories from JPL Horizons. Planetary encounters are reproduced at their real distance and direction") \
     X(EV_FLYBY, "%sが%sに最接近", "%s: closest approach to %s") \
     X(EV_ARRIVE, "%sが%sに到着（周回開始）", "%s arrives at %s (orbit insertion)") \
     X(EV_END, "%sの運用終了（%sへ突入）", "%s: end of mission (enters %s)") \
     X(EV_ALT, "高度 %s", "altitude %s") \
-    X(EV_NOTE, "簡易計算のため、時刻は数分〜数十分、日食の位置は数百 km ずれることがあります", "Simplified calculation: times may be off by minutes, solar eclipse locations by a few hundred km") \
+    X(EV_NOTE, "簡易計算のため、時刻は数分〜数十分、日食の位置は数百 km ずれることがあります。太陽面通過は 150 年先まで", "Simplified calculation: times may be off by minutes, solar eclipse locations by a few hundred km. Transits up to 150 years ahead") \
     X(EV_SEARCHING, "計算中…", "Calculating...") \
     X(EV_NONE, "見つかりませんでした", "No events found") \
     X(EV_SOLAR_TOTAL, "皆既日食", "Total solar eclipse") \
@@ -430,7 +441,17 @@ static std::vector<Body> InitBodies() {
             b.outer = 0.03;  // 機体の大きさ（アンテナやブームを含めて約 30 m 以内。ワープの到着距離に使う）
         } else if (d.parent == 0) {
             b.soi = d.a_au * AU_KM * std::pow(d.mass / B[0].d.mass, 0.4);
-            for (int k = 0; k <= 720; k++) b.orbit.push_back(PlanetOrbitPoint(d, 2 * PI * k / 720.0));
+            // 離心率の大きい軌道は、離心近点角の等間隔だけでは近日点付近が粗いので、真近点角の等間隔の点も混ぜる
+            std::vector<double> Es;
+            for (int k = 0; k <= 720; k++) Es.push_back(2 * PI * k / 720.0);
+            if (d.e > 0.3)
+                for (int k = 1; k < 720; k++) {
+                    double nu = -PI + 2 * PI * k / 720.0;
+                    double E = 2 * std::atan(std::sqrt((1 - d.e) / (1 + d.e)) * std::tan(nu / 2));
+                    Es.push_back(E < 0 ? E + 2 * PI : E);
+                }
+            std::sort(Es.begin(), Es.end());
+            for (double E : Es) b.orbit.push_back(PlanetOrbitPoint(d, E));
         } else if (d.parent > 0) {
             b.soi = d.moonA * std::pow(d.mass / B[d.parent].d.mass, 0.4);
             V3 ref = d.eclipticRef ? Y_UP : B[d.parent].pole;
@@ -938,8 +959,9 @@ struct Options {
     bool dumpMoons = false;     // 衛星の母天体からの相対位置を出力して終了（確認用）
     bool listEvents = false;    // 天文イベントを出力して終了（確認用）
     int gotoEvent = -1;         // 1 秒後に天文イベントへワープ（確認用、1〜）
+    double probeView = 0;       // ワープの後、ターゲットの探査機をこの距離 m から斜めに見る（確認用）
     bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
-    int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 探査機（確認用）
+    int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星, 2: 探査機（確認用）
     double timeScale = 1;
     const char* lang = nullptr;  // "ja" / "en"
     int quality = -1;            // 0〜2（確認用）
@@ -962,6 +984,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--events-page") o.eventsPage = atoi(next());
         else if (a == "--show-date") o.showDate = true;
         else if (a == "--goto-event") o.gotoEvent = atoi(next());
+        else if (a == "--probe-view") o.probeView = atof(next());
         else if (a == "--goto-bookmark") o.gotoBookmark = atoi(next());
         else if (a == "--land") o.land = true;
         else if (a == "--face") o.face = true;
@@ -985,16 +1008,19 @@ static Options ParseArgs(int argc, char** argv) {
 }
 
 // ---------------------------------------------------------------- アプリ本体
-// 天文イベント（日食・月食・木星面の衛星の影の通過）
+// 天文イベント（日食・月食・木星面の衛星の影の通過・太陽面通過・惑星の接近・衝）、彗星、探査機のできごと
 enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TOTAL, EV_LUNAR_PARTIAL, EV_SHADOW,
+                 EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH,
                  EV_FLYBY, EV_ARRIVE, EV_END };
 struct AstroEvent {
     int kind = 0;
     double t = 0;          // 最大の時刻（J2000 からの日数）
     int moon = -1;         // 影の通過: 影を落とす衛星
     double lat = 0, lon = 0;  // 日食: 食の中心（地球の緯度・経度 deg）
-    int probe = -1, body = -1;  // 探査機のできごと: 探査機と惑星の番号
-    double dist = 0;            // 最接近: 惑星の中心からの距離 km
+    int probe = -1, body = -1;  // 探査機のできごと: 探査機と惑星の番号。ほかは主な天体（太陽面通過・衝の惑星、彗星）
+    int body2 = -1;             // 惑星の接近: もう一方の惑星
+    double dist = 0;            // 最接近: 惑星の中心からの距離 km。彗星: 太陽か地球からの距離 km、
+                                // 太陽面通過: 太陽の中心からの距離（太陽の半径が 1）、接近: 角距離 deg、衝: 地球からの距離 km
 };
 
 struct App {
@@ -1012,6 +1038,7 @@ struct App {
     int pad = -1;                 // 使用中のゲームパッド番号（-1: なし）
     bool padTrigSeen[2] = {false, false};
     bool padZoom = false;
+    bool eventZoom = false;       // 太陽面通過・惑星の接近へワープした後のズーム（右クリック・移動・ワープで解除）
     // 自動操縦
     bool autopilot = false;
     bool apAutoEngine = false;
@@ -1026,8 +1053,9 @@ struct App {
     int warpBookmark = -1;                // ブックマークへのワープ中はその番号
     int nextBookmark = 0;                 // N キーで次に向かうブックマーク
     bool eventsOpen = false;              // 天文イベント一覧（K キー）
-    int eventsPage = 0;                   // 0: 天文イベント, 1: 探査機のできごと（Tab で切り替え）
+    int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）
+    std::vector<AstroEvent> cometEvents;  // 彗星の近日点と地球への最接近（起動時に求める）
     std::vector<AstroEvent> events;
     int eventSel = 0;
     int warpEvent = -1;                   // イベントへのワープ中はその番号
@@ -1036,7 +1064,7 @@ struct App {
     double warpPhase = 0;   // 光の筋の流れ（強さに応じて進む）
     Mesh sphere{}, ring{};
     Mesh shipMesh{};
-    Mesh probeMesh{};
+    Mesh probeMesh[PM_COUNT]{};
     Material shipMat{};
     Shader shipShader{};
     int locSunDir = -1, locSunColor = -1, locFillDir = -1, locFillColor = -1, locEngColor = -1, locEngGlow = -1, locNavBlink = -1;
@@ -1046,6 +1074,7 @@ struct App {
     bool earthTex = false;
     Texture2D moonColor{}, moonData{};    // 月の実データ
     bool moonTex = false;
+    Texture2D milkyWay{};                 // 天の川の光（赤道座標の全天画像）
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
@@ -1304,7 +1333,112 @@ static bool ClassifyLunar(std::vector<Body>& B, double t, AstroEvent* ev) {
     return true;
 }
 
-// t0 から先のイベントを探す: 日食・月食は 3 年分、木星面の影の通過は 4 衛星それぞれ次の 1 回
+// 2 つの向きの間の角度 rad（小さい角度でも精度が落ちない式）
+static double AngleBetween(V3 a, V3 b) { return std::atan2(Len(Cross(a, b)), Dot(a, b)); }
+
+// [a, b] を step ごとに調べ、f の極小（f < limit）の時刻を細かく求めて返す
+template <class F> static std::vector<double> FindMinima(F f, double a, double b, double step, double limit) {
+    std::vector<double> out;
+    double p0 = f(a - step), p1 = f(a);
+    for (double t = a; t < b; t += step) {
+        double p2 = f(t + step);
+        if (p1 < p0 && p1 <= p2 && p1 < limit) out.push_back(MinimizeT(f, t - step, t + step));
+        p0 = p1; p1 = p2;
+    }
+    return out;
+}
+
+// 惑星のイベント（地球の中心から見る）:
+//  - 水星・金星の太陽面通過: 150 年先までの、それぞれ次の 2 回
+//  - 惑星どうしの接近: 3 年分。角距離 1° 未満で、どちらも太陽から 15° 以上離れているもの
+//  - 衝（地球をはさんで太陽の反対側）: 火星〜海王星の 3 年分
+static void FindPlanetEvents(const std::vector<Body>& B, double t0, std::vector<AstroEvent>* out) {
+    auto pos = [&](int i, double t) { return SimPlanetPos(B, i, t); };
+    for (int p : {B_MERCURY, B_VENUS}) {
+        auto f = [&](double t) {
+            V3 e = pos(B_EARTH, t), q = pos(p, t) - e;
+            return Len(q) < Len(e) && Dot(q, e) < 0 ? AngleBetween(q, e * -1.0) : 1e9;
+        };
+        int found = 0;
+        for (double tm : FindMinima(f, t0, t0 + 150 * 365.25, 1.0, 0.02)) {
+            V3 e = pos(B_EARTH, tm), q = pos(p, tm) - e;
+            double sunR = std::asin(B[B_SUN].d.radius / Len(e)), plR = std::asin(B[p].d.radius / Len(q));
+            if (f(tm) >= sunR + plR) continue;
+            AstroEvent ev;
+            ev.kind = EV_TRANSIT;
+            ev.t = tm;
+            ev.body = p;
+            ev.dist = f(tm) / sunR;
+            out->push_back(ev);
+            if (++found == 2) break;
+        }
+    }
+    const int P[] = {B_MERCURY, B_VENUS, B_MARS, B_JUPITER, B_SATURN, B_URANUS, B_NEPTUNE};
+    const double span = 3 * 365.25;
+    for (int i = 0; i < 7; i++)
+        for (int j = i + 1; j < 7; j++) {
+            auto sep = [&](double t) {
+                V3 e = pos(B_EARTH, t);
+                return AngleBetween(pos(P[i], t) - e, pos(P[j], t) - e);
+            };
+            for (double tm : FindMinima(sep, t0, t0 + span, 0.25, 1.0 * DEG)) {
+                V3 e = pos(B_EARTH, tm);
+                if (AngleBetween(pos(P[i], tm) - e, e * -1.0) < 15 * DEG || AngleBetween(pos(P[j], tm) - e, e * -1.0) < 15 * DEG)
+                    continue;
+                AstroEvent ev;
+                ev.kind = EV_CONJ;
+                ev.t = tm;
+                ev.body = P[i];
+                ev.body2 = P[j];
+                ev.dist = sep(tm) / DEG;
+                out->push_back(ev);
+            }
+        }
+    for (int p : {B_MARS, B_JUPITER, B_SATURN, B_URANUS, B_NEPTUNE}) {
+        auto f = [&](double t) { V3 e = pos(B_EARTH, t); return AngleBetween(pos(p, t) - e, e); };
+        for (double tm : FindMinima(f, t0, t0 + span, 1.0, 0.1)) {
+            AstroEvent ev;
+            ev.kind = EV_OPPOSITION;
+            ev.t = tm;
+            ev.body = p;
+            ev.dist = Len(pos(p, tm) - pos(B_EARTH, tm));
+            out->push_back(ev);
+        }
+    }
+}
+
+// 彗星: 1980〜2070 年（軌道を合わせた期間）の近日点と、その前後 200 日の地球への最接近（2 AU 以内）
+static std::vector<AstroEvent> FindCometEvents(const App& app) {
+    std::vector<AstroEvent> out;
+    const double t0 = -20 * 365.25, t1 = 70 * 365.25;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const BodyDef& d = app.B[i].d;
+        if (!d.comet) continue;
+        auto r = [&](double t) { return Len(PlanetPos(d, t)); };
+        auto de = [&](double t) { return Len(PlanetPos(d, t) - SimPlanetPos(app.B, B_EARTH, t)); };
+        for (double tp : FindMinima(r, t0, t1, 1.0, 1e300)) {
+            AstroEvent ev;
+            ev.kind = EV_PERIHELION;
+            ev.t = tp;
+            ev.body = (int)i;
+            ev.dist = r(tp);
+            out.push_back(ev);
+            double best = 1e300, bt = tp;
+            for (double tm : FindMinima(de, tp - 200, tp + 200, 0.25, 2 * AU_KM))
+                if (de(tm) < best) { best = de(tm); bt = tm; }
+            if (best < 2 * AU_KM) {
+                ev.kind = EV_COMET_EARTH;
+                ev.t = bt;
+                ev.dist = best;
+                out.push_back(ev);
+            }
+        }
+    }
+    std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
+    return out;
+}
+
+// t0 から先のイベントを探す: 日食・月食は 3 年分、木星面の影の通過は 4 衛星それぞれ次の 1 回、ほかは FindPlanetEvents
 static std::vector<AstroEvent> FindEvents(const App& app, double t0) {
     std::vector<Body> B = app.B;
     std::vector<AstroEvent> out;
@@ -1351,6 +1485,7 @@ static std::vector<AstroEvent> FindEvents(const App& app, double t0) {
             p0 = p1; p1 = p2;
         }
     }
+    FindPlanetEvents(B, t0, &out);
     std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
     return out;
 }
@@ -1394,27 +1529,41 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
 }
 
 static std::string EventTitle(const App& app, const AstroEvent& ev) {
-    static const UiId K[] = {UI_EV_SOLAR_TOTAL, UI_EV_SOLAR_ANNULAR, UI_EV_SOLAR_PARTIAL, UI_EV_LUNAR_TOTAL, UI_EV_LUNAR_PARTIAL};
-    char b[160];
-    if (ev.kind >= EV_FLYBY) {
-        static const UiId P[] = {UI_EV_FLYBY, UI_EV_ARRIVE, UI_EV_END};
-        const BodyDef &pd = app.B[ev.probe].d, &bd = app.B[ev.body].d;
-        snprintf(b, sizeof b, T(P[ev.kind - EV_FLYBY]), TR(pd.jp, pd.en), TR(bd.jp, bd.en));
-        return b;
+    auto name = [&](int i) { return TR(app.B[i].d.jp, app.B[i].d.en); };
+    char b[200];
+    switch (ev.kind) {
+        case EV_SOLAR_TOTAL: return T(UI_EV_SOLAR_TOTAL);
+        case EV_SOLAR_ANNULAR: return T(UI_EV_SOLAR_ANNULAR);
+        case EV_SOLAR_PARTIAL: return T(UI_EV_SOLAR_PARTIAL);
+        case EV_LUNAR_TOTAL: return T(UI_EV_LUNAR_TOTAL);
+        case EV_LUNAR_PARTIAL: return T(UI_EV_LUNAR_PARTIAL);
+        case EV_SHADOW: snprintf(b, sizeof b, T(UI_EV_SHADOW), name(ev.moon)); break;
+        case EV_TRANSIT: snprintf(b, sizeof b, T(UI_EV_TRANSIT), name(ev.body)); break;
+        case EV_CONJ: snprintf(b, sizeof b, T(UI_EV_CONJ), name(ev.body), name(ev.body2)); break;
+        case EV_OPPOSITION: snprintf(b, sizeof b, T(UI_EV_OPPOSITION), name(ev.body)); break;
+        case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_PERIHELION), name(ev.body)); break;
+        case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_COMET_EARTH), name(ev.body)); break;
+        case EV_FLYBY: snprintf(b, sizeof b, T(UI_EV_FLYBY), name(ev.probe), name(ev.body)); break;
+        case EV_ARRIVE: snprintf(b, sizeof b, T(UI_EV_ARRIVE), name(ev.probe), name(ev.body)); break;
+        default: snprintf(b, sizeof b, T(UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
-    if (ev.kind != EV_SHADOW) return T(K[ev.kind]);
-    snprintf(b, sizeof b, T(UI_EV_SHADOW), TR(app.B[ev.moon].d.jp, app.B[ev.moon].d.en));
     return b;
 }
 
 static std::string EventDetail(const App& app, const AstroEvent& ev) {
-    if (ev.kind == EV_FLYBY || ev.kind == EV_ARRIVE) {
-        char b[160];
-        snprintf(b, sizeof b, T(UI_EV_ALT), FmtDist(ev.dist - app.B[ev.body].d.radius).c_str());
-        return b;
+    char b[160];
+    switch (ev.kind) {
+        case EV_FLYBY:
+        case EV_ARRIVE: snprintf(b, sizeof b, T(UI_EV_ALT), FmtDist(ev.dist - app.B[ev.body].d.radius).c_str()); return b;
+        case EV_TRANSIT: snprintf(b, sizeof b, T(UI_EV_TRANSIT_D), ev.dist); return b;
+        case EV_CONJ: snprintf(b, sizeof b, T(UI_EV_CONJ_D), ev.dist); return b;
+        case EV_OPPOSITION:
+        case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_FROM_EARTH), FmtDist(ev.dist).c_str()); return b;
+        case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_FROM_SUN), FmtDist(ev.dist).c_str()); return b;
+        default: break;
     }
     if (ev.kind > EV_SOLAR_PARTIAL) return "";
-    char ll[96], b[160];
+    char ll[96];
     if (g_jp)
         snprintf(ll, sizeof ll, "%s%.0f° %s%.0f°", ev.lat >= 0 ? "北緯" : "南緯", std::fabs(ev.lat), ev.lon >= 0 ? "東経" : "西経", std::fabs(ev.lon));
     else
@@ -1423,12 +1572,71 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
     return b;
 }
 
+// 彗星の活動の強さ（0〜1）と尾の長さ km。太陽から 4 AU（cometScale 倍の彗星は √倍）より内側で現れ、
+// 近いほど長い（見た目の演出で、長さは実際の尾と同じ桁）
+static double CometActivity(const Body& b) {
+    double r = Len(b.pos) / AU_KM, r0 = 4.0 * std::sqrt(b.d.cometScale);
+    double act = std::max(0.0, std::min(1.0, (r0 - r) / (r0 - 1.0)));
+    return act * act * (3 - 2 * act);
+}
+static double CometTailLength(const Body& b) {
+    return 2.0e7 * b.d.cometScale * CometActivity(b) * std::min(2.5, AU_KM / Len(b.pos));
+}
+
+static double ArrivalDistance(const Body& b);
+
 // ワープの瞬間に呼ぶ: イベントの時刻へ移り、よく見える位置に自機を置く
 static void ApplyEvent(App& app, const AstroEvent& ev) {
     app.tDays = ev.t;
     UpdateBodies(app.B, app.tDays);
     const Body& sun = app.B[B_SUN];
-    if (ev.kind >= EV_FLYBY) {
+    const Body& earth = app.B[B_EARTH];
+    app.ship.speed = 0;
+    if (ev.kind == EV_TRANSIT) {
+        // 地球と惑星を結ぶ線の上から、ズームして太陽を見る。この線の上ならどこでも、太陽面のどこを惑星が通るかは
+        // 地球から見た時と同じ。惑星の見かけの半径が太陽の 1/10 になる距離に置く（地球からは 1/30〜1/160）
+        const Body& pl = app.B[ev.body];
+        double D = pl.d.radius * Len(pl.pos - sun.pos) / (0.1 * sun.d.radius);
+        app.ship.ref = B_SUN;
+        app.ship.local = pl.pos + Norm(earth.pos - pl.pos) * D;
+        app.ship.q = QuatFromBasis(sun.pos - app.ship.local, Y_UP);
+        app.target = ev.body;
+        app.eventZoom = true;
+    } else if (ev.kind == EV_CONJ) {
+        // 地球のすぐ外（地球が視界に入らないよう前方へ 4 半径）から、2 つの惑星の中間の方向を見る
+        V3 m = Norm(Norm(app.B[ev.body].pos - earth.pos) + Norm(app.B[ev.body2].pos - earth.pos));
+        app.ship.ref = B_EARTH;
+        app.ship.local = m * (earth.d.radius * 4);
+        app.ship.q = QuatFromBasis(m, Y_UP);
+        app.target = ev.body;
+        app.eventZoom = true;
+    } else if (ev.kind == EV_OPPOSITION) {
+        // 惑星の地球側（ワープの到着距離）から見る。衝の惑星は満月のように全面が照らされる
+        const Body& pl = app.B[ev.body];
+        V3 d = Norm(earth.pos - pl.pos);
+        app.ship.ref = ev.body;
+        app.ship.local = d * ArrivalDistance(pl);
+        app.ship.q = QuatFromBasis(d * -1.0, pl.pole);
+        app.target = ev.body;
+    } else if (ev.kind == EV_PERIHELION) {
+        // 軌道面の上方から尾を横に見る（ダストの尾が曲がるのが分かる）。尾は画面の横向きに、核は中央の少し左に
+        const Body& cm = app.B[ev.body];
+        V3 anti = Norm(cm.pos), vel = PlanetPos(cm.d, app.tDays + 0.01) - PlanetPos(cm.d, app.tDays);
+        V3 n = Norm(Cross(cm.pos, vel));
+        double len = std::max(CometTailLength(cm), 2e6);
+        V3 aim = cm.pos + anti * (len * 0.3);
+        app.ship.ref = B_SUN;
+        app.ship.local = aim + n * (len * 0.8);
+        app.ship.q = QuatFromBasis(n * -1.0, Cross(anti, n * -1.0) * -1.0);
+        app.target = ev.body;
+    } else if (ev.kind == EV_COMET_EARTH) {
+        // 地球のすぐ外から彗星を見る（地球から見た尾の向きと長さ）
+        V3 d = Norm(app.B[ev.body].pos - earth.pos);
+        app.ship.ref = B_EARTH;
+        app.ship.local = d * (earth.d.radius * 4);
+        app.ship.q = QuatFromBasis(d, Y_UP);
+        app.target = ev.body;
+    } else if (ev.kind >= EV_FLYBY) {
         // 探査機の斜め後ろ（惑星と反対側）から惑星の方を見る。探査機は画面の横に、惑星は正面に見える。
         // 惑星の夜側を通る時は、昼側の縁（三日月形に光る部分）を正面にする
         const Body& pr = app.B[ev.probe];
@@ -1458,7 +1666,7 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         app.ship.local = (side * 4.0 - u * 1.0) * m.d.radius;
         app.ship.q = QuatFromBasis(app.ship.local * -1.0, m.pole);
         app.target = B_MOON;
-    } else {
+    } else {   // EV_SHADOW
         // 木星面に落ちた影の真上（太陽側）から見下ろす
         const Body& j = app.B[B_JUPITER];
         const Body& mo = app.B[ev.moon];
@@ -1523,17 +1731,18 @@ static void StartWarp(App& app, int ti, bool land);
 // イベントへワープする時に向かう天体
 static int EventBody(const AstroEvent& ev) {
     if (ev.kind >= EV_FLYBY) return ev.probe;
+    if (ev.kind >= EV_TRANSIT) return ev.body;
     return ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER;
 }
 
-// 一覧の中身をページに合わせて用意する。探査機のページでは、今の時刻に一番近いできごとを選ぶ
+// 一覧の中身をページに合わせて用意する。彗星・探査機のページでは、今の時刻に一番近いできごとを選ぶ
 static void OpenEventsPage(App& app) {
     if (app.eventsPage == 0) {
         app.events = FindEvents(app, app.tDays);
         app.eventSel = 0;
         return;
     }
-    app.events = app.probeEvents;
+    app.events = app.eventsPage == 1 ? app.cometEvents : app.probeEvents;
     app.eventSel = 0;
     for (size_t i = 0; i < app.events.size(); i++)
         if (std::fabs(app.events[i].t - app.tDays) < std::fabs(app.events[app.eventSel].t - app.tDays)) app.eventSel = (int)i;
@@ -1570,7 +1779,7 @@ static bool HandleModalInput(App& app) {
         }
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_K)) app.eventsOpen = false;
         if (IsKeyPressed(KEY_TAB)) {
-            app.eventsPage = 1 - app.eventsPage;
+            app.eventsPage = (app.eventsPage + (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? 2 : 1)) % 3;
             OpenEventsPage(app);
             return true;
         }
@@ -1597,7 +1806,9 @@ static void DrawModalPanels(const App& app) {
         float w = std::min(c.W - 20, 900.0f), h = 96 + rows * 28.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
-        TxtC(T(app.eventsPage == 0 ? UI_EV_TITLE : UI_EV_PROBE_TITLE), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
+        static const UiId TITLE[3] = {UI_EV_TITLE, UI_EV_COMET_TITLE, UI_EV_PROBE_TITLE};
+        static const UiId NOTE[3] = {UI_EV_NOTE, UI_EV_COMET_NOTE, UI_EV_PROBE_NOTE};
+        TxtC(T(TITLE[app.eventsPage]), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
         TxtC(T(UI_EV_KEYS), c.W * 0.5f, y + 40, 15, {170, 200, 230, 255});
         if (n == 0) TxtC(T(UI_EV_NONE), c.W * 0.5f, y + 72, 18, {215, 228, 245, 255});
         int first = std::max(0, std::min(app.eventSel - rows / 2, n - rows));
@@ -1611,7 +1822,7 @@ static void DrawModalPanels(const App& app) {
             Txt(EventTitle(app, ev).c_str(), x + 230, ry, 17, col);
             Txt(EventDetail(app, ev).c_str(), x + 520, ry, 15, {170, 200, 230, 255});
         }
-        TxtC(T(app.eventsPage == 0 ? UI_EV_NOTE : UI_EV_PROBE_NOTE), c.W * 0.5f, y + h - 26, 13, {150, 170, 190, 255});
+        TxtC(T(NOTE[app.eventsPage]), c.W * 0.5f, y + h - 26, 13, {150, 170, 190, 255});
     }
     if (app.dateOpen) {
         float w = std::min(c.W - 20, 620.0f), h = 150, x = (c.W - w) / 2, y = (c.H - h) / 2;
@@ -1641,6 +1852,7 @@ static void StartWarp(App& app, int ti, bool land) {
     app.warpJumped = false;
     app.ship.speed = 0;
     app.autopilot = false;
+    app.eventZoom = false;
 }
 
 // 演出の強さ 0..1（光の筋の長さ・視野角の広がり）
@@ -2061,7 +2273,8 @@ static void UpdateCamera(App& app) {
     const Ship& s = app.ship;
     c.W = (float)GetScreenWidth();
     c.H = (float)GetScreenHeight();
-    double targetFov = (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || app.padZoom) ? 8 * DEG : 60 * DEG;
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || (app.ship.thrusting && app.warpT < 0)) app.eventZoom = false;
+    double targetFov = (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || app.padZoom || app.eventZoom) ? 8 * DEG : 60 * DEG;
     c.fovBase += (targetFov - c.fovBase) * std::min(1.0, GetFrameTime() * 10.0);
     double wi = WarpIntensity(app);
     c.fovy = std::min(150 * DEG, c.fovBase * (1.0 + 0.75 * wi));  // ワープ中は視野が広がる
@@ -2176,7 +2389,7 @@ static void DrawOrbits(App& app) {
     rlEnableDepthTest();
 }
 
-// 彗星のコマと尾。太陽から 4 AU より内側で現れ、近いほど長く明るい（見た目の演出で、長さは実際の尾と同じ桁）
+// 彗星のコマと尾。大きさと明るさは CometActivity・CometTailLength
 //  - イオンの尾: 太陽と反対方向へまっすぐ伸びる青い尾
 //  - ダストの尾: 公転の向きと逆側へ曲がる、幅の広い黄白色の尾
 // 天体より先に加算合成で描くので、手前の天体には隠れる
@@ -2188,11 +2401,9 @@ static void DrawCometTails(const App& app) {
     BeginBlendMode(BLEND_ADDITIVE);
     for (const Body& b : app.B) {
         if (!b.d.comet) continue;
-        double r = Len(b.pos) / AU_KM;
-        double act = std::max(0.0, std::min(1.0, (4.0 - r) / 3.0));
-        act = act * act * (3 - 2 * act);
+        double r = Len(b.pos) / AU_KM, k = b.d.cometScale, act = CometActivity(b);
         if (act <= 0) continue;
-        double len = 2.0e7 * act * std::min(2.5, 1.0 / r);  // km
+        double len = CometTailLength(b);
         V3 anti = Norm(b.pos);                                 // 太陽と反対の向き
         V3 vel = Norm(PlanetPos(b.d, app.tDays + 0.01) - PlanetPos(b.d, app.tDays));
         V3 lag = Norm(vel * -1.0 - anti * Dot(vel * -1.0, anti));  // 公転の後ろ側（反太陽方向に垂直な成分）
@@ -2235,7 +2446,7 @@ static void DrawCometTails(const App& app) {
         }
 
         // コマ: 核を中心に、カメラを向く円（中心が明るい）。内側に入ったら薄くする
-        double comaR = 3e5 * act * std::min(2.0, 1.0 / r);
+        double comaR = 3e5 * k * act * std::min(2.0, 1.0 / r);
         double dist = Len(rel0);
         double inside = std::min(1.0, dist / comaR);
         V3 ax = Norm(Cross(c.fwd, c.up)), ay = c.up;
@@ -2298,6 +2509,48 @@ static void LoadMoonTextures(App& app) {
     app.moonData = LoadEmbeddedTexture(MoonDataPng(), ".png");
     app.moonTex = app.moonColor.id && app.moonData.id;
     if (!app.moonTex) TraceLog(LOG_WARNING, "Moon textures unavailable, using procedural surface");
+}
+
+// 天の川の光: 赤道座標の全天画像を、カメラを中心とする球の内側に薄く貼る（星より先に描く）。
+// 画像は中央が赤経 0h で、左へ行くほど赤経が増える
+static void DrawMilkyWay(const App& app) {
+    if (!app.milkyWay.id) return;
+    const Cam& c = app.cam;
+    // ズームすると画像の粗さが目立つので、視野が狭いほど薄くする（視野 40° 以上で最大、12° 以下で消える）
+    double k = std::max(0.0, std::min(1.0, (c.fovy / DEG - 12.0) / 28.0));
+    // 地球の大気の中（高度 100 km 未満）で太陽が地平線より上にある時は、昼の空なので消す
+    const Body& e = app.B[B_EARTH];
+    double alt = Len(c.pos - e.pos) - e.d.radius;
+    if (alt < 100) {
+        double sunEl = std::asin(Dot(Norm(c.pos - e.pos), Norm(app.B[B_SUN].pos - c.pos)));
+        double day = std::max(0.0, std::min(1.0, (sunEl / DEG + 6.0) / 8.0));
+        k *= 1.0 - day * std::min(1.0, (100 - alt) / 50);
+    }
+    if (k <= 0) return;
+    unsigned char br = (unsigned char)(170 * k);
+    SetPassProjection(c, 1.0, 1e6);
+    rlDisableDepthTest();
+    rlDisableBackfaceCulling();
+    const int NU = 72, NV = 36;
+    const double R = 1e5;
+    rlSetTexture(app.milkyWay.id);
+    rlBegin(RL_QUADS);
+    rlColor4ub(br, br, br, 255);
+    auto vtx = [&](int i, int j) {
+        double u = (double)i / NU, v = (double)j / NV;
+        V3 p = EquToRender((0.5 - u) * 360.0, 90.0 - v * 180.0) * R;
+        rlTexCoord2f((float)u, (float)v);
+        rlVertex3f((float)p.x, (float)p.y, (float)p.z);
+    };
+    for (int j = 0; j < NV; j++)
+        for (int i = 0; i < NU; i++) {
+            vtx(i, j); vtx(i, j + 1); vtx(i + 1, j + 1); vtx(i + 1, j);
+        }
+    rlEnd();
+    rlSetTexture(0);
+    rlDrawRenderBatchActive();
+    rlEnableBackfaceCulling();
+    rlEnableDepthTest();
 }
 
 // ---------------------------------------------------------------- 音楽の選曲
@@ -2550,7 +2803,9 @@ static void DrawShipPass(App& app, double dt) {
     rlDrawRenderBatchActive();
 }
 
-// 探査機の機体（自機と同じシェーダ）。高利得アンテナを地球へ向ける。天体に隠れている時は描かない
+// 探査機の機体（自機と同じシェーダ）。天体に隠れている時は描かない
+static const double GALILEO_PROBE_RELEASE = -1633.27;  // 1995-07-13 05:30 UTC: ガリレオが大気圏突入機を切り離す
+static const double HUYGENS_RELEASE = 1819.58;         // 2004-12-25 02:00 UTC: カッシーニがホイヘンスを切り離す
 static void DrawProbes(App& app) {
     const Cam& c = app.cam;
     for (size_t i = 0; i < app.B.size(); i++) {
@@ -2572,12 +2827,16 @@ static void DrawProbes(App& app) {
         SetShaderValue(app.shipShader, app.locEngColor, &zero, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shipShader, app.locEngGlow, &off, SHADER_UNIFORM_FLOAT);
         SetShaderValue(app.shipShader, app.locNavBlink, &off, SHADER_UNIFORM_FLOAT);
-        V3 toEarth = app.B[B_EARTH].pos - b.pos;
-        Quaternion q = QuatFromBasis(Len(toEarth) > 1 ? toEarth : V3(1, 0, 0), Y_UP);
+        // パーカーは耐熱シールドを太陽へ、ほかは高利得アンテナを地球へ向ける
+        int pm = b.d.probeModel;
+        V3 aim = (pm == PM_PARKER ? app.B[B_SUN].pos : app.B[B_EARTH].pos) - b.pos;
+        if (pm == PM_GALILEO && app.tDays < GALILEO_PROBE_RELEASE) pm = PM_GALILEO_PROBE;
+        if (pm == PM_CASSINI && app.tDays < HUYGENS_RELEASE) pm = PM_CASSINI_HUYGENS;
+        Quaternion q = QuatFromBasis(Len(aim) > 1 ? aim : V3(1, 0, 0), Y_UP);
         Matrix model = MatrixMultiply(MatrixMultiply(MatrixScale(0.001f, 0.001f, 0.001f), QuaternionToMatrix(q)),
                                       MatrixTranslate((float)rel.x, (float)rel.y, (float)rel.z));
         rlDisableBackfaceCulling();
-        DrawMesh(app.probeMesh, app.shipMat, model);
+        DrawMesh(app.probeMesh[pm], app.shipMat, model);
         rlEnableBackfaceCulling();
     }
     rlDrawRenderBatchActive();
@@ -3004,6 +3263,7 @@ static void DrawHUD(App& app) {
     int nearest = 0;
     double nearestAlt = 1e300;
     for (size_t i = 0; i < app.B.size(); i++) {
+        if (!app.B[i].active) continue;   // 打ち上げ前・運用終了後の探査機
         V3 rel = sw - app.B[i].pos;
         double d = Len(rel);
         double alt = d - SurfaceRadius(app.B[i], rel * (1.0 / d));
@@ -3098,7 +3358,7 @@ int main(int argc, char** argv) {
         tmp.B = InitBodies();
         double t = (std::time(nullptr) - J2000_UNIX) / 86400.0 + opt.hours / 24.0;
         UpdateBodies(tmp.B, t);
-        for (const AstroEvent& ev : opt.eventsPage == 1 ? FindProbeEvents(tmp) : FindEvents(tmp, t))
+        for (const AstroEvent& ev : opt.eventsPage == 2 ? FindProbeEvents(tmp) : opt.eventsPage == 1 ? FindCometEvents(tmp) : FindEvents(tmp, t))
             printf("%s  %-34s %s\n", FmtDate(ev.t).c_str(), EventTitle(tmp, ev).c_str(), EventDetail(tmp, ev).c_str());
         return 0;
     }
@@ -3170,6 +3430,7 @@ int main(int argc, char** argv) {
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
     LoadMoonTextures(app);
+    app.milkyWay = LoadEmbeddedTexture(MilkyWayJpg(), ".jpg");
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
     app.ring = GenRing(74658.0f / 60268.0f, 136775.0f / 60268.0f, 360);
@@ -3184,7 +3445,7 @@ int main(int argc, char** argv) {
     app.shipMat = LoadMaterialDefault();
     app.shipMat.shader = app.shipShader;
     app.shipMesh = GenShipMesh();
-    app.probeMesh = GenProbeMesh();
+    for (int i = 0; i < PM_COUNT; i++) app.probeMesh[i] = GenProbeMesh(i);
     for (int i = 0; i < 260; i++)
         app.dust.push_back({GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f});
 
@@ -3214,7 +3475,8 @@ int main(int argc, char** argv) {
     app.apAutoEngine = opt.autoEngine;
     app.showHelp = opt.help;
     app.probeEvents = FindProbeEvents(app);
-    app.eventsPage = opt.eventsPage;
+    app.cometEvents = FindCometEvents(app);
+    app.eventsPage = std::max(0, std::min(2, opt.eventsPage));
     if (opt.showEvents) {
         OpenEventsPage(app);
         if (app.eventsPage == 0) app.eventSel = 5;
@@ -3236,12 +3498,21 @@ int main(int argc, char** argv) {
         if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) StartWarp(app, app.target, opt.land);
         if (opt.saveBookmark && frame == 1) SaveBookmark(app);
         if (opt.gotoEvent > 0 && frame == 60) {
-            app.events = app.eventsPage == 0 ? FindEvents(app, app.tDays) : app.probeEvents;
+            app.events = app.eventsPage == 0 ? FindEvents(app, app.tDays) : app.eventsPage == 1 ? app.cometEvents : app.probeEvents;
             if (opt.gotoEvent <= (int)app.events.size()) {
                 const AstroEvent& ev = app.events[opt.gotoEvent - 1];
                 StartWarp(app, EventBody(ev), false);
                 app.warpEvent = opt.gotoEvent - 1;
             }
+        }
+        if (opt.probeView > 0 && frame > 180 && app.B[app.target].d.probe >= 0) {
+            const Body& pb = app.B[app.target];
+            V3 toSun = Norm(app.B[B_SUN].pos - pb.pos), side = Norm(Cross(toSun, Y_UP));
+            V3 dir = Norm(toSun * 0.6 + side * 0.7 + Y_UP * 0.4);
+            SetShipWorld(app, pb.pos + dir * (opt.probeView / 1000.0));
+            app.ship.speed = 0;
+            app.ship.q = QuatFromBasis(dir * -1.0 - Y_UP * (0.0025 / (opt.probeView / 1000.0)), Y_UP);  // 操縦席の高さの分だけ下を向く
+            app.padZoom = true;
         }
         if (opt.gotoBookmark > 0 && frame == 60) {
             std::vector<Bookmark> bms = LoadBookmarks(app);
@@ -3289,6 +3560,13 @@ int main(int argc, char** argv) {
             rlScalef(rk, rk, 1);
         }
         ClearBackground({1, 2, 6, 255});
+        {
+            Camera3D sky = {{0, 0, 0}, {0, 0, -1}, {0, 1, 0}, 60, CAMERA_PERSPECTIVE};
+            BeginMode3D(sky);
+            DrawMilkyWay(app);
+            EndMode3D();
+            if (lowRes) rlScalef(rk, rk, 1);   // EndMode3D で modelview が単位行列に戻るので、縮小を掛け直す
+        }
         DrawStars(app);
         DrawSunGlowAndDots(app);  // 3D より先に描き、手前の天体や自機で隠れるようにする
 
@@ -3349,10 +3627,12 @@ int main(int argc, char** argv) {
     UnloadMesh(app.sphere);
     UnloadMesh(app.ring);
     UnloadMesh(app.shipMesh);
+    for (Mesh& m : app.probeMesh) UnloadMesh(m);
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
     if (app.earthTex) { UnloadTexture(app.earthColor); UnloadTexture(app.earthData); }
     if (app.moonTex) { UnloadTexture(app.moonColor); UnloadTexture(app.moonData); }
+    if (app.milkyWay.id) UnloadTexture(app.milkyWay);
     if (app.lowRes.id) UnloadRenderTexture(app.lowRes);
     sfx::Shutdown();
     if (g_jpFont) UnloadFont(g_font);

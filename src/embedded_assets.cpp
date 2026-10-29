@@ -28,6 +28,7 @@ INCBIN(g_icon_png, "icon.png")
 INCBIN(g_stars_bin, "stars.bin")
 INCBIN(g_sky_txt, "sky.txt")
 INCBIN(g_probes_bin, "probes.bin")
+INCBIN(g_milkyway_jpg, "milkyway.jpg")
 INCBIN(g_music_mercury, "music/holst_mercury.ogg")
 INCBIN(g_music_venus, "music/holst_venus.ogg")
 INCBIN(g_music_mars, "music/holst_mars.ogg")
@@ -46,6 +47,7 @@ EmbeddedFile MoonDataPng() { return {g_moon_data_png, (size_t)(g_moon_data_png_e
 EmbeddedFile IconPng() { return {g_icon_png, (size_t)(g_icon_png_end - g_icon_png)}; }
 EmbeddedFile StarsBin() { return {g_stars_bin, (size_t)(g_stars_bin_end - g_stars_bin)}; }
 EmbeddedFile ProbesBin() { return {g_probes_bin, (size_t)(g_probes_bin_end - g_probes_bin)}; }
+EmbeddedFile MilkyWayJpg() { return {g_milkyway_jpg, (size_t)(g_milkyway_jpg_end - g_milkyway_jpg)}; }
 EmbeddedFile SkyTxt() { return {g_sky_txt, (size_t)(g_sky_txt_end - g_sky_txt)}; }
 EmbeddedFile MusicOgg(int i) {
     static const unsigned char* const B[MUSIC_COUNT] = {g_music_mercury, g_music_venus, g_music_mars, g_music_jupiter,

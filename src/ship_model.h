@@ -76,6 +76,72 @@ public:
         Disc(b, ax, r, segs, c, m);
     }
 
+    // a から b への角柱（側面は平らに陰影を付ける）。r は外接円の半径、rot は最初の頂点の角度 rad
+    void Prism(Vector3 a, Vector3 b, float r, int sides, float rot, Color c, ShipMat m) {
+        Vector3 ax = Vector3Normalize(Vector3Subtract(b, a));
+        Vector3 t = fabsf(ax.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+        Vector3 u = Vector3Normalize(Vector3CrossProduct(ax, t)), v = Vector3CrossProduct(ax, u);
+        auto corner = [&](int i) {
+            float ang = rot + 2 * PI * i / sides;
+            return Vector3Add(Vector3Scale(u, cosf(ang) * r), Vector3Scale(v, sinf(ang) * r));
+        };
+        for (int i = 0; i < sides; i++) {
+            Vector3 o0 = corner(i), o1 = corner(i + 1);
+            Vector3 n = Vector3Normalize(Vector3Add(o0, o1));
+            int k = Add(Vector3Add(a, o0), n, c, m);
+            Add(Vector3Add(a, o1), n, c, m);
+            Add(Vector3Add(b, o1), n, c, m);
+            Add(Vector3Add(b, o0), n, c, m);
+            Tri(k, k + 1, k + 2);
+            Tri(k, k + 2, k + 3);
+        }
+        for (int e = 0; e < 2; e++) {
+            Vector3 p = e ? b : a, n = e ? ax : Vector3Negate(ax);
+            int ci = Add(p, n, c, m);
+            for (int i = 0; i <= sides; i++) Add(Vector3Add(p, corner(i)), n, c, m);
+            for (int i = 0; i < sides; i++) Tri(ci, ci + 1 + i, ci + 2 + i);
+        }
+    }
+
+    // 直方体（中心と各軸方向の半分の長さ）
+    void Box(Vector3 c0, Vector3 h, Color c, ShipMat m) {
+        const Vector3 N[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        for (const Vector3& n : N) {
+            Vector3 a = fabsf(n.x) > 0 ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+            Vector3 b = Vector3CrossProduct(n, a);
+            auto P = [&](float sa, float sb) {
+                return Vector3{c0.x + (n.x + a.x * sa + b.x * sb) * h.x, c0.y + (n.y + a.y * sa + b.y * sb) * h.y,
+                               c0.z + (n.z + a.z * sa + b.z * sb) * h.z};
+            };
+            int k = Add(P(-1, -1), n, c, m);
+            Add(P(1, -1), n, c, m);
+            Add(P(1, 1), n, c, m);
+            Add(P(-1, 1), n, c, m);
+            Tri(k, k + 1, k + 2);
+            Tri(k, k + 2, k + 3);
+        }
+    }
+
+    // 放物面アンテナ: 縁の中心 rimCenter、開口の向き dir（凹面が向く方向）、半径 r、深さ depth
+    void Dish(Vector3 rimCenter, Vector3 dir, float r, float depth, Color c, ShipMat m) {
+        dir = Vector3Normalize(dir);
+        Vector3 t = fabsf(dir.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+        Vector3 u = Vector3Normalize(Vector3CrossProduct(dir, t)), v = Vector3CrossProduct(dir, u);
+        const int R = 8, S = 32;
+        std::vector<std::vector<Vector3>> P;
+        for (int i = 0; i <= R; i++) {
+            float rr = r * i / R, z = depth * (1 - (rr * rr) / (r * r));
+            std::vector<Vector3> row;
+            for (int k = 0; k < S; k++) {
+                float ang = 2 * PI * k / S;
+                Vector3 o = Vector3Add(Vector3Scale(u, cosf(ang) * rr), Vector3Scale(v, sinf(ang) * rr));
+                row.push_back(Vector3Add(Vector3Add(rimCenter, o), Vector3Scale(dir, -z)));
+            }
+            P.push_back(row);
+        }
+        Grid(P, true, std::vector<std::vector<Color>>(R + 1, std::vector<Color>(S, c)), m);
+    }
+
     // 翼型断面を持つ翼面。root から spanDir 方向へ span だけ伸び、翼弦は z 方向
     void Wing(Vector3 root, Vector3 spanDir, Vector3 thickDir, float span, float leadRoot, float trailRoot, float leadTip,
               float trailTip, float thickRoot, float thickTip, Color c, ShipMat m) {
@@ -142,33 +208,158 @@ private:
     }
 };
 
-// 探査機（ボイジャー型の共通モデル）: 単位 m、高利得アンテナは -Z（地球）を向く
-inline Mesh GenProbeMesh() {
+// 探査機の機体モデル。単位 m。-Z が姿勢の基準（パーカーは耐熱シールドを太陽へ、ほかは高利得アンテナを地球へ向ける）
+enum ProbeModel {
+    PM_VOYAGER = 0, PM_PIONEER, PM_GALILEO, PM_GALILEO_PROBE, PM_CASSINI, PM_CASSINI_HUYGENS, PM_NEW_HORIZONS, PM_PARKER,
+    PM_COUNT
+};
+
+inline Mesh GenProbeMesh(int model) {
     ShipMeshBuilder mb;
     const Color white = {226, 224, 216, 255}, gold = {176, 140, 62, 255}, metal = {120, 122, 128, 255};
-    const Color dark = {44, 44, 48, 255};
-    // 高利得アンテナ（直径 3.7 m の放物面）と副反射鏡
-    std::vector<Vector2> dish;
-    for (int i = 0; i <= 8; i++) {
-        float r = 1.85f * i / 8;
-        dish.push_back({-r * r / (4 * 1.6f), r});
+    const Color dark = {44, 44, 48, 255}, black = {28, 28, 30, 255}, panel = {40, 52, 92, 255};
+    // 原子力電池 (RTG): フィンの付いた黒い円柱
+    auto rtg = [&](Vector3 a, Vector3 b, float r) {
+        mb.Tube(a, b, r * 0.55f, 10, dark, SM_METAL);
+        Vector3 d = Vector3Subtract(b, a);
+        Vector3 t = fabsf(d.y) < 0.9f * Vector3Length(d) ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+        Vector3 u = Vector3Normalize(Vector3CrossProduct(d, t)), v = Vector3Normalize(Vector3CrossProduct(d, u));
+        for (int i = 0; i < 4; i++) {   // 放熱フィン
+            float ang = PI * i / 4;
+            Vector3 o = Vector3Add(Vector3Scale(u, cosf(ang)), Vector3Scale(v, sinf(ang)));
+            for (int sgn = -1; sgn <= 1; sgn += 2) {
+                Vector3 off = Vector3Scale(o, sgn * r * 0.8f);
+                mb.Tube(Vector3Add(a, off), Vector3Add(b, off), r * 0.12f, 4, dark, SM_METAL);
+            }
+        }
+    };
+    switch (model) {
+    case PM_PIONEER: {
+        // パイオニア 10/11 号: 直径 2.74 m の浅いアンテナ、後ろに六角形の機器室、2 本のブームに RTG を 2 基ずつ
+        mb.Dish({0, 0, -0.45f}, {0, 0, -1}, 1.37f, 0.45f, white, SM_PAINT);
+        for (int i = 0; i < 3; i++) {   // 中利得アンテナの三脚
+            float ang = 2 * PI * i / 3;
+            mb.Tube({cosf(ang) * 0.9f, sinf(ang) * 0.9f, -0.2f}, {0, 0, -1.3f}, 0.012f, 4, metal, SM_METAL);
+        }
+        mb.Tube({0, 0, -1.3f}, {0, 0, -1.5f}, 0.07f, 10, white, SM_PAINT);
+        mb.Prism({0, 0, 0.0f}, {0, 0, 0.36f}, 0.72f, 6, 0, gold, SM_METAL);
+        mb.Prism({0.72f, 0, 0.0f}, {0.72f, 0, 0.36f}, 0.36f, 6, 0, gold, SM_METAL);   // 科学機器室
+        for (int i = 0; i < 2; i++) {
+            float ang = PI * (0.5f + 0.67f * (i ? 1 : -1));
+            Vector3 dir = {cosf(ang), sinf(ang), 0};
+            mb.Tube(Vector3Scale(dir, 0.6f), Vector3Add(Vector3Scale(dir, 3.0f), {0, 0, 0.2f}), 0.03f, 6, metal, SM_METAL);
+            rtg(Vector3Add(Vector3Scale(dir, 2.0f), {0, 0, 0.13f}), Vector3Add(Vector3Scale(dir, 2.45f), {0, 0, 0.16f}), 0.2f);
+            rtg(Vector3Add(Vector3Scale(dir, 2.5f), {0, 0, 0.16f}), Vector3Add(Vector3Scale(dir, 2.95f), {0, 0, 0.2f}), 0.2f);
+        }
+        mb.Tube({0, 0.6f, 0.2f}, {0, 6.6f, 0.2f}, 0.015f, 5, metal, SM_METAL);   // 磁力計のブーム（RTG と 120° 離す）
+        mb.Tube({0, 6.6f, 0.2f}, {0, 6.8f, 0.2f}, 0.06f, 8, white, SM_PAINT);
+        break;
     }
-    mb.Revolve(0, 0, dish, 32, white, SM_PAINT);
-    mb.Tube({0, 0, -0.05f}, {0, 0, -1.0f}, 0.025f, 6, metal, SM_METAL);
-    mb.Disc({0, 0, -1.0f}, {0, 0, -1}, 0.16f, 16, white, SM_PAINT);
-    // 本体（十角柱、金色の断熱材）
-    mb.Revolve(0, 0, {{0.05f, 0.0f}, {0.05f, 0.95f}, {0.5f, 0.95f}, {0.5f, 0.0f}}, 10, gold, SM_METAL);
-    // 原子力電池 (RTG) のブームと 3 本の RTG
-    mb.Tube({-0.9f, 0, 0.3f}, {-3.0f, 0, 0.3f}, 0.04f, 6, metal, SM_METAL);
-    for (int i = 0; i < 3; i++) {
-        float x = -2.0f - i * 0.45f;
-        mb.Tube({x, 0, 0.3f}, {x - 0.4f, 0, 0.3f}, 0.2f, 12, dark, SM_METAL);
+    case PM_GALILEO:
+    case PM_GALILEO_PROBE: {
+        // ガリレオ: 傘のような高利得アンテナ（実際は開ききらなかった）、十角形の回転部、2 本の RTG ブーム、
+        // 長い磁力計ブーム、下の非回転部とスキャン・プラットフォーム。大気圏突入機は 1995 年 7 月に切り離し
+        for (int i = 0; i < 18; i++) {   // アンテナのリブ
+            float a0 = 2 * PI * i / 18;
+            mb.Tube({0, 0, -1.0f}, {cosf(a0) * 2.4f, sinf(a0) * 2.4f, -1.9f}, 0.02f, 4, metal, SM_METAL);
+        }
+        mb.Dish({0, 0, -1.9f}, {0, 0, -1}, 2.4f, 0.9f, white, SM_PAINT);
+        mb.Tube({0, 0, -1.0f}, {0, 0, -2.6f}, 0.05f, 8, metal, SM_METAL);
+        mb.Prism({0, 0, -1.0f}, {0, 0, 0.2f}, 0.9f, 10, 0, gold, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 0.8f, 0, -0.3f}, {sx * 4.6f, 0, 0.6f}, 0.04f, 6, metal, SM_METAL);
+            rtg({sx * 3.4f, 0, 0.32f}, {sx * 4.4f, 0, 0.55f}, 0.24f);
+        }
+        mb.Tube({0, 0.8f, -0.4f}, {0, 11.0f, -0.4f}, 0.03f, 5, metal, SM_METAL);
+        mb.Tube({0, 0, 0.2f}, {0, 0, 1.3f}, 0.45f, 12, gold, SM_METAL);    // 非回転部
+        mb.Tube({0.5f, 0, 1.1f}, {1.6f, 0, 1.1f}, 0.06f, 6, metal, SM_METAL);
+        mb.Box({1.7f, 0, 1.1f}, {0.3f, 0.35f, 0.3f}, dark, SM_METAL);      // スキャン・プラットフォーム
+        if (model == PM_GALILEO_PROBE)
+            mb.Revolve(0, 0, {{1.3f, 0.0f}, {1.3f, 0.6f}, {1.55f, 0.62f}, {1.8f, 0.3f}, {1.85f, 0.0f}}, 20, {120, 84, 50, 255}, SM_METAL);
+        break;
     }
-    // 科学機器のブームとスキャン・プラットフォーム
-    mb.Tube({0.9f, 0, 0.3f}, {3.0f, 0, 0.3f}, 0.04f, 6, metal, SM_METAL);
-    mb.Tube({2.7f, -0.3f, 0.3f}, {2.7f, 0.4f, 0.3f}, 0.28f, 12, metal, SM_METAL);
-    // 磁力計のブーム（細く長い）
-    mb.Tube({0, 0.9f, 0.4f}, {0, 13.0f, 0.4f}, 0.02f, 5, metal, SM_METAL);
+    case PM_CASSINI:
+    case PM_CASSINI_HUYGENS: {
+        // カッシーニ: 直径 4 m の高利得アンテナ、十二角形の電子機器室、背の高い推進モジュール、底の 3 基の RTG と
+        // 2 基の主エンジン、11 m の磁力計ブーム。ホイヘンス・プローブ（側面の円盤）は 2004 年 12 月に切り離し
+        mb.Dish({0, 0, -0.75f}, {0, 0, -1}, 2.0f, 0.75f, white, SM_PAINT);
+        for (int i = 0; i < 4; i++) {
+            float ang = PI * 0.5f * i + PI / 4;
+            mb.Tube({cosf(ang) * 1.2f, sinf(ang) * 1.2f, -0.3f}, {0, 0, -1.6f}, 0.015f, 4, metal, SM_METAL);
+        }
+        mb.Tube({0, 0, -1.6f}, {0, 0, -1.75f}, 0.22f, 12, white, SM_PAINT);
+        mb.Prism({0, 0, 0.0f}, {0, 0, 0.6f}, 1.0f, 12, 0, gold, SM_METAL);          // 電子機器室
+        mb.Tube({0, 0, 0.6f}, {0, 0, 4.4f}, 0.82f, 20, gold, SM_METAL);            // 推進モジュール
+        mb.Revolve(0, 0, {{4.4f, 0.82f}, {4.6f, 0.6f}, {4.65f, 0.0f}}, 20, gold, SM_METAL);
+        for (int i = 0; i < 2; i++) {   // 主エンジンのノズル
+            float x = i ? 0.35f : -0.35f;
+            mb.Revolve(x, -0.3f, {{4.5f, 0.08f}, {4.9f, 0.14f}, {5.2f, 0.22f}}, 12, metal, SM_METAL);
+        }
+        for (int i = 0; i < 3; i++) {
+            float ang = PI * 0.5f + 2 * PI * i / 3;
+            Vector3 dir = {cosf(ang), sinf(ang), 0};
+            rtg(Vector3Add(Vector3Scale(dir, 0.95f), {0, 0, 3.6f}), Vector3Add(Vector3Scale(dir, 1.25f), {0, 0, 4.7f}), 0.24f);
+        }
+        mb.Box({0.0f, 1.05f, 2.0f}, {0.35f, 0.25f, 0.6f}, dark, SM_METAL);       // 機器を載せたパレット
+        mb.Tube({-0.8f, 0, 0.3f}, {-11.0f, 0, 0.3f}, 0.025f, 5, metal, SM_METAL);
+        if (model == PM_CASSINI_HUYGENS)
+            mb.Revolve(1.0f, 0, {{1.4f, 0.0f}, {1.4f, 1.35f}, {1.55f, 1.35f}, {1.75f, 0.9f}, {2.1f, 0.5f}, {2.15f, 0.0f}}, 24,
+                       {200, 186, 160, 255}, SM_METAL);
+        break;
+    }
+    case PM_NEW_HORIZONS: {
+        // ニュー・ホライズンズ: 三角形の本体（金色の断熱材）、直径 2.1 m のアンテナ、頂点から突き出た 1 基の RTG
+        mb.Dish({0, 0, -0.75f}, {0, 0, -1}, 1.05f, 0.35f, white, SM_PAINT);
+        mb.Tube({0, 0, -0.4f}, {0, 0, -1.1f}, 0.02f, 5, metal, SM_METAL);
+        mb.Disc({0, 0, -1.1f}, {0, 0, -1}, 0.12f, 12, white, SM_PAINT);
+        mb.Prism({0, 0, -0.4f}, {0, 0, 0.3f}, 1.05f, 3, PI / 2, gold, SM_METAL);
+        mb.Box({0.0f, 0.2f, -0.05f}, {0.25f, 0.18f, 0.3f}, dark, SM_METAL);
+        rtg({0, -0.55f, 0.0f}, {0, -1.6f, 0.0f}, 0.25f);
+        break;
+    }
+    case PM_PARKER: {
+        // パーカー・ソーラー・プローブ: 直径 2.3 m・厚さ 11.4 cm の耐熱シールド（太陽側は白）、六角形の本体、
+        // シールドの陰に収まる冷却付きの太陽電池パネル 2 枚、後ろの磁力計ブーム
+        mb.Tube({0, 0, -1.2f}, {0, 0, -1.086f}, 1.15f, 40, black, SM_METAL);
+        mb.Disc({0, 0, -1.201f}, {0, 0, -1}, 1.15f, 40, white, SM_PAINT);
+        for (int i = 0; i < 6; i++) {   // シールドを支える支柱
+            float ang = 2 * PI * i / 6;
+            mb.Tube({cosf(ang) * 0.85f, sinf(ang) * 0.85f, -1.08f}, {cosf(ang) * 0.5f, sinf(ang) * 0.5f, -0.45f}, 0.02f, 4, metal, SM_METAL);
+        }
+        mb.Prism({0, 0, -0.45f}, {0, 0, 1.0f}, 0.55f, 6, 0, gold, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 0.48f, 0, -0.2f}, {sx * 0.75f, 0, -0.2f}, 0.025f, 5, metal, SM_METAL);
+            mb.Box({sx * 0.95f, 0, 0.05f}, {0.2f, 0.015f, 0.38f}, panel, SM_GLASS);
+        }
+        mb.Box({0, 0.5f, 0.4f}, {0.25f, 0.06f, 0.25f}, white, SM_PAINT);   // 冷却用ラジエーター
+        mb.Tube({0, 0, 1.0f}, {0, 0, 3.0f}, 0.02f, 5, metal, SM_METAL);
+        break;
+    }
+    default: {
+        // ボイジャー 1/2 号: 直径 3.7 m のアンテナと副反射鏡、十角形の本体、RTG 3 基のブーム、科学機器のブーム、
+        // 13 m の磁力計ブーム
+        std::vector<Vector2> dish;
+        for (int i = 0; i <= 8; i++) {
+            float r = 1.85f * i / 8;
+            dish.push_back({-r * r / (4 * 1.6f), r});
+        }
+        mb.Revolve(0, 0, dish, 32, white, SM_PAINT);
+        mb.Tube({0, 0, -0.05f}, {0, 0, -1.0f}, 0.025f, 6, metal, SM_METAL);
+        mb.Disc({0, 0, -1.0f}, {0, 0, -1}, 0.16f, 16, white, SM_PAINT);
+        mb.Prism({0, 0, 0.05f}, {0, 0, 0.5f}, 0.95f, 10, 0, gold, SM_METAL);
+        mb.Tube({-0.9f, 0, 0.3f}, {-3.0f, 0, 0.3f}, 0.04f, 6, metal, SM_METAL);
+        for (int i = 0; i < 3; i++) {
+            float x = -2.0f - i * 0.45f;
+            rtg({x, 0, 0.3f}, {x - 0.4f, 0, 0.3f}, 0.2f);
+        }
+        mb.Tube({0.9f, 0, 0.3f}, {3.0f, 0, 0.3f}, 0.04f, 6, metal, SM_METAL);
+        mb.Tube({2.7f, -0.3f, 0.3f}, {2.7f, 0.4f, 0.3f}, 0.28f, 12, metal, SM_METAL);
+        mb.Tube({0, 0.9f, 0.4f}, {0, 13.0f, 0.4f}, 0.02f, 5, metal, SM_METAL);
+        break;
+    }
+    }
     return mb.Build();
 }
 
