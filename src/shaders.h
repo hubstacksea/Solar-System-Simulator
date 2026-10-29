@@ -39,11 +39,15 @@ uniform vec4 params;       // x: 種別, y: 縞の数 / 環の基準半径km, z:
 uniform vec4 detail;       // x: 表面模様の種類, y: 1 画素の大きさの係数, z: 時刻（日）, w: 雲の濃さ
 uniform mat4 matNormal;
 uniform sampler2D texture0;  // 地球・月: 地表の色 (Blue Marble / LROC)
-uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷 / 月: R 標高上位, A 下位
+uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷 / 月・火星: R 標高上位, A 下位
+uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（1: あり）
+uniform vec4 mapInfo;        // 地図: x 1 / 平均の明るさ, y 種類（0 カラー, 1 白黒, 2 模様だけ）, z 標高あり, w 半径 km
+uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う表面模様の種類
 // 大気（地球・火星）: atmBeta は天頂方向の空気 1 つ分で散乱する割合（0 なら大気なし）。日光は太陽が低いほど赤くなる
 // atmHaze: x カメラの位置の空気の濃さ（0 ならかすみなし）, y 描画座標 1 あたりの km, z スケールハイト km
 uniform vec3 atmBeta;
 uniform vec3 atmMie;
+uniform vec3 atmOzone;
 uniform vec4 atmHaze;
 uniform vec3 camUp;
 out vec4 finalColor;
@@ -448,6 +452,46 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     return vec4(hm / R * EXAG, grad) + C + T;
 }
 
+// 探査機の画像による地図のある天体（水星・火星・ケレス・ベスタ・衛星・冥王星など）。月と同じ並びの地図を貼る。
+// 色は天体の色に合わせて明るさをそろえ、撮影されていない所は手続き的な表面にする。
+// 細かい起伏は手続き的に足す（撮影された範囲では大きなクレーターを作らず、地図の模様と食い違わないようにする）
+vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
+    g_ray = 0.0;
+    vec3 pb;
+    vec4 ph = rocky(p, int(mapInfo2.x + 0.5), o, pb);
+    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lon = atan(-p.z, p.x);
+    vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
+    vec2 dx = dFdx(uv), dy = dFdy(uv);
+    dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
+    vec3 tc = textureGrad(texture0, uv, dx, dy).rgb;
+    float cov = textureGrad(texture2, uv, dx, dy).r;
+    float L1 = dot(color1, vec3(0.333));
+    vec3 mb;
+    if (mapInfo.y > 1.5) mb = pb * tc.r * mapInfo.x;          // 模様だけ（明暗は手続き的な塗り分け）
+    else if (mapInfo.y > 0.5) mb = color1 * tc.r * mapInfo.x;  // 白黒: 天体の色で着色
+    else mb = tc * L1 * mapInfo.x;                             // カラー: 明るさだけ天体に合わせる
+    vec4 fine = craters(p, 0.35, 260.0, o * 0.37) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0);
+    vec4 h = mix(ph, fine, cov);
+    if (mapInfo.z > 0.5) {
+        vec2 texel = vec2(1.0 / 1440.0, 1.0 / 720.0);
+        vec2 st = max(texel, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
+        float hE = moonHeightM(textureGrad(texture1, uv + vec2(st.x, 0.0), dx, dy));
+        float hW = moonHeightM(textureGrad(texture1, uv - vec2(st.x, 0.0), dx, dy));
+        float hN = moonHeightM(textureGrad(texture1, uv - vec2(0.0, st.y), dx, dy));
+        float hS = moonHeightM(textureGrad(texture1, uv + vec2(0.0, st.y), dx, dy));
+        float hm = moonHeightM(textureGrad(texture1, uv, dx, dy));
+        float R = mapInfo.w * 1000.0;
+        float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R;
+        float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R;
+        vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
+        vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
+        h += vec4(hm / R, east * dhdLon / max(cos(lat), 0.05) + north * dhdLat);
+    }
+    base = mix(pb, mb, cov) * (0.94 + 0.12 * (fbmL(p, 900.0, 16, 0.5, o + 5.0) * 0.5 + 0.5));
+    return h;
+}
+
 // base: 地表の色, specMask: 海の反射, lights: 夜景, 戻り値: 高さと勾配
 vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out float lights, out float cloud) {
     vec4 e = fbmD(p, 1.6, 28, 0.5, o);
@@ -569,7 +613,7 @@ void main() {
     vec3 base;
     vec4 hgt = vec4(0.0);
     float specMask = 0.0, lights = 0.0, cloud = 0.0;
-    if (kind == 1) hgt = style == 13 ? moonTex(p, o, base) : rocky(p, style, o, base);
+    if (kind == 1) hgt = style == 13 ? moonTex(p, o, base) : style == 14 ? mapTex(p, o, base) : rocky(p, style, o, base);
     else if (kind == 2) base = gas(p, style, o);
     else if (style == 31) hgt = earthTex(p, o, ndlG, base, specMask, lights, cloud);
     else hgt = earth(p, o, ndlG, base, specMask, lights, cloud);
@@ -582,7 +626,8 @@ void main() {
     float ndl = max(dot(N, L), 0.0) * smoothstep(-0.06, 0.02, ndlG) * sh;
     float muN = max(dot(N, V), 0.05);
     // 大気を通ってきた日光の色（太陽が真上の時を白として、朝夕は赤い）
-    vec3 sunTint = exp(-atmBeta * max(min(1.0 / (max(ndlG, 0.0) + 0.06), 7.0) - 1.0, 0.0));
+    vec3 sunTint = exp(-atmBeta * max(min(1.0 / (max(ndlG, 0.0) + 0.06), 7.0) - 1.0, 0.0)
+                       - atmOzone * max(min(1.0 / (max(ndlG, 0.0) + 0.03), 25.0) - 1.0, 0.0));
 
     vec3 col;
     if (kind == 1 && style != 3) {
@@ -615,7 +660,8 @@ void main() {
         float air = atmHaze.x * length(fragWorld) * atmHaze.y / atmHaze.z;
         vec3 v = normalize(fragWorld);
         float cosT = dot(v, L), sunEl = dot(camUp, L);
-        vec3 sunCol = exp(-atmBeta * min(atmHaze.x / (max(sunEl, 0.0) + 0.06), 7.0));
+        vec3 sunCol = exp(-atmBeta * min(atmHaze.x / (max(sunEl, 0.0) + 0.06), 7.0)
+                          - atmOzone * min(1.0 / (max(sunEl, 0.0) + 0.03), 25.0) * min(atmHaze.x * 4.0, 1.0));
         vec3 ray = sunCol * (1.0 - exp(-atmBeta * air)) * 0.75 * (1.0 + cosT * cosT);
         float g = max(cosT, 0.0);
         vec3 mie = sunCol * atmMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * air));
@@ -649,6 +695,7 @@ uniform vec3 up;        // その場所の真上
 uniform vec3 sunDir;
 uniform vec3 beta;      // 天頂方向の空気 1 つ分で散乱する割合（色ごと）
 uniform vec3 mieTint;
+uniform vec3 ozone;     // 天頂方向の空気 1 つ分でオゾンが吸収する割合（黄緑〜橙を吸収し、夕方の空を青紫に保つ）
 uniform float density;  // 高さによる空気の濃さ（地表 1）
 out vec4 finalColor;
 void main() {
@@ -657,9 +704,12 @@ void main() {
     float sunEl = dot(sunDir, up);
     float cosT = dot(d, sunDir);
     float airV = density / (mu + 0.06);
-    // 地平線近くの太陽の光は、上空の薄い空気を通って散乱する分が多いので、空気の量に上限を付ける
-    float airS = min(density / (max(sunEl, 0.0) + 0.06), 7.0);
-    vec3 sunCol = exp(-beta * airS);
+    // 地平線近くの太陽の光は、上空の薄い空気を通って散乱する分が多いので、空気の量に上限を付ける。
+    // 高い空の光は上空で散乱したもので、太陽の光が通ってきた空気が少ない（夕方でも天頂は赤くならない）
+    // オゾンの層は高い所にあるので、夕方は高い空の光も長い距離を通る（天頂が青紫になる）
+    float airS = min(density / (max(sunEl, 0.0) + 0.06), 7.0) * (1.0 - 0.7 * sqrt(mu));
+    float airO = min(1.0 / (max(sunEl, 0.0) + 0.03), 25.0) * min(density * 4.0, 1.0);
+    vec3 sunCol = exp(-beta * airS - ozone * airO);
     vec3 ray = sunCol * (1.0 - exp(-beta * airV)) * 0.75 * (1.0 + cosT * cosT);
     float g = max(cosT, 0.0);
     vec3 mie = sunCol * mieTint * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));

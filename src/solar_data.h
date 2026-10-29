@@ -15,7 +15,7 @@ struct Col3 { float r, g, b; };
 // 表面模様の種類（シェーダの detail.x。天体ごとの特徴的な地形・模様を描き分ける）
 enum SurfaceStyle {
     S_GENERIC = 0, S_MOON, S_MERCURY, S_MARS, S_IO, S_EUROPA, S_GANYMEDE, S_CALLISTO, S_ICY, S_IAPETUS,
-    S_PLUTO, S_ENCELADUS, S_TRITON, S_MOON_TEX,
+    S_PLUTO, S_ENCELADUS, S_TRITON, S_MOON_TEX, S_MAPPED,
     S_JUPITER = 20, S_SATURN, S_URANUS, S_NEPTUNE, S_VENUS, S_TITAN,
     S_EARTH = 30, S_EARTH_TEX = 31, S_SUN = 40
 };
@@ -49,6 +49,7 @@ struct BodyDef {
     double poleRA = 0, poleDec = 90;
     double rotPeriod = 1;      // 自転周期 日（負: 逆行、0: 公転と同期）
     double spin0 = 0;          // J2000 での自転角 deg（地球は実際の地図の向きに合わせる）
+    double w0 = NAN;           // IAU の本初子午線の角度 W（J2000）deg。あれば地図の経度 0° を実際の向きに合わせる
 
     int kind = KIND_ROCKY;
     Col3 c1{1, 1, 1}, c2{0.5f, 0.5f, 0.5f}, atm{0, 0, 0};
@@ -143,7 +144,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                            KIND_GAS, {0.32f, 0.48f, 0.92f}, {0.20f, 0.33f, 0.78f}, 6, {0.4f, 0.6f, 1.0f}, 0.5f));
     v.push_back(MakePlanet("冥王星", "Pluto", 1188.3, 0.0, 1.303e22,
                            39.48211675, 0.24882730, 17.14001206, 238.92903833, 224.06891629, 110.30393684,
-                           132.99, -6.16, -6.3872,
+                           132.99, -6.16, 6.3872,
                            KIND_ROCKY, {0.88f, 0.80f, 0.70f}, {0.58f, 0.43f, 0.33f}));
 
     // ---- 衛星 ----                 母天体     半径    質量       軌道長半径  周期[日]   傾斜
@@ -362,6 +363,14 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         {"Dione", S_ICY}, {"Rhea", S_ICY}, {"Titan", S_TITAN}, {"Iapetus", S_IAPETUS}, {"Miranda", S_ICY},
         {"Ariel", S_ICY}, {"Titania", S_ICY}, {"Oberon", S_ICY}, {"Triton", S_TRITON},
     };
+    // IAU の本初子午線 W = W0 + 360° × t / 自転周期（WGCCRE。自転軸もこの表の値に合わせてある）。
+    // 冥王星の自転軸は右手系の北（赤緯 -6.16°）で、自転は順行（カロンの公転と同じ向き）
+    static const struct { const char* en; double w0; } PRIME[] = {
+        {"Mercury", 329.5988}, {"Mars", 176.630}, {"Ceres", 170.650}, {"Vesta", 285.39}, {"Pluto", 302.695},
+    };
+    for (BodyDef& d : v)
+        for (const auto& pm : PRIME)
+            if (std::strcmp(d.en, pm.en) == 0) d.w0 = pm.w0;
     // 地球の自転角: グリニッジ子午線の赤経 = グリニッジ平均恒星時 (GMST)。
     // 本体の座標系では自転角 0 の X 軸が赤経 180° を向くので、180° を引く
     v[B_EARTH].spin0 = 280.46061837 - 180.0;

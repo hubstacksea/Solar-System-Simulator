@@ -275,6 +275,8 @@ struct Body {
     double orbitT = -1e9;   // 軌道線を計算した時刻（月）
     bool active = true;     // 探査機: その時刻に飛んでいるか（打ち上げ前・運用終了後は false で、表示しない）
     int shape = -1;         // 実際の形（g_shapes の番号。-1 は楕円体）
+    int map = -1;           // 探査機の画像による地図（App::maps の番号。-1 はなし）
+    double primeOffset = 0; // 自転角 0 の X 軸から IAU の基準（赤道と ICRF 赤道の昇交点）までの角度 rad
 };
 
 // ---------------------------------------------------------------- 彗星・小惑星の実際の形（assets/shapes.bin）
@@ -527,6 +529,11 @@ static std::vector<Body> InitBodies() {
         const BodyDef& d = b.d;
         b.pole = d.inheritPole ? B[d.parent].pole : EquToRender(d.poleRA, d.poleDec);
         EquatorBasis(b.pole, &b.ex, &b.ez);
+        if (!std::isnan(d.w0)) {
+            // IAU の W は、天体の赤道が ICRF の赤道と交わる昇交点 Q（赤経 = 自転軸の赤経 + 90°）から測る
+            V3 Q = Norm(Cross(EquToRender(0, 90), b.pole));
+            b.primeOffset = std::atan2(-Dot(Q, b.ez), Dot(Q, b.ex));
+        }
         b.outer = d.rings ? d.radius * 2.27 : d.radius;
         if (d.probe >= 0) {
             b.soi = 2000;    // 近くにいる自機は探査機と一緒に移動する
@@ -611,6 +618,7 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
         }
         double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
         b.spin = std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
+        if (!std::isnan(d.w0)) b.spin = std::fmod(b.primeOffset + d.w0 * DEG + 2 * PI * t / rp, 2 * PI);
         if (d.parent > 0 && d.rotPeriod == 0) {
             // 衛星の自転は公転と同期: 経度 0°（本体 X 軸）を常に母天体へ向ける
             V3 u = B[d.parent].pos - b.pos;
@@ -1198,13 +1206,16 @@ struct App {
     Texture2D moonColor{}, moonData{};    // 月の実データ
     bool moonTex = false;
     Texture2D milkyWay{};                 // 天の川の光（赤道座標の全天画像）
+    struct BodyMap { std::string name; int kind = 0; bool height = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
+    std::vector<BodyMap> maps;            // 探査機の画像による地図（assets/maps.bin）
+    int locMapInfo = -1, locMapInfo2 = -1;
     Shader skyShader{};                   // 大気の中から見た空
-    int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyDensity = -1;
+    int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
     int locOcc = -1, locOccN = -1, locSunAng = -1;
-    int locAtmBeta = -1, locAtmMie = -1, locAtmHaze = -1, locCamUp = -1;
+    int locAtmBeta = -1, locAtmMie = -1, locAtmOzone = -1, locAtmHaze = -1, locCamUp = -1;
     std::vector<Vector3> dust;
     double glow = 0;
     double camYaw = NAN, camPitch = 0, camDist = 60;
@@ -2799,6 +2810,44 @@ static void LoadEarthTextures(App& app) {
     }
 }
 
+// 惑星・衛星の地図（形式は tools/make_planet_maps.py）。読めた地図を名前の同じ天体に割り当てる
+static void LoadBodyMaps(App& app) {
+    EmbeddedFile f = MapsBin();
+    const unsigned char* p = f.data;
+    const unsigned char* end = f.data + f.size;
+    auto rd = [&](void* dst, size_t n) { if (p + n > end) return false; std::memcpy(dst, p, n); p += n; return true; };
+    auto blob = [&](EmbeddedFile* out) {
+        uint32_t n;
+        if (!rd(&n, 4) || p + n > end) return false;
+        *out = {p, n};
+        p += n;
+        return true;
+    };
+    uint32_t count = 0;
+    if (!rd(&count, 4)) return;
+    for (uint32_t k = 0; k < count; k++) {
+        char name[33] = {0};
+        uint8_t kind, height;
+        uint16_t pad;
+        float mean;
+        EmbeddedFile jpg, mask, data{};
+        if (!rd(name, 32) || !rd(&kind, 1) || !rd(&height, 1) || !rd(&pad, 2) || !rd(&mean, 4) || !blob(&jpg) || !blob(&mask)) return;
+        if (height && !blob(&data)) return;
+        App::BodyMap m;
+        m.name = name;
+        m.kind = kind;
+        m.mean = mean;
+        m.color = LoadEmbeddedTexture(jpg, ".jpg");
+        m.mask = LoadEmbeddedTexture(mask, ".png");
+        if (height) m.data = LoadEmbeddedTexture(data, ".png");
+        m.height = m.data.id != 0;
+        if (!m.color.id || !m.mask.id) continue;
+        for (Body& b : app.B)
+            if (m.name == b.d.en && b.d.kind == KIND_ROCKY) b.map = (int)app.maps.size();
+        app.maps.push_back(m);
+    }
+}
+
 static void LoadMoonTextures(App& app) {
     app.moonColor = LoadEmbeddedTexture(MoonColorJpg(), ".jpg");
     app.moonData = LoadEmbeddedTexture(MoonDataPng(), ".png");
@@ -2849,10 +2898,11 @@ static void DrawMilkyWay(const App& app) {
 }
 
 // 大気のある天体（地球・火星）の空: 高さ 0 から top km まで、スケールハイト H km で薄くなる
-struct SkyAtmosphere { int body; double top, H; Vector3 beta, mie; };
+// beta: レイリー散乱（火星は塵）, mie: 太陽のまわりの光の色, ozone: オゾンの吸収（地球だけ）
+struct SkyAtmosphere { int body; double top, H; Vector3 beta, mie, ozone; };
 static const SkyAtmosphere SKY_ATM[] = {
-    {B_EARTH, 120, 8.5, {0.10f, 0.23f, 0.56f}, {1.0f, 0.95f, 0.9f}},
-    {B_MARS, 80, 11.1, {0.16f, 0.11f, 0.07f}, {0.45f, 0.65f, 1.0f}},   // 塵で昼は黄褐色、夕方は太陽のまわりが青白い
+    {B_EARTH, 120, 8.5, {0.10f, 0.23f, 0.56f}, {1.0f, 0.95f, 0.9f}, {0.05f, 0.08f, 0.003f}},
+    {B_MARS, 80, 11.1, {0.16f, 0.11f, 0.07f}, {0.45f, 0.65f, 1.0f}, {0, 0, 0}},   // 塵で昼は黄褐色、夕方は太陽のまわりが青白い
 };
 
 // カメラのいる大気（なければ nullptr）と、空気の濃さ・その場所の真上・太陽の高さ（sin）
@@ -2896,6 +2946,7 @@ static void DrawSkyAtmosphere(const App& app) {
     SetShaderValue(app.skyShader, app.locSkySun, &sd, SHADER_UNIFORM_VEC3);
     SetShaderValue(app.skyShader, app.locSkyBeta, &a->beta, SHADER_UNIFORM_VEC3);
     SetShaderValue(app.skyShader, app.locSkyMie, &a->mie, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.skyShader, app.locSkyOzone, &a->ozone, SHADER_UNIFORM_VEC3);
     SetShaderValue(app.skyShader, app.locSkyDensity, &dens, SHADER_UNIFORM_FLOAT);
     const int NU = 48, NV = 24;
     const double R = 1e5;
@@ -3062,17 +3113,28 @@ static void DrawBodies(App& app) {
             style = S_MOON_TEX;
             app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.moonColor;
             app.mat.maps[MATERIAL_MAP_SPECULAR].texture = app.moonData;
+        } else if (b.map >= 0) {
+            const App::BodyMap& m = app.maps[b.map];
+            style = S_MAPPED;
+            app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = m.color;
+            app.mat.maps[MATERIAL_MAP_SPECULAR].texture = m.height ? m.data : m.color;
+            app.mat.maps[MATERIAL_MAP_NORMAL].texture = m.mask;
+            float info[4] = {1.0f / std::max(0.05f, m.mean), (float)m.kind, m.height ? 1.0f : 0.0f, (float)d.radius};
+            float info2[4] = {(float)d.style, 0, 0, 0};
+            SetShaderValue(app.shader, app.locMapInfo, info, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         }
         float detail[4] = {(float)style, (float)(QUALITY_DETAIL[app.quality] / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
         SetShaderValue(app.shader, app.locDetail, detail, SHADER_UNIFORM_VEC4);
         // 大気のある天体: 日光の色と、カメラが同じ大気の中にいる時のかすみ
         {
-            Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, up = {0, 1, 0};
+            Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, ozone = {0, 0, 0}, up = {0, 1, 0};
             float haze[4] = {0, (float)(1.0 / s), 1, 0};
             for (const SkyAtmosphere& a : SKY_ATM)
                 if (a.body == it.i) {
                     beta = a.beta;
                     mie = a.mie;
+                    ozone = a.ozone;
                     double density, sunEl;
                     V3 u;
                     if (CameraAtmosphere(app, &density, &u, &sunEl) == &a) {
@@ -3083,6 +3145,7 @@ static void DrawBodies(App& app) {
                 }
             SetShaderValue(app.shader, app.locAtmBeta, &beta, SHADER_UNIFORM_VEC3);
             SetShaderValue(app.shader, app.locAtmMie, &mie, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locAtmOzone, &ozone, SHADER_UNIFORM_VEC3);
             SetShaderValue(app.shader, app.locAtmHaze, haze, SHADER_UNIFORM_VEC4);
             SetShaderValue(app.shader, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
         }
@@ -3823,18 +3886,23 @@ int main(int argc, char** argv) {
     app.locSunAng = GetShaderLocation(app.shader, "sunAng");
     app.locAtmBeta = GetShaderLocation(app.shader, "atmBeta");
     app.locAtmMie = GetShaderLocation(app.shader, "atmMie");
+    app.locAtmOzone = GetShaderLocation(app.shader, "atmOzone");
     app.locAtmHaze = GetShaderLocation(app.shader, "atmHaze");
     app.locCamUp = GetShaderLocation(app.shader, "camUp");
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
     LoadMoonTextures(app);
     app.milkyWay = LoadEmbeddedTexture(MilkyWayJpg(), ".jpg");
+    LoadBodyMaps(app);
+    app.locMapInfo = GetShaderLocation(app.shader, "mapInfo");
+    app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");
     app.skyShader = LoadShaderFromMemory(SKY_VS, SKY_FS);
     app.locSkyUp = GetShaderLocation(app.skyShader, "up");
     app.locSkySun = GetShaderLocation(app.skyShader, "sunDir");
     app.locSkyBeta = GetShaderLocation(app.skyShader, "beta");
     app.locSkyMie = GetShaderLocation(app.skyShader, "mieTint");
     app.locSkyDensity = GetShaderLocation(app.skyShader, "density");
+    app.locSkyOzone = GetShaderLocation(app.skyShader, "ozone");
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
     for (const Shape& sh : g_shapes) {
@@ -4066,6 +4134,11 @@ int main(int argc, char** argv) {
     if (app.earthTex) { UnloadTexture(app.earthColor); UnloadTexture(app.earthData); }
     if (app.moonTex) { UnloadTexture(app.moonColor); UnloadTexture(app.moonData); }
     if (app.milkyWay.id) UnloadTexture(app.milkyWay);
+    for (App::BodyMap& m : app.maps) {
+        UnloadTexture(m.color);
+        UnloadTexture(m.mask);
+        if (m.data.id) UnloadTexture(m.data);
+    }
     if (app.lowRes.id) UnloadRenderTexture(app.lowRes);
     sfx::Shutdown();
     if (g_jpFont) UnloadFont(g_font);
