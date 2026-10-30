@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.13.0 (2026-10-30)
+
+- Observing from the ground: the ground below the horizon is filled in (hiding the body's image stretched up close), with the horizon, compass points, local time, the target's altitude and azimuth, and its next rise, transit and set (within a minute or two of the almanac for the Sun at Tokyo)
+- Places on the Moon (Apollo 11 and 17, the lunar south pole, Chang'e 4) and on Mars (Perseverance, Curiosity, Viking 1); Earth cities show their standard time
+
 ## 2.12.0 (2026-10-30)
 
 - Search also lists spacecraft no longer (or not yet) in flight; choosing one moves to its highlight and warps there

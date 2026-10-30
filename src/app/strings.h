@@ -195,6 +195,30 @@
     X(INFO_CLOSE, "I / タップ: 閉じる", "I / tap: close") \
     X(TB_INFO, "情報", "Info") \
     X(TB_SEARCH, "検索", "Search") \
+    X(DIR0, "北", "N") \
+    X(DIR1, "北北東", "NNE") \
+    X(DIR2, "北東", "NE") \
+    X(DIR3, "東北東", "ENE") \
+    X(DIR4, "東", "E") \
+    X(DIR5, "東南東", "ESE") \
+    X(DIR6, "南東", "SE") \
+    X(DIR7, "南南東", "SSE") \
+    X(DIR8, "南", "S") \
+    X(DIR9, "南南西", "SSW") \
+    X(DIR10, "南西", "SW") \
+    X(DIR11, "西南西", "WSW") \
+    X(DIR12, "西", "W") \
+    X(DIR13, "西北西", "WNW") \
+    X(DIR14, "北西", "NW") \
+    X(DIR15, "北北西", "NNW") \
+    X(GND_ALT, "高度", "alt") \
+    X(GND_AZ, "方位", "az") \
+    X(GND_RISE, "出", "rise") \
+    X(GND_TRANSIT_S, "南中", "transit") \
+    X(GND_TRANSIT_N, "北中", "transit") \
+    X(GND_SET, "入り", "set") \
+    X(GND_ALWAYS_UP, "地平線の下に沈まない", "Never sets") \
+    X(GND_ALWAYS_DOWN, "地平線の上に昇らない", "Never rises") \
     X(SEARCH_TITLE, "天体の検索", "Find a body") \
     X(SEARCH_HINT, "名前の一部を入力（ひらがな・英字）", "Type part of a name") \
     X(SEARCH_ALL, "すべて", "All") \
@@ -203,7 +227,6 @@
     X(SEARCH_SMALL, "小天体", "Small bodies") \
     X(SEARCH_PROBES, "探査機", "Spacecraft") \
     X(SEARCH_CITIES, "地上", "On Earth") \
-    X(SEARCH_GROUND, "地上から空を見る", "sky from the ground") \
     X(SEARCH_GOTO, "%s の名場面へ移る", "go to %s") \
     X(SEARCH_JUMPED, "日時を %s に移して %s へ", "Moved to %s for %s") \
     X(CITY_AT, "%s の地上（%s %.1f°  %s %.1f°）から空を見る", "Sky from %s (%s %.1f°  %s %.1f°)") \

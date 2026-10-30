@@ -274,41 +274,74 @@ static int BodyClass(const App& app, int i) {
 // 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星, 5 地上の都市
 static const int SEARCH_TABS = 6;
 
-// 地上から空を見る場所（緯度・経度 deg）。選ぶと地表に降り、南（南半球では北）の空を見上げる
-struct City { const char* jp; const char* en; double lat, lon; };
+// 地上から空を見る場所（天体, 緯度・経度 deg, 標準時 UTC+時間（夏時間は考えない。NAN は UTC で表示））。
+// 選ぶと地表に降り、赤道側（北半球なら南）の空を見上げる。月面では地球が出ていれば地球を見る
+struct City { const char* jp; const char* en; double lat, lon; int body; double tz; };
 static const City CITIES[] = {
-    {"東京", "Tokyo", 35.68, 139.69},         {"札幌", "Sapporo", 43.06, 141.35},
-    {"那覇", "Naha", 26.21, 127.68},          {"北京", "Beijing", 39.90, 116.41},
-    {"シンガポール", "Singapore", 1.35, 103.82}, {"ムンバイ", "Mumbai", 19.08, 72.88},
-    {"カイロ", "Cairo", 30.04, 31.24},        {"モスクワ", "Moscow", 55.76, 37.62},
-    {"ロンドン", "London", 51.51, -0.13},      {"パリ", "Paris", 48.86, 2.35},
-    {"レイキャビク", "Reykjavik", 64.15, -21.94}, {"ニューヨーク", "New York", 40.71, -74.01},
-    {"ロサンゼルス", "Los Angeles", 34.05, -118.24}, {"マウナケア山頂（ハワイ）", "Mauna Kea (Hawaii)", 19.82, -155.47},
-    {"アタカマ砂漠（チリ）", "Atacama Desert (Chile)", -24.63, -70.40}, {"リオデジャネイロ", "Rio de Janeiro", -22.91, -43.17},
-    {"ケープタウン", "Cape Town", -33.92, 18.42}, {"シドニー", "Sydney", -33.87, 151.21},
-    {"南極点", "South Pole", -89.99, 0.0},     {"北極点", "North Pole", 89.99, 0.0},
+    {"東京", "Tokyo", 35.68, 139.69, B_EARTH, 9},         {"札幌", "Sapporo", 43.06, 141.35, B_EARTH, 9},
+    {"那覇", "Naha", 26.21, 127.68, B_EARTH, 9},          {"北京", "Beijing", 39.90, 116.41, B_EARTH, 8},
+    {"シンガポール", "Singapore", 1.35, 103.82, B_EARTH, 8}, {"ムンバイ", "Mumbai", 19.08, 72.88, B_EARTH, 5.5},
+    {"カイロ", "Cairo", 30.04, 31.24, B_EARTH, 2},        {"モスクワ", "Moscow", 55.76, 37.62, B_EARTH, 3},
+    {"ロンドン", "London", 51.51, -0.13, B_EARTH, 0},      {"パリ", "Paris", 48.86, 2.35, B_EARTH, 1},
+    {"レイキャビク", "Reykjavik", 64.15, -21.94, B_EARTH, 0}, {"ニューヨーク", "New York", 40.71, -74.01, B_EARTH, -5},
+    {"ロサンゼルス", "Los Angeles", 34.05, -118.24, B_EARTH, -8},
+    {"マウナケア山頂（ハワイ）", "Mauna Kea (Hawaii)", 19.82, -155.47, B_EARTH, -10},
+    {"アタカマ砂漠（チリ）", "Atacama Desert (Chile)", -24.63, -70.40, B_EARTH, -4},
+    {"リオデジャネイロ", "Rio de Janeiro", -22.91, -43.17, B_EARTH, -3}, {"ケープタウン", "Cape Town", -33.92, 18.42, B_EARTH, 2},
+    {"シドニー", "Sydney", -33.87, 151.21, B_EARTH, 10},
+    {"南極点", "South Pole", -89.99, 0.0, B_EARTH, NAN},  {"北極点", "North Pole", 89.99, 0.0, B_EARTH, NAN},
+    // 月面（経度は東が正）
+    {"静かの海（アポロ11号の着陸地点）", "Sea of Tranquility (Apollo 11)", 0.674, 23.473, B_MOON, NAN},
+    {"タウルス・リットロウ谷（アポロ17号）", "Taurus-Littrow (Apollo 17)", 20.19, 30.77, B_MOON, NAN},
+    {"月の南極", "Lunar south pole", -89.9, 0.0, B_MOON, NAN},
+    {"フォン・カルマン・クレーター（嫦娥4号、月の裏側）", "Von Karman crater (Chang'e 4, far side)", -45.44, 177.6, B_MOON, NAN},
+    // 火星（経度は東が正）
+    {"ジェゼロ・クレーター（パーシビアランス）", "Jezero crater (Perseverance)", 18.44, 77.45, B_MARS, NAN},
+    {"ゲール・クレーター（キュリオシティ）", "Gale crater (Curiosity)", -4.59, 137.44, B_MARS, NAN},
+    {"クリュセ平原（バイキング1号）", "Chryse Planitia (Viking 1)", 22.27, -47.95, B_MARS, NAN},
 };
 static const int CITY_COUNT = sizeof CITIES / sizeof CITIES[0];
 // 検索の候補の番号: 0 以上は天体、負は都市（-1 - 都市の番号）
 static bool IsCityResult(int r) { return r < 0; }
 
-static void GoToCity(App& app, int k) {
+static void GoToCity(App& app, int k, double elDeg = 35) {
     const City& c = CITIES[k];
     app.autopilot = false;
     app.warpT = -1;
     app.physics = false;
     int keep = app.target;
-    PlaceAt(app, B_EARTH, c.lat, c.lon, 0);
-    app.target = keep;
+    PlaceAt(app, c.body, c.lat, c.lon, 0);
+    app.target = keep == c.body ? B_SUN : keep;
     // 赤道側（北半球なら南、南半球なら北）の空を仰角 35° で見る
-    const Body& e = app.B[B_EARTH];
+    const Body& e = app.B[c.body];
     V3 up = Norm(app.ship.local);
     V3 north = e.pole - up * Dot(e.pole, up);
     north = Len(north) < 1e-9 ? Norm(e.ex - up * Dot(e.ex, up)) : Norm(north);
     V3 h = c.lat >= 0 ? north * -1.0 : north;
-    double el = 35 * DEG;
+    double el = elDeg * DEG;
     app.ship.q = QuatFromBasis(h * std::cos(el) + up * std::sin(el), up);
+    if (c.body == B_MOON) {   // 月面: 地球が空にあれば地球を見る
+        V3 toEarth = Norm(app.B[B_EARTH].pos - ShipWorld(app));
+        if (Dot(toEarth, up) > std::sin(5 * DEG)) {
+            app.target = B_EARTH;
+            app.ship.q = QuatFromBasis(toEarth, up);
+        }
+    }
     app.cockpit = true;
+    // 時刻はその都市の標準時で
+    app.groundTzOk = !std::isnan(c.tz);
+    app.groundTz = app.groundTzOk ? c.tz : 0;
+    app.groundTzBody = c.body;
+    {
+        V3 X, Z;
+        BodyFixedAxes(e, &X, &Z);
+        V3 r = ShipWorld(app) - e.pos;
+        app.groundTzPlace = V3(Dot(r, X), Dot(r, e.pole), Dot(r, Z));
+        char tzs[24];
+        if (c.tz == std::floor(c.tz)) snprintf(tzs, sizeof tzs, "UTC%+d", (int)c.tz);
+        else snprintf(tzs, sizeof tzs, "UTC%+d:%02d", (int)c.tz, (int)std::lround(std::fabs(c.tz - (int)c.tz) * 60));
+        app.groundTzName = tzs;
+    }
     char b[160];
     snprintf(b, sizeof b, T(UI_CITY_AT), TR(c.jp, c.en), c.lat >= 0 ? "N" : "S", std::fabs(c.lat), c.lon >= 0 ? "E" : "W", std::fabs(c.lon));
     Toast(app, b);
@@ -460,8 +493,8 @@ static void DrawSearch(const App& app) {
         if (IsCityResult(i)) {   // 都市
             const City& cc = CITIES[-1 - i];
             Txt(TR(cc.jp, cc.en), L.x + 28, ry, 17, sel ? Color{255, 240, 200, 255} : Color{200, 235, 210, 255});
-            snprintf(right, sizeof right, "%s   %s %.1f°  %s %.1f°", T(UI_SEARCH_GROUND), cc.lat >= 0 ? "N" : "S", std::fabs(cc.lat),
-                     cc.lon >= 0 ? "E" : "W", std::fabs(cc.lon));
+            snprintf(right, sizeof right, "%s   %s %.1f°  %s %.1f°", TR(app.B[cc.body].d.jp, app.B[cc.body].d.en), cc.lat >= 0 ? "N" : "S",
+                     std::fabs(cc.lat), cc.lon >= 0 ? "E" : "W", std::fabs(cc.lon));
         } else {
             const BodyDef& d = app.B[i].d;
             bool active = app.B[i].active;

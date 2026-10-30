@@ -692,6 +692,241 @@ static void DrawInfoCard(const App& app) {
     Txt(T(UI_INFO_CLOSE), r.x + 12, r.y + r.height - 20, 12, {120, 145, 180, 220});
 }
 
+// ---------------------------------------------------------------- 地上からの観測
+// 地表（高度 2 km 以下）にいる時: 地平線と方位、ターゲットの高度・方位、出・南中・入りの時刻を出す
+
+// 時刻 t の天体の位置と自転角（UpdateBodies と同じ式を 1 天体分だけ。出入りの時刻を探すのに何百回も呼ぶ）
+static V3 PosAt(const std::vector<Body>& B, int i, double t) {
+    const BodyDef& d = B[i].d;
+    if (d.parent < 0) return V3();
+    if (d.tleN > 0) return PosAt(B, B_EARTH, t) + SatellitePos(d, t);
+    if (d.probe >= 0) {
+        bool act;
+        return ProbePosAt(d, t, [&](int k) { return PosAt(B, k, t); }, &act);
+    }
+    if (d.parent == 0) return i == B_EARTH ? EarthPos(d, t) : PlanetPos(d, t);
+    if (i == B_MOON) return PosAt(B, B_EARTH, t) + MoonGeoPos(t);
+    double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
+    if (d.moonPeriod2 > 0 && t > d.moonChangeT)
+        th = d.moonPhase * DEG + 2 * PI * (d.moonChangeT / d.moonPeriod + (t - d.moonChangeT) / d.moonPeriod2);
+    if (d.libA != 0 || d.libB != 0) {
+        double w = 2 * PI * t / (70.56 * 365.25);
+        th += (d.libA * std::sin(w) + d.libB * std::cos(w)) * DEG;
+    }
+    return PosAt(B, d.parent, t) + (B[i].oN * std::cos(th) + B[i].oQ * std::sin(th)) * d.moonA;
+}
+static double SpinAt(const std::vector<Body>& B, int i, double t) {
+    const Body& b = B[i];
+    const BodyDef& d = b.d;
+    if (d.parent > 0 && d.rotPeriod == 0) {
+        V3 u = PosAt(B, d.parent, t) - PosAt(B, i, t);
+        return std::atan2(-Dot(u, b.ez), Dot(u, b.ex));
+    }
+    double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
+    if (!std::isnan(d.w0)) return std::fmod(b.primeOffset + d.w0 * DEG + 2 * PI * t / rp, 2 * PI);
+    return std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
+}
+
+// 立っている天体（地表にいなければ -1）
+static int GroundBody(const App& app) {
+    const Body& b = app.B[app.ship.ref];
+    // 小惑星など小さな天体は地平線がすぐ近くで丸いので対象にしない（半径 100 km 以上）
+    if (app.warpT >= 0 || b.d.kind == KIND_PROBE || b.d.kind == KIND_GAS || b.d.kind == KIND_STAR || b.d.radius < 100) return -1;
+    return SurfaceDist(b, ShipWorld(app)) < 2 ? app.ship.ref : -1;
+}
+
+// 地上の点（天体固定座標 f）から見たターゲットの高度・方位 rad（方位は北から東回り）
+static void AltAz(const App& app, int g, V3 f, int target, double t, double* alt, double* az) {
+    const Body& b = app.B[g];
+    double s = SpinAt(app.B, g, t), cs = std::cos(s), sn = std::sin(s);
+    V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;
+    V3 pg = PosAt(app.B, g, t), rel = X * f.x + b.pole * f.y + Z * f.z;
+    V3 up = Norm(rel), v = Norm(PosAt(app.B, target, t) - (pg + rel));
+    V3 north = b.pole - up * Dot(b.pole, up);
+    north = Len(north) < 1e-9 ? Norm(X - up * Dot(X, up)) : Norm(north);
+    V3 east = Cross(north, up);
+    *alt = std::asin(std::max(-1.0, std::min(1.0, Dot(v, up))));
+    *az = std::fmod(std::atan2(Dot(v, east), Dot(v, north)) + 2 * PI, 2 * PI);
+}
+
+static V3 GroundFixed(const App& app, int g) {
+    V3 X, Z;
+    BodyFixedAxes(app.B[g], &X, &Z);
+    V3 r = ShipWorld(app) - app.B[g].pos;
+    return V3(Dot(r, X), Dot(r, app.B[g].pole), Dot(r, Z));
+}
+
+// 出・南中・入り（今から 1 日分。月面は 1 か月分）。結果は時刻が大きく動くまで使い回す
+struct RiseSet {
+    int body = -1, target = -1;
+    V3 f;
+    double t0 = NAN, span = 0;
+    double rise = NAN, set = NAN, transit = NAN, transitAlt = 0;
+    bool alwaysUp = false, alwaysDown = false;
+};
+static RiseSet g_riseSet;
+
+static const RiseSet& GetRiseSet(const App& app, int g) {
+    RiseSet& r = g_riseSet;
+    V3 f = GroundFixed(app, g);
+    if (r.body == g && r.target == app.target && Len(r.f - f) < 1 && app.tDays >= r.t0 && app.tDays - r.t0 < r.span * 0.01) return r;
+    r = RiseSet();
+    r.body = g;
+    r.target = app.target;
+    r.f = f;
+    r.t0 = app.tDays;
+    const BodyDef& d = app.B[g].d;
+    double P = d.rotPeriod == 0 ? d.moonPeriod : std::fabs(d.rotPeriod);
+    r.span = P * 1.1;   // 太陽日（自転より少し長い）を含むように
+    // 地平線: 地球は大気の屈折（太陽・月は半径も）を入れる
+    double h0 = g == B_EARTH ? (app.target == B_SUN || app.target == B_MOON ? -0.833 : -0.567) * DEG : 0.0;
+    const int N = 480;
+    double prevAlt = 0, az, maxAlt = -10;
+    auto altAt = [&](double t) { double a, z; AltAz(app, g, f, app.target, t, &a, &z); return a - h0; };
+    auto refine = [&](double a, double b) {   // 符号が変わる所を二分法で
+        double fa = altAt(a);
+        for (int k = 0; k < 24; k++) {
+            double m = (a + b) / 2, fm = altAt(m);
+            if ((fm > 0) == (fa > 0)) { a = m; fa = fm; } else b = m;
+        }
+        return (a + b) / 2;
+    };
+    bool anyUp = false, anyDown = false;
+    for (int k = 0; k <= N; k++) {
+        double t = r.t0 + r.span * k / N, a;
+        AltAz(app, g, f, app.target, t, &a, &az);
+        a -= h0;
+        if (a > 0) anyUp = true; else anyDown = true;
+        if (a > maxAlt) { maxAlt = a; r.transit = t; }
+        if (k > 0) {
+            double tp = r.t0 + r.span * (k - 1) / N;
+            if (prevAlt <= 0 && a > 0 && std::isnan(r.rise)) r.rise = refine(tp, t);
+            if (prevAlt > 0 && a <= 0 && std::isnan(r.set)) r.set = refine(tp, t);
+        }
+        prevAlt = a;
+    }
+    // 南中は一番高い所を細かく（黄金分割）
+    if (!std::isnan(r.transit)) {
+        double a = std::max(r.t0, r.transit - r.span / N), b = std::min(r.t0 + r.span, r.transit + r.span / N);
+        for (int k = 0; k < 40; k++) {
+            double m1 = b - (b - a) * 0.618, m2 = a + (b - a) * 0.618;
+            if (altAt(m1) < altAt(m2)) a = m1; else b = m2;
+        }
+        r.transit = (a + b) / 2;
+        r.transitAlt = altAt(r.transit) + h0;
+    }
+    r.alwaysUp = !anyDown;
+    r.alwaysDown = !anyUp;
+    return r;
+}
+
+// 時刻の表示（tz: UTC からの時間）。1 日より長い範囲なら日付も
+static std::string GroundTime(double t, double tz, bool withDate) {
+    std::string s = FmtDate(t + tz / 24);   // "YYYY-MM-DD hh:mm:ss UTC"
+    return withDate ? s.substr(5, 11) : s.substr(11, 5);
+}
+
+static void DrawGroundView(const App& app) {
+    int g = GroundBody(app);
+    if (g < 0 || app.photoMode > 0) return;
+    const Cam& c = app.cam;
+    const Body& b = app.B[g];
+    V3 up = Norm(ShipWorld(app) - b.pos);
+    V3 north = b.pole - up * Dot(b.pole, up);
+    if (Len(north) < 1e-9) {
+        V3 X, Z;
+        BodyFixedAxes(b, &X, &Z);
+        north = X - up * Dot(X, up);
+    }
+    north = Norm(north);
+    V3 east = Cross(north, up);
+    // 地面: 地平線より下を塗る。間近では天体の画像（1 画素が数 km）が引き伸ばされて見えるため。
+    // 地平線はカメラを通る平面なので、画面上では直線になる。画面の四角形をその直線で切った下側を塗る
+    {
+        double fu = Dot(c.fwd, up) * c.focal, ru = Dot(c.right, up), uu = Dot(c.up, up);
+        auto side = [&](Vector2 p) { return fu + (p.x - c.W * 0.5) * ru - (p.y - c.H * 0.5) * uu; };   // 負なら地平線より下
+        Vector2 corner[4] = {{0, 0}, {c.W, 0}, {c.W, c.H}, {0, c.H}};
+        std::vector<Vector2> poly;
+        for (int k = 0; k < 4; k++) {
+            Vector2 a = corner[k], bb = corner[(k + 1) % 4];
+            double sa = side(a), sb = side(bb);
+            if (sa < 0) poly.push_back(a);
+            if ((sa < 0) != (sb < 0)) {
+                float u = (float)(sa / (sa - sb));
+                poly.push_back({a.x + (bb.x - a.x) * u, a.y + (bb.y - a.y) * u});
+            }
+        }
+        if (poly.size() >= 3) {
+            double sunAlt, sunAz;
+            AltAz(app, g, GroundFixed(app, g), B_SUN, app.tDays, &sunAlt, &sunAz);
+            float day = (float)std::max(0.0, std::min(1.0, (sunAlt / DEG + 6) / 16));   // 薄明（−6°）から昼（10°）まで
+            const Col3& gc = b.d.c2;
+            float k = 0.05f + 0.30f * day;
+            Color col = {(unsigned char)(255 * std::min(1.0f, gc.r * k + 0.02f)), (unsigned char)(255 * std::min(1.0f, gc.g * k + 0.025f)),
+                         (unsigned char)(255 * std::min(1.0f, gc.b * k + 0.02f)), 255};
+            for (size_t k2 = 1; k2 + 1 < poly.size(); k2++) {   // 向きによらず塗れるよう両回りで
+                DrawTriangle(poly[0], poly[k2], poly[k2 + 1], col);
+                DrawTriangle(poly[0], poly[k2 + 1], poly[k2], col);
+            }
+        }
+    }
+    // 地平線（5° ごと）と 8 方位の名前
+    Vector2 prev{};
+    bool have = false;
+    for (int k = 0; k <= 72; k++) {
+        double a = 2 * PI * k / 72;
+        Vector2 p;
+        bool ok = Project(c, north * std::cos(a) + east * std::sin(a), &p);
+        if (ok && have) DrawLineEx(prev, p, 1.2f, {120, 170, 120, 110});
+        prev = p;
+        have = ok;
+    }
+    for (int k = 0; k < 8; k++) {
+        double a = PI / 4 * k;
+        Vector2 p;
+        if (!Project(c, north * std::cos(a) + east * std::sin(a), &p)) continue;
+        const char* name = T((UiId)(UI_DIR0 + k * 2));
+        float fs = k % 2 == 0 ? 22.0f : 16.0f;
+        TxtC(name, p.x, p.y - fs - 6, fs, k == 0 ? Color{255, 150, 130, 230} : Color{170, 220, 170, 220});
+    }
+    // パネル: 場所と時刻、ターゲットの高度・方位、出・南中・入り
+    V3 f = GroundFixed(app, g);
+    double lat = std::asin(std::max(-1.0, std::min(1.0, f.y / Len(f)))) / DEG, lon = std::atan2(-f.z, f.x) / DEG;
+    // 検索の「地上」で選んだ都市の近く（50 km 以内）にいる間は、その都市の標準時で表示する
+    bool tzOk = app.groundTzOk && app.groundTzBody == g && Len(f - app.groundTzPlace) < 50;
+    double tz = tzOk ? app.groundTz : 0;
+    char l1[200], l2[200], l3[240];
+    std::string now = GroundTime(app.tDays, tz, false);
+    snprintf(l1, sizeof l1, "%s  %s %.1f°  %s %.1f°    %s %s", TR(b.d.jp, b.d.en), lat >= 0 ? "N" : "S", std::fabs(lat),
+             lon >= 0 ? "E" : "W", std::fabs(lon), now.c_str(), tzOk ? app.groundTzName.c_str() : "UTC");
+    const Body& tb = app.B[app.target];
+    l2[0] = l3[0] = 0;
+    if (app.target != g) {
+        double alt, az;
+        AltAz(app, g, f, app.target, app.tDays, &alt, &az);
+        int dir = (int)std::floor(az / (2 * PI) * 16 + 0.5) % 16;
+        snprintf(l2, sizeof l2, "%s   %s %.1f°   %s %.1f° (%s)", TR(tb.d.jp, tb.d.en), T(UI_GND_ALT), alt / DEG, T(UI_GND_AZ), az / DEG,
+                 T((UiId)(UI_DIR0 + dir)));
+        const RiseSet& rs = GetRiseSet(app, g);
+        bool date = rs.span > 2;
+        auto tm = [&](double t) { return std::isnan(t) ? std::string("--:--") : GroundTime(t, tz, date); };
+        if (rs.alwaysUp) snprintf(l3, sizeof l3, "%s", T(UI_GND_ALWAYS_UP));
+        else if (rs.alwaysDown) snprintf(l3, sizeof l3, "%s", T(UI_GND_ALWAYS_DOWN));
+        else
+            snprintf(l3, sizeof l3, "%s %s    %s %s (%.0f°)    %s %s", T(UI_GND_RISE), tm(rs.rise).c_str(),
+                     T(lat >= 0 ? UI_GND_TRANSIT_S : UI_GND_TRANSIT_N), tm(rs.transit).c_str(), rs.transitAlt / DEG, T(UI_GND_SET),
+                     tm(rs.set).c_str());
+    }
+    float w = std::max(TxtW(l1, 15), std::max(TxtW(l2, 15), TxtW(l3, 14))) + 24, h = l2[0] ? 76.0f : 30.0f;
+    float x = 6, y = c.H - 64 - 44 - h;
+    DrawRectangleRounded({x, y, w, h}, 0.1f, 6, {0, 10, 25, 170});
+    Txt(l1, x + 12, y + 7, 15, {170, 220, 170, 255});
+    if (l2[0]) {
+        Txt(l2, x + 12, y + 29, 15, {255, 220, 80, 255});
+        Txt(l3, x + 12, y + 51, 14, {210, 225, 245, 255});
+    }
+}
+
 static void DrawHUD(App& app) {
     const Cam& c = app.cam;
     if (app.photoMode > 0) {   // 写真モード: 一覧・入力欄と、切り替えの知らせだけ
@@ -777,6 +1012,7 @@ static void DrawHUD(App& app) {
     Txt(b, x, y, fs - 1, {200, 220, 240, 255});
 
     DrawCompass(app);
+    DrawGroundView(app);
     DrawSpeedometer(app);
     DrawEngineBar(app);
 

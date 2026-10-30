@@ -61,6 +61,11 @@ struct App {
     bool searchOpen = false;              // 天体の検索（/ キー）
     std::string searchText;               // 入力中の文字（UTF-8）
     int searchSel = 0, searchTab = 0;     // 選んでいる候補・分類のタブ
+    double groundTz = 0;                  // 地上の都市の標準時（UTC からの時間）
+    bool groundTzOk = false;              // 都市を選んでその近くにいる間だけ標準時で表示する
+    int groundTzBody = -1;
+    std::string groundTzName;             // "UTC+9" など
+    V3 groundTzPlace;                     // その都市（天体固定座標）
     int resumeMode = 1;                   // 起動時に前回の続きから 0: しない, 1: 場所だけ, 2: 場所と日時
     int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）
