@@ -1369,6 +1369,7 @@ struct Options {
     std::string share;           // 共有リンク（URL か ? 以降）の場面で始める。ブラウザ版はページの URL から
     float dpi = 0;               // 画面の表示倍率を指定（確認用）
     bool map = false;            // 全体図を開いた状態で始める（確認用）
+    bool noMsaa = false;         // アンチエイリアス (MSAA) なしで始める（MSAA を使えない環境の確認用）
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -1414,6 +1415,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--share") o.share = next();
         else if (a == "--dpi") o.dpi = (float)atof(next());
         else if (a == "--map") o.map = true;
+        else if (a == "--no-msaa") o.noMsaa = true;
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
@@ -5274,13 +5276,26 @@ int main(int argc, char** argv) {
     // ブラウザ版: 大きさはページに合わせて毎フレーム自分で変える（raylib の自動の変更は縮小表示に対応しない）
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(WebViewW(), WebViewH(), "Solar System Voyager");
-#elif defined(__APPLE__)
-    // Retina: 座標は今までどおり（ポイント単位）で、描画だけ細かくする
-    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
-    InitWindow(1280, 720, "Solar System Voyager");
 #else
-    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+    // アンチエイリアス (MSAA) 付きの OpenGL を作れない環境（仮想マシンなど）では、GLFW がウィンドウを作れないまま
+    // raylib が落ちる。初期化の前に印を保存しておき、前回の起動が初期化中に終わっていたら MSAA なしで始める
+    bool msaa = !opt.noMsaa && GetSetting("initfail") != "1";
+    if (!opt.shot) {
+        SetSetting("initfail", "1");
+        SaveSettings();
+    }
+    unsigned int flags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT | (msaa ? FLAG_MSAA_4X_HINT : 0);
+#if defined(__APPLE__)
+    flags |= FLAG_WINDOW_HIGHDPI;   // Retina: 座標は今までどおり（ポイント単位）で、描画だけ細かくする
+#endif
+    SetConfigFlags(flags);
     InitWindow(1280, 720, "Solar System Voyager");
+    if (!opt.shot) {
+        SetSetting("initfail", "");
+        SaveSettings();
+    }
+#endif
+#if !defined(__EMSCRIPTEN__) && !defined(__APPLE__)
     {   // 高解像度の画面: ウィンドウと 2D の表示を画面の表示倍率に合わせて大きくする（画面の 9 割まで）
         Vector2 dpi = GetWindowScaleDPI();
         g_dpiScale = std::max(1.0f, std::min(3.0f, dpi.y > 0 ? dpi.y : 1.0f));

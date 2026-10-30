@@ -102,7 +102,8 @@ jobs:
           # 配布する .zip から展開した .app を起動する（macOS には timeout が無いので perl の alarm で打ち切る）
           mkdir -p shots
           APP=$(echo build-mac/check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager)
-          shot() { name=$1; shift; perl -e 'alarm 300; exec @ARGV' "$APP" --shot "$PWD/shots/$name.png" --frames 60 "$@" \
+          # GitHub の Mac の仮想マシンは MSAA 付きの OpenGL を作れないので --no-msaa で起動する
+          shot() { name=$1; shift; perl -e 'alarm 300; exec @ARGV' "$APP" --no-msaa --shot "$PWD/shots/$name.png" --frames 60 "$@" \
                      > "shots/$name.log" 2>&1 || echo "$name: exit $?"; }
           shot earth --lang ja
           shot mars --lang ja --share "?t=9800.25&at=Mars,5500,1500,0,-0.96,-0.27,0,-0.27,0.96,0&tg=Phobos&ts=3"
@@ -110,7 +111,7 @@ jobs:
           shot settings_en --lang en --settings
           ls -la shots
           if [ ! -s shots/earth.png ]; then   # 起動できない時は、デバッガで止まった場所を調べる
-            lldb --batch -o run -k "bt 30" -k "register read pc" -k quit -- "$APP" --shot "$PWD/shots/lldb.png" --frames 5 \
+            lldb --batch -o run -k "bt 30" -k "register read pc" -k quit -- "$APP" --no-msaa --shot "$PWD/shots/lldb.png" --frames 5 \
               > shots/lldb.log 2>&1 || true
             msg=$(grep -vE "^INFO" shots/lldb.log | tail -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::notice title=lldb backtrace::${msg}"
