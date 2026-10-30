@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!-- 日本語などを含むパス（ユーザー名・ピクチャフォルダ）を fopen で扱えるよう、プロセスの文字コードを UTF-8 にする -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="SolarSystemVoyager" version="2.12.0.0"/>
+  <assemblyIdentity type="win32" name="SolarSystemVoyager" version="2.13.0.0"/>
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
