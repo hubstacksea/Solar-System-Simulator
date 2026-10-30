@@ -32,7 +32,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![International Space Station](docs/screenshots/iss.jpg) The International Space Station above Earth | ![Gravity mode](docs/screenshots/gravity_mode.jpg) Gravity mode (R key): the predicted orbit around Earth |
 | ![Browser version](docs/screenshots/browser.jpg) The browser version (WebGL2) | ![Touch controls on a phone](docs/screenshots/touch.jpg) Touch controls on a phone in landscape (during the tour) |
 | ![First-run guide](docs/screenshots/first_run.jpg) The guide shown on the first launch | ![Share link](docs/screenshots/share_link.jpg) A scene opened from a share link (above Mars; F2 copies one) |
-| ![Extra large text](docs/screenshots/settings_large.jpg) The settings with text size "Extra large" | ![System map](docs/screenshots/system_map.jpg) The system map (F3; centered on the Sun, Jupiter targeted) |
+| ![Extra large text](docs/screenshots/settings_large.jpg) The settings with text size "Extra large" | ![System map](docs/screenshots/system_map.jpg) The system map (F3; 1989 with the path of Voyager 1) |
 
 ## Getting started
 
@@ -95,11 +95,11 @@ open build/SolarSystemVoyager.app
 
 ### Automatic builds and releases (GitHub Actions)
 
-Pushing a tag such as `v2.7.1` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux and macOS builds are also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` / `screenshots-macos` in the run (a failed launch does not stop the release).
+Pushing a tag such as `v2.8.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux and macOS builds are also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` / `screenshots-macos` in the run (a failed launch does not stop the release).
 
 ```sh
-git tag v2.7.1
-git push origin master v2.7.1
+git tag v2.8.0
+git push origin master v2.8.0
 ```
 
 ### Browser version (Emscripten)
