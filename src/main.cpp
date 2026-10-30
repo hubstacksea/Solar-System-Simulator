@@ -380,6 +380,7 @@ int main(int argc, char** argv) {
     if (opt.map) OpenMap(app);
     app.showInfo = opt.info;
     if (opt.city >= 0 && opt.city < CITY_COUNT) GoToCity(app, opt.city, std::isnan(opt.cityEl) ? 35 : opt.cityEl);
+    if (opt.frameLock) SetFrameLock(app, true, true);
     if (opt.search) {
         OpenSearch(app);
         app.searchText = opt.search;

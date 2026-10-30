@@ -198,6 +198,7 @@ struct Options {
     bool noMsaa = false;         // アンチエイリアス (MSAA) なしで始める（MSAA を使えない環境の確認用）
     bool checkAssets = false;    // データが読めるかを確かめて終了（ウィンドウを作れない CI の確認用）
     bool info = false;           // 天体の情報を開いて始める（確認用）
+    bool frameLock = false;      // 基準系を自機に固定して始める（確認用）
     bool resume = false;         // --shot でも前回の続きから始める（確認用）
     const char* search = nullptr;   // 検索を開いてこの文字を入れて始める（確認用）
     int searchTab = 0;              // 検索の分類のタブ（確認用）
@@ -251,6 +252,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--no-msaa") o.noMsaa = true;
         else if (a == "--check-assets") o.checkAssets = true;
         else if (a == "--info") o.info = true;
+        else if (a == "--frame-lock") o.frameLock = true;
         else if (a == "--resume") o.resume = true;
         else if (a == "--search") o.search = next();
         else if (a == "--search-tab") o.searchTab = atoi(next());

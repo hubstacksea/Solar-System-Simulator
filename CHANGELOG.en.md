@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.15.0 (2026-10-30)
+
+- Fix the reference frame to the ship (Shift+F / settings): you no longer move along with the nearest body and stay put relative to the Sun, so you can watch Earth leave at 30 km/s. Warping, moving to a place or an event, or the autopilot returns to automatic
+
 ## 2.14.1 (2026-10-30)
 
 - Fixed the ground hiding the surface texture: below 2 km the area under the horizon was painted a flat color. Instead, Earth's city lights, which blur into large glowing patches up close, are now dimmed near the ground

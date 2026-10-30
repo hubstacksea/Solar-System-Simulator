@@ -88,6 +88,7 @@ struct App {
     Vector2 tapPos = {0, 0};
     int introPage = -1;                   // 初回の案内のページ（-1: 表示しない）
     bool physics = false;                 // 重力モード（R キー）: 天体の重力を受けて飛ぶ（オフ: 機首の向きへ進むアーケード式）
+    bool frameLock = false;               // 基準系を自機に固定（Shift+F）: 近くの天体と一緒に動かず、太陽に対してその場にとどまる
     bool tourOn = false;                  // 自動ツアー（U キー）
     int tourIdx = 0;
     double tourTime = 0;                  // 今の場面に着いてからの実時間 秒
@@ -149,6 +150,10 @@ static void UpdateReferenceFrame(App& app) {
     int best = B_SUN;
     double bestSoi = 1e301;
     // 地表近く（高度 100 km 以下）にいる時は、上空を通る人工衛星や探査機に乗り移らない（地上で時間を進めた時など）
+    if (app.frameLock) {
+        if (app.ship.ref == B_SUN) return;
+        app.frameLock = false;   // ワープ・地上へ移る・イベントなどで天体のそばに置かれたら固定をやめる
+    }
     const Body& cur = app.B[app.ship.ref];
     bool onGround = cur.d.kind != KIND_PROBE && SurfaceDist(cur, w) < 100;
     for (size_t i = 1; i < app.B.size(); i++) {

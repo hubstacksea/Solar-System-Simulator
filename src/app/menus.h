@@ -5,8 +5,10 @@
 
 // ---------------------------------------------------------------- 設定（F10 キー。それぞれのキー操作も同じ関数を使う）
 enum SettingItem { SET_LANG, SET_TEXTSIZE, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_MILKYWAY, SET_ORBITS, SET_ASTEROIDS,
-                   SET_MARKERS, SET_INVERT, SET_PHYSICS, SET_RESUME, SET_FULLSCREEN, SET_COUNT };
-static const float SET_ROW_H = 28;   // 設定画面の 1 行の高さ
+                   SET_MARKERS, SET_INVERT, SET_PHYSICS, SET_FRAME, SET_RESUME, SET_FULLSCREEN, SET_COUNT };
+static const float SET_ROW_H = 26;   // 設定画面の 1 行の高さ
+
+static void SetFrameLock(App& app, bool on, bool toast);
 
 // 項目を dir（+1 / -1）の向きに変える。変えたらすぐ保存し、知らせを出すかは toast で選ぶ
 static void ChangeSetting(App& app, int item, int dir, bool toast) {
@@ -74,6 +76,9 @@ static void ChangeSetting(App& app, int item, int dir, bool toast) {
             SetSetting("physics", onoff(app.physics));
             if (toast) Toast(app, T(app.physics ? UI_PHYS_ON : UI_PHYS_OFF));
             break;
+        case SET_FRAME:   // その時だけの切り替えなので保存しない
+            SetFrameLock(app, !app.frameLock, toast);
+            break;
         case SET_RESUME:
             app.resumeMode = (app.resumeMode + dir + 3) % 3;
             SetSetting("resume_mode", std::to_string(app.resumeMode));
@@ -100,6 +105,7 @@ static std::string SettingValue(const App& app, int item) {
         case SET_MARKERS: return onoff(app.showMoonMarkers);
         case SET_INVERT: return onoff(app.invertY);
         case SET_PHYSICS: return T(app.physics ? UI_SET_GRAVITY : UI_SET_ARCADE);
+        case SET_FRAME: return T(app.frameLock ? UI_FRAME_SHIP : UI_SET_FRAME_AUTO);
         case SET_RESUME: return T((UiId)(UI_SET_RES0 + app.resumeMode));
         default: return onoff(IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE));
     }
@@ -973,7 +979,7 @@ static void DrawModalPanels(const App& app) {
     if (app.settingsOpen) {
         static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_TEXTSIZE, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY,
                                              UI_SET_MILKYWAY, UI_SET_ORBITS, UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT,
-                                             UI_SET_PHYSICS, UI_SET_RESUME, UI_SET_FULLSCREEN};
+                                             UI_SET_PHYSICS, UI_SET_FRAME, UI_SET_RESUME, UI_SET_FULLSCREEN};
         float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * SET_ROW_H, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});

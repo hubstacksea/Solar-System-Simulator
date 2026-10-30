@@ -1056,7 +1056,7 @@ static void DrawHUD(App& app) {
     Txt(b, x, y, fs - 1, {190, 205, 225, 255}); y += lh;
     snprintf(b, sizeof b, "%s %s", T(UI_SPEED), FmtSpeed(s.speed).c_str());
     Txt(b, x, y, fs + 1, WHITE); y += lh;
-    snprintf(b, sizeof b, "%s %s    %s %s  %s %s", T(UI_FRAME), TR(app.B[s.ref].d.jp, app.B[s.ref].d.en), T(UI_NEAREST),
+    snprintf(b, sizeof b, "%s %s    %s %s  %s %s", T(UI_FRAME), app.frameLock ? T(UI_FRAME_SHIP) : TR(app.B[s.ref].d.jp, app.B[s.ref].d.en), T(UI_NEAREST),
              TR(app.B[nearest].d.jp, app.B[nearest].d.en), T(UI_ALT), FmtDist(std::max(0.0, nearestAlt)).c_str());
     Txt(b, x, y, fs, {200, 220, 240, 255}); y += lh;
     snprintf(b, sizeof b, "%s %s", T(UI_DATE), FmtDate(app.tDays).c_str());

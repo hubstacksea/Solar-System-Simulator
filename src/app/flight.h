@@ -401,12 +401,16 @@ static void HandleInput(App& app, double dt) {
     };
     if (IsKeyPressed(KEY_TAB)) cycle(shift ? -1 : 1);
     if (pad.nextTarget) cycle(1);
-    if (IsKeyPressed(KEY_F) && !warping) FaceTarget(app);
+    if (IsKeyPressed(KEY_F) && !warping) {
+        if (shift) ChangeSetting(app, SET_FRAME, 1, true);
+        else FaceTarget(app);
+    }
     if ((IsKeyPressed(KEY_T) || pad.autopilot) && !warping) {
         if (app.autopilot) {
             app.autopilot = false;
             Toast(app, T(UI_AP_OFF));
         } else {
+            SetFrameLock(app, false, false);   // 自動操縦は動いている天体に向かうので、天体と一緒に動く基準系で
             app.autopilot = true;
             app.apAutoEngine = shift;
             Toast(app, T(shift ? UI_AP_ON_AUTO : UI_AP_ON));
@@ -671,6 +675,25 @@ static void SetPhysics(App& app, bool on) {
         app.ship.speed = std::max(0.0, Dot(app.ship.vel, ShipFwd(app.ship)));
     }
     app.autopilot = false;
+}
+
+// 基準系を自機に固定する / 自動に戻す。固定中は太陽を基準天体にして乗り移らない（太陽は原点に止まっているので、
+// アーケード式で止まっていれば太陽に対してその場にとどまり、惑星や衛星の方が動いていく）
+static void SetFrameLock(App& app, bool on, bool toast) {
+    if (on == app.frameLock) return;
+    Ship& s = app.ship;
+    int old = s.ref;
+    V3 w = ShipWorld(app);
+    app.frameLock = on;
+    if (on) {
+        app.autopilot = false;
+        s.ref = B_SUN;
+        SetShipWorld(app, w);
+    } else {
+        UpdateReferenceFrame(app);
+    }
+    if (app.physics && s.ref != old) s.vel += BodyVelocity(app, old) - BodyVelocity(app, s.ref);   // 重力モードでは実際の動きを変えない
+    if (toast) Toast(app, T(on ? UI_FRAME_LOCK_ON : UI_FRAME_LOCK_OFF));
 }
 
 static void UpdateShip(App& app, double dt) {

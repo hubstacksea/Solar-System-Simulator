@@ -56,7 +56,7 @@
     X(HELP4, "1〜7 / マウスホイール : エンジン切替", "1-7 / Mouse wheel : select engine")    \
     X(HELP5, "Tab / Shift+Tab : ターゲット切替", "Tab / Shift+Tab : cycle target")           \
     X(HELP6, "F : 機首を向ける    T : 自動操縦    Shift+T : 自動操縦(エンジン自動選択)", "F : face target    T : autopilot    Shift+T : autopilot (auto engine)") \
-    X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ", "G : warp to target    Shift+G : warp to surface") \
+    X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ    Shift+F : 基準系を自機に固定", "G : warp to target    Shift+G : warp to surface    Shift+F : fix the frame to the ship") \
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード    R : 重力モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode    R : gravity mode") \
@@ -267,6 +267,11 @@
     X(SET_RES0, "オフ（地球の近くから）", "Off (start near Earth)") \
     X(SET_RES1, "場所だけ（日時は今）", "Place only (current time)") \
     X(SET_RES2, "場所と日時", "Place and time") \
+    X(SET_FRAME, "基準系", "Reference frame") \
+    X(SET_FRAME_AUTO, "自動（近くの天体と一緒に動く）", "Auto (move with the nearest body)") \
+    X(FRAME_SHIP, "自機に固定", "Fixed to ship") \
+    X(FRAME_LOCK_ON, "基準系を自機に固定（天体と一緒に動かず、天体の方が動いていく）", "Frame fixed to the ship (bodies move past you instead of carrying you along)") \
+    X(FRAME_LOCK_OFF, "基準系: 自動（近くの天体と一緒に動く）", "Frame: automatic (you move along with the nearest body)") \
     X(RESUMED, "前回の続きから: %s", "Resumed: %s") \
     X(TB_MAP, "全体図", "Map") \
     X(MAP_TITLE, "全体図", "System map") \
