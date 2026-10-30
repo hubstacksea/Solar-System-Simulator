@@ -94,11 +94,11 @@ open build/SolarSystemVoyager.app
 
 ### Automatic builds and releases (GitHub Actions)
 
-Pushing a tag such as `v2.7.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux and macOS builds are also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` / `screenshots-macos` in the run (a failed launch does not stop the release).
+Pushing a tag such as `v2.7.1` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux and macOS builds are also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` / `screenshots-macos` in the run (a failed launch does not stop the release).
 
 ```sh
-git tag v2.7.0
-git push origin master v2.7.0
+git tag v2.7.1
+git push origin master v2.7.1
 ```
 
 ### Browser version (Emscripten)
