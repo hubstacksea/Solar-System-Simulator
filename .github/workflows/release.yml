@@ -96,9 +96,17 @@ jobs:
           unzip -q -o SolarSystemVoyager-*-macos.zip -d check
           lipo -info check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager
           codesign --verify --verbose check/*/SolarSystemVoyager.app
+      - name: Data check
+        run: |
+          # .app の Resources からデータを読めるか（ウィンドウは作らない）
+          APP=$(echo build-mac/check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager)
+          "$APP" --check-assets | tee check.txt
+          echo "::notice title=check-assets::$(sed 's/%/%25/g' check.txt | awk '{printf "%s%%0A", $0}')"
       - name: Launch test (screenshots)
         continue-on-error: true
         run: |
+          # GitHub の Mac の仮想マシンは GPU が無く OpenGL のウィンドウを作れない（NSGL: Failed to find a suitable
+          # pixel format）ため、今は失敗する。実機に近い環境で動くようになった時のために残しておく
           # 配布する .zip から展開した .app を起動する（macOS には timeout が無いので perl の alarm で打ち切る）
           mkdir -p shots
           APP=$(echo build-mac/check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager)

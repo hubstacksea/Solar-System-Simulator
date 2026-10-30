@@ -1370,6 +1370,7 @@ struct Options {
     float dpi = 0;               // 画面の表示倍率を指定（確認用）
     bool map = false;            // 全体図を開いた状態で始める（確認用）
     bool noMsaa = false;         // アンチエイリアス (MSAA) なしで始める（MSAA を使えない環境の確認用）
+    bool checkAssets = false;    // データが読めるかを確かめて終了（ウィンドウを作れない CI の確認用）
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -1416,6 +1417,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--dpi") o.dpi = (float)atof(next());
         else if (a == "--map") o.map = true;
         else if (a == "--no-msaa") o.noMsaa = true;
+        else if (a == "--check-assets") o.checkAssets = true;
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
@@ -5247,6 +5249,26 @@ static std::string GlslForPlatform(const char* src) {
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IOLBF, 0);   // ログを 1 行ごとに書き出す（ファイルへ出している時に異常終了しても残るように）
     Options opt = ParseArgs(argc, argv);
+    if (opt.checkAssets) {   // データの大きさを出し、足りないものがあれば 1 で終わる
+        struct { const char* name; EmbeddedFile f; } files[] = {
+            {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
+            {"earth_clouds.jpg", EarthCloudsJpg()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
+            {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"sky.txt", SkyTxt()},
+            {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},
+            {"saturn_rings.png", SaturnRingsPng()}, {"milkyway.jpg", MilkyWayJpg()}};
+        int missing = 0;
+        for (auto& e : files) {
+            printf("%-18s %10zu\n", e.name, e.f.size);
+            if (!e.f.data || !e.f.size) missing++;
+        }
+        int music = 0;
+        for (int i = 0; i < MUSIC_COUNT; i++) music += MusicOgg(i).data ? 1 : 0;
+        std::vector<Body> B = InitBodies();
+        size_t shapes = 0;
+        for (const Body& b : B) shapes += b.shape >= 0 ? 1 : 0;
+        printf("music %d/%d, bodies %zu, bodies with shapes %zu, missing %d\n", music, MUSIC_COUNT, B.size(), shapes, missing);
+        return missing ? 1 : 0;
+    }
     if (opt.listEvents) {
         App tmp;
         tmp.B = InitBodies();
