@@ -99,11 +99,11 @@ open build/SolarSystemVoyager.app
 
 ### 自動ビルドとリリース（GitHub Actions）
 
-`v2.15.1` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。Linux 版と macOS 版は実際に起動してスクリーンショット（地球・火星・全体図・英語の設定画面）とログを撮り、実行結果の `screenshots-linux` / `screenshots-macos` に保存します（起動に失敗してもリリースは止めません）。
+`v2.15.2` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。Linux 版と macOS 版は実際に起動してスクリーンショット（地球・火星・全体図・英語の設定画面）とログを撮り、実行結果の `screenshots-linux` / `screenshots-macos` に保存します（起動に失敗してもリリースは止めません）。
 
 ```sh
-git tag v2.15.1
-git push origin master v2.15.1
+git tag v2.15.2
+git push origin master v2.15.2
 ```
 
 ### ブラウザ版（Emscripten）
