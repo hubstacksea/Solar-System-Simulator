@@ -237,6 +237,11 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(SET_MARKERS, "衛星・探査機のマーカー", "Moon and spacecraft markers") \
     X(SET_INVERT, "マウス上下反転", "Invert mouse") \
     X(SET_FULLSCREEN, "フルスクリーン", "Fullscreen") \
+    X(SET_TEXTSIZE, "文字の大きさ（計器・マーカーも）", "Text size (HUD and markers too)") \
+    X(SET_MILKYWAY, "天の川", "Milky Way") \
+    X(SET_TS0, "標準", "Normal") \
+    X(SET_TS1, "大", "Large") \
+    X(SET_TS2, "特大", "Extra large") \
     X(SET_ON, "オン", "On") \
     X(LOADING, "地図などを読み込み中（残り %d）", "Loading maps (%d left)") \
     X(TB_THRUST, "加速", "Thrust") \
@@ -881,6 +886,21 @@ static bool Project(const Cam& c, V3 rel, Vector2* out) {
     return true;
 }
 
+// 文字の大きさ（設定）: 画面上の 2D の表示（計器・マーカー・パネル）をまとめてこの倍率で描く。
+// 配置は画面を倍率で割った大きさ（UiCam）で計算する
+static const float UI_SCALES[3] = {1.0f, 1.15f, 1.3f};
+static int g_uiScaleIdx = 0;
+static float g_uiK = 1;   // 2D の表示を描いている間の倍率（画面のピクセルを直接使う切り抜きで使う）
+static float UiScale(const Cam& c) { return std::max(1.0f, std::min(UI_SCALES[g_uiScaleIdx], c.H / 540.0f)); }   // パネルが収まる範囲で
+static Cam UiCam(const Cam& c) {
+    float k = UiScale(c);
+    Cam u = c;
+    u.W /= k;
+    u.H /= k;
+    u.focal /= k;
+    return u;
+}
+
 static Matrix g_view;
 static void SetPassProjection(const Cam& c, double n, double f) {
     rlDrawRenderBatchActive();
@@ -1265,6 +1285,8 @@ static void LoadSettings() {
         pos = e + 1;
     }
 }
+// 設定ファイル（ブラウザ版は保存した設定）が読めたか
+static bool SettingsLoaded() { return !g_cfg.empty(); }
 // 未設定なら空文字
 static std::string GetSetting(const std::string& key) {
     for (auto& kv : g_cfg)
@@ -1401,6 +1423,7 @@ struct App {
     int skyMode = 0;  // 0: 星のみ, 1: 星座線, 2: 星座線と名前
     AsteroidBelt belt;
     bool showAsteroids = true;  // 小惑星帯などの粒（軌道表示 O が有効な時に表示）
+    bool showMilkyWay = true;   // 天の川の光
     Ship ship;
     Cam cam;
     double tDays = 0;
@@ -2462,8 +2485,8 @@ static void SetPhysics(App& app, bool on);
 static V3 CircularVelocity(const App& app);
 
 // ---------------------------------------------------------------- 設定（F10 キー。それぞれのキー操作も同じ関数を使う）
-enum SettingItem { SET_LANG, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_ORBITS, SET_ASTEROIDS, SET_MARKERS,
-                   SET_INVERT, SET_PHYSICS, SET_FULLSCREEN, SET_COUNT };
+enum SettingItem { SET_LANG, SET_TEXTSIZE, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_MILKYWAY, SET_ORBITS, SET_ASTEROIDS,
+                   SET_MARKERS, SET_INVERT, SET_PHYSICS, SET_FULLSCREEN, SET_COUNT };
 
 // 項目を dir（+1 / -1）の向きに変える。変えたらすぐ保存し、知らせを出すかは toast で選ぶ
 static void ChangeSetting(App& app, int item, int dir, bool toast) {
@@ -2477,6 +2500,14 @@ static void ChangeSetting(App& app, int item, int dir, bool toast) {
             SetLanguage(!g_jp);
             SetSetting("lang", g_jp ? "ja" : "en");
             if (toast) Toast(app, T(UI_LANG_SET));
+            break;
+        case SET_TEXTSIZE:
+            g_uiScaleIdx = (g_uiScaleIdx + dir + 3) % 3;
+            SetSetting("textsize", std::to_string(g_uiScaleIdx));
+            break;
+        case SET_MILKYWAY:
+            app.showMilkyWay = !app.showMilkyWay;
+            SetSetting("milkyway", onoff(app.showMilkyWay));
             break;
         case SET_QUALITY:
             app.quality = (app.quality + dir + 3) % 3;
@@ -2534,6 +2565,8 @@ static std::string SettingValue(const App& app, int item) {
     auto onoff = [](bool v) { return T(v ? UI_SET_ON : UI_SET_OFF); };
     switch (item) {
         case SET_LANG: return g_jp ? "日本語" : "English";
+        case SET_TEXTSIZE: return T((UiId)(UI_SET_TS0 + g_uiScaleIdx));
+        case SET_MILKYWAY: return onoff(app.showMilkyWay);
         case SET_QUALITY: return T((UiId)(UI_SET_Q0 + app.quality));
         case SET_SOUND: return onoff(!sfx::g.muted);
         case SET_MUSIC: return onoff(!sfx::gm.off);
@@ -2554,13 +2587,14 @@ enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB
 // 画面のボタンの位置: 右に速度、左に行き先、下にメニュー（画面の高さに合わせた大きさ）
 static Rectangle TouchButtonRect(const Cam& c, int i) {
     float s = std::max(56.0f, c.H * 0.1f), g = s * 0.15f;
+    float ly = std::max(c.H * 0.30f, 160 + s * 0.55f + g * 2);   // 左の列は上のメニューの段より下に
     switch (i) {
         case TB_THRUST: return {c.W - s * 1.35f - 12, c.H * 0.30f, s * 1.35f, s * 1.1f};
         case TB_BRAKE: return {c.W - s * 1.35f - 12, c.H * 0.30f + s * 1.1f + g, s * 1.35f, s * 0.9f};
         case TB_STOP: return {c.W - s * 1.35f - 12, c.H * 0.30f + s * 2.0f + g * 2, s * 1.35f, s * 0.6f};
-        case TB_TARGET: return {12, c.H * 0.30f, s * 1.5f, s * 0.8f};
-        case TB_WARP: return {12, c.H * 0.30f + s * 0.8f + g, s * 1.5f, s * 0.8f};
-        case TB_AUTO: return {12, c.H * 0.30f + (s * 0.8f + g) * 2, s * 1.5f, s * 0.8f};
+        case TB_TARGET: return {12, ly, s * 1.5f, s * 0.8f};
+        case TB_WARP: return {12, ly + s * 0.8f + g, s * 1.5f, s * 0.8f};
+        case TB_AUTO: return {12, ly + (s * 0.8f + g) * 2, s * 1.5f, s * 0.8f};
         default: {   // ツアー・イベント・設定・説明・共有: 左上のパネルの下に横に並べる
             int k = i - TB_TOUR;
             float w = s * 1.15f;
@@ -2584,7 +2618,8 @@ static Rectangle EngineButtonRect(const Cam& c, int i) {
 
 // 毎フレーム最初に: 指の状態から、押しているボタン・ドラッグ量・タップを求める
 static void UpdateTouch(App& app) {
-    const Cam& c = app.cam;
+    const Cam c = UiCam(app.cam);
+    float k = UiScale(app.cam);
     int n = GetTouchPointCount();
     if (n > 0 && !app.touchUI) {
         app.touchUI = true;
@@ -2595,7 +2630,7 @@ static void UpdateTouch(App& app) {
     app.tapped = false;
     if (!app.touchUI) return;
     bool down = n > 0;
-    Vector2 p = down ? GetTouchPosition(0) : app.touchPrev;
+    Vector2 p = down ? Vector2Scale(GetTouchPosition(0), 1 / k) : app.touchPrev;   // 2D の表示と同じ座標に
     if (down && !app.touchWasDown) {
         app.touchStart = app.touchPrev = p;
         app.touchMoved = false;
@@ -2603,7 +2638,7 @@ static void UpdateTouch(App& app) {
     } else if (down) {
         Vector2 d = Vector2Subtract(p, app.touchPrev);
         if (Vector2Distance(p, app.touchStart) > 12) app.touchMoved = true;
-        if (app.touchHeld < 0) app.touchDrag = d;   // ボタン以外の所のドラッグで機首を向ける
+        if (app.touchHeld < 0) app.touchDrag = Vector2Scale(d, k);   // ボタン以外の所のドラッグで機首を向ける（画面のピクセルで）
         app.touchPrev = p;
     } else if (app.touchWasDown) {
         if (!app.touchMoved) {
@@ -2694,7 +2729,7 @@ static void DrawIntro(const App& app) {
 
 // 一覧・入力欄が開いている間のキー操作。開いていれば true（ほかの操作は止める）
 static bool HandleModalInput(App& app) {
-    const Cam& c = app.cam;
+    const Cam c = UiCam(app.cam);   // タップの位置は 2D の表示の座標
     if (app.introPage >= 0) {
         bool next = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_SPACE);
         if (app.tapped) {
@@ -2815,8 +2850,9 @@ static bool HandleModalInput(App& app) {
 static void DrawModalPanels(const App& app) {
     const Cam& c = app.cam;
     if (app.settingsOpen) {
-        static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY, UI_SET_ORBITS,
-                                             UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT, UI_SET_PHYSICS, UI_SET_FULLSCREEN};
+        static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_TEXTSIZE, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY,
+                                             UI_SET_MILKYWAY, UI_SET_ORBITS, UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT,
+                                             UI_SET_PHYSICS, UI_SET_FULLSCREEN};
         float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
@@ -3005,7 +3041,7 @@ static void TouchToPad(App& app, PadState& pad) {
     if (app.touchHeld == TB_THRUST) pad.throttle = 1;
     if (app.touchHeld == TB_BRAKE) pad.brake = 1;
     if (!app.tapped) return;
-    const Cam& c = app.cam;
+    const Cam c = UiCam(app.cam);   // タップの位置は 2D の表示の座標
     int b = TouchButtonAt(c, app.tapPos);
     switch (b) {
         case TB_STOP: pad.stop = true; break;
@@ -3824,7 +3860,7 @@ static void LoadMoonTextures(App& app) {
 // 天の川の光: 赤道座標の全天画像を、カメラを中心とする球の内側に薄く貼る（星より先に描く）。
 // 画像は中央が赤経 0h で、左へ行くほど赤経が増える
 static void DrawMilkyWay(const App& app) {
-    if (!app.milkyWay.id) return;
+    if (!app.milkyWay.id || !app.showMilkyWay) return;
     const Cam& c = app.cam;
     // ズームすると画像の粗さが目立つので、視野が狭いほど薄くする（視野 40° 以上で最大、12° 以下で消える）
     double k = std::max(0.0, std::min(1.0, (c.fovy / DEG - 12.0) / 28.0));
@@ -4594,7 +4630,7 @@ static void DrawCompass(const App& app) {
     float W = std::max(240.0f, std::min(560.0f, c.W - 2 * 432)), cx = c.W * 0.5f, y0 = 10, h = 34;
     const double range = 60;  // 表示幅 ±60°
     DrawRectangleRounded({cx - W / 2, y0, W, h}, 0.3f, 6, {0, 10, 25, 150});
-    BeginScissorMode((int)(cx - W / 2), (int)y0, (int)W, (int)h + 30);
+    BeginScissorMode((int)((cx - W / 2) * g_uiK), (int)(y0 * g_uiK), (int)(W * g_uiK), (int)((h + 30) * g_uiK));
     for (int deg = -180; deg <= 540; deg += 5) {
         double dd = deg - heading;
         if (dd < -range || dd > range) continue;
@@ -4874,15 +4910,18 @@ static void DrawHUD(App& app) {
         Txt(ap.c_str(), ax + 12, ay + 4, 18, {150, 255, 180, 255});
     }
 
-    Txt(T(UI_HELP_HINT), 12, c.H - 24, 15, {150, 170, 200, 220});
+    // 左下の案内: エンジン欄と重なる時（狭い画面・大きい文字）はエンジン欄の上へ
+    Rectangle eb = EngineButtonRect(c, 0);
+    float hy = eb.x < TxtW(T(UI_HELP_HINT), 15) + 20 ? eb.y - 24 : c.H - 24;
+    Txt(T(UI_HELP_HINT), 12, hy, 15, {150, 170, 200, 220});
 #if defined(__EMSCRIPTEN__)
     if (int pend = DeferredAssetsPending(); pend > 0) {
         snprintf(b, sizeof b, T(UI_LOADING), pend);
-        Txt(b, 12, c.H - 64, 14, {255, 210, 120, 230});
+        Txt(b, 12, hy - 40, 14, {255, 210, 120, 230});
     }
 #endif
     snprintf(b, sizeof b, "%d FPS", GetFPS());
-    Txt(b, 12, c.H - 44, 13, {110, 130, 160, 200});
+    Txt(b, 12, hy - 20, 13, {110, 130, 160, 200});
 
     DrawToast(app);
 
@@ -4983,7 +5022,13 @@ int main(int argc, char** argv) {
     app.B = InitBodies();
     app.sky = LoadSky();
     app.belt = LoadAsteroids();
+    if (!SettingsLoaded() && !opt.shot) {   // 初めての起動（設定ファイルがない）: 小惑星などの粒は出さずに始める
+        SetSetting("asteroids", "0");
+        SaveSettings();
+    }
     app.showAsteroids = GetSetting("asteroids") != "0";
+    app.showMilkyWay = GetSetting("milkyway") != "0";
+    g_uiScaleIdx = std::max(0, std::min(2, atoi(GetSetting("textsize").c_str())));
     app.showOrbits = GetSetting("orbits") != "0";
     app.showMoonMarkers = GetSetting("markers") != "0";
     app.invertY = GetSetting("invert") == "1";
@@ -5286,10 +5331,21 @@ int main(int argc, char** argv) {
             rlEnableColorBlend();
         }
 
-        DrawSkyLabels(app);
-        if (app.warpT < 0 && app.photoMode == 0) DrawMarkers(app);
-        DrawWarpEffect(app);
-        DrawHUD(app);
+        {   // 2D の表示: 文字の大きさの設定に合わせて拡大して描く
+            Cam real = app.cam;
+            float k = UiScale(real);
+            app.cam = UiCam(real);
+            g_uiK = k;
+            rlPushMatrix();
+            rlScalef(k, k, 1);
+            DrawSkyLabels(app);
+            if (app.warpT < 0 && app.photoMode == 0) DrawMarkers(app);
+            DrawWarpEffect(app);
+            DrawHUD(app);
+            rlPopMatrix();
+            g_uiK = 1;
+            app.cam = real;
+        }
 
         frame++;
         if (opt.trace && frame % 60 == 0) {
