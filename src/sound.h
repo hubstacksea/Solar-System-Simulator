@@ -15,33 +15,38 @@ namespace sfx {
 constexpr int RATE = 44100;
 constexpr float TAU = 6.2831853f;
 
-// エンジンごとの音色: 基本周波数 Hz、ノイズの割合（残りは倍音のうなり）、ノイズの明るさ
-struct Voice { float f0, noise, bright; };
+// エンジンごとの音色: 基本周波数 Hz、ノイズの割合（残りは倍音のうなり）、ノイズの明るさ、
+// 澄んだ音の割合（1 でうなりとノイズの代わりに、ガラスのような高い純音と高域のきらめき）
+struct Voice { float f0, noise, bright, glass; };
 constexpr Voice VOICES[] = {
-    {48, 0.35f, 0.10f},   // 自動車
-    {40, 0.25f, 0.06f},   // 電車
-    {65, 0.30f, 0.12f},   // 高速電車
-    {85, 0.55f, 0.20f},   // 音速
-    {120, 0.65f, 0.30f},  // ジェット機
-    {32, 0.90f, 0.18f},   // ロケット
-    {180, 0.15f, 0.05f},  // 光速
+    {48, 0.35f, 0.10f, 0},    // 自動車
+    {40, 0.25f, 0.06f, 0},    // 電車
+    {65, 0.30f, 0.12f, 0},    // 高速電車
+    {85, 0.55f, 0.20f, 0},    // 音速
+    {120, 0.65f, 0.30f, 0},   // ジェット機
+    {32, 0.90f, 0.18f, 0},    // ロケット
+    {440, 0.0f, 0.05f, 1},    // 光速
 };
 
 // 音声スレッドと共有するパラメータ（目標値。コールバック内でなめらかに追従する）
-inline std::atomic<float> g_vol{0}, g_freq{48}, g_noise{0.3f}, g_bright{0.1f};
+inline std::atomic<float> g_vol{0}, g_freq{48}, g_noise{0.3f}, g_bright{0.1f}, g_glass{0};
 
 // raylib の音声スレッドから呼ばれる（float32 モノラル）
 inline void EngineCallback(void* buffer, unsigned int frames) {
-    static float vol = 0, freq = 48, noise = 0.3f, bright = 0.1f;
+    static float vol = 0, freq = 48, noise = 0.3f, bright = 0.1f, glass = 0;
     static float ph1 = 0, ph2 = 0, lp = 0, lp2 = 0;
+    static float gph[4] = {0, 0, 0, 0}, lfo = 0, air = 0, air2 = 0;
     static uint32_t rng = 12345;
+    // 澄んだ音の成分: 基本音とわずかにずらした音（ゆっくり揺らめく）、弱いオクターブ上と 3 倍音
+    static const float GR[4] = {1.0f, 1.0035f, 2.0f, 3.0f}, GA[4] = {0.42f, 0.34f, 0.16f, 0.06f};
     float* out = (float*)buffer;
-    float tv = g_vol, tf = g_freq, tn = g_noise, tb = g_bright;
+    float tv = g_vol, tf = g_freq, tn = g_noise, tb = g_bright, tg = g_glass;
     for (unsigned int i = 0; i < frames; i++) {
         vol += (tv - vol) * 0.0004f;
         freq += (tf - freq) * 0.0002f;
         noise += (tn - noise) * 0.0005f;
         bright += (tb - bright) * 0.0005f;
+        glass += (tg - glass) * 0.0003f;
         rng = rng * 1664525u + 1013904223u;
         float w = (float)(rng >> 8) * (2.0f / 16777216.0f) - 1.0f;
         lp += (w - lp) * bright;         // ノイズを低域に絞る（ゴーッという音）
@@ -51,7 +56,22 @@ inline void EngineCallback(void* buffer, unsigned int frames) {
         ph1 -= std::floor(ph1);
         ph2 -= std::floor(ph2);
         float tone = std::sin(TAU * ph1) * 0.6f + std::sin(TAU * ph1 * 2.0f) * 0.25f + std::sin(TAU * ph2) * 0.15f;
-        out[i] = vol * (lp2 * 3.0f * noise + tone * (1.0f - noise) * 0.5f);
+        float eng = lp2 * 3.0f * noise + tone * (1.0f - noise) * 0.5f;
+        float gl = 0;
+        if (glass > 0.001f) {
+            for (int k = 0; k < 4; k++) {
+                gph[k] += freq * GR[k] / RATE;
+                gph[k] -= std::floor(gph[k]);
+                gl += std::sin(TAU * gph[k]) * GA[k];
+            }
+            lfo += 0.4f / RATE;
+            lfo -= std::floor(lfo);
+            // 高域だけを残したノイズ（シャーという、きらめく空気の音）
+            air += (w - air) * 0.25f;
+            air2 += ((w - air) - air2) * 0.6f;
+            gl = gl * (0.88f + 0.12f * std::sin(TAU * lfo)) + air2 * 0.10f;
+        }
+        out[i] = vol * (eng * (1.0f - glass) + gl * glass * 0.42f);
     }
 }
 
@@ -119,6 +139,7 @@ inline void Update(int engine, bool thrust, double speedFrac) {
     g_freq = v.f0 * (1.0f + 1.2f * sf + (thrust ? 0.15f : 0.0f));
     g_noise = v.noise;
     g_bright = v.bright * (thrust ? 1.6f : 1.0f);
+    g_glass = v.glass;
 }
 
 inline void Warp() {

@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.15.1 (2026-10-30)
+
+- The light-speed engine now sounds high and clear like glass instead of a low, motorbike-like growl
+
 ## 2.15.0 (2026-10-30)
 
 - Fix the reference frame to the ship (Shift+F / settings): you no longer move along with the nearest body and stay put relative to the Sun, so you can watch Earth leave at 30 km/s. Warping, moving to a place or an event, or the autopilot returns to automatic
