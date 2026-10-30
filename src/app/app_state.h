@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------- アプリ本体
 // 天文イベント（日食・月食・木星面の衛星の影の通過・太陽面通過・惑星の接近・衝）、彗星、探査機のできごと
 enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TOTAL, EV_LUNAR_PARTIAL, EV_SHADOW,
-                 EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH, EV_ECLIPSE_GROUND,
+                 EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH, EV_ECLIPSE_GROUND, EV_METEOR,
                  EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT };
 struct AstroEvent {
     int kind = 0;
@@ -66,6 +66,11 @@ struct App {
     int groundTzBody = -1;
     std::string groundTzName;             // "UTC+9" など
     V3 groundTzPlace;                     // その都市（天体固定座標）
+    struct Meteor {                       // 流れ星: 放射点 rad から side の向きへ、角度 d から len だけ流れる
+        V3 rad, side;
+        float d = 0, len = 0, t = 0, dur = 1, bright = 1;
+    };
+    std::vector<Meteor> meteors;
     int resumeMode = 1;                   // 起動時に前回の続きから 0: しない, 1: 場所だけ, 2: 場所と日時
     int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）

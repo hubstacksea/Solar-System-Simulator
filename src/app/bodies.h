@@ -502,6 +502,52 @@ static double SurfaceDist(const Body& b, V3 p) {
     double d = Len(rel);
     return d > 0 ? d - SurfaceRadius(b, rel * (1.0 / d)) : -b.d.radius;
 }
+// 時刻 t の天体の位置と自転角（UpdateBodies と同じ式を 1 天体分だけ。出入りの時刻を探すのに何百回も呼ぶ）
+static V3 PosAt(const std::vector<Body>& B, int i, double t) {
+    const BodyDef& d = B[i].d;
+    if (d.parent < 0) return V3();
+    if (d.tleN > 0) return PosAt(B, B_EARTH, t) + SatellitePos(d, t);
+    if (d.probe >= 0) {
+        bool act;
+        return ProbePosAt(d, t, [&](int k) { return PosAt(B, k, t); }, &act);
+    }
+    if (d.parent == 0) return i == B_EARTH ? EarthPos(d, t) : PlanetPos(d, t);
+    if (i == B_MOON) return PosAt(B, B_EARTH, t) + MoonGeoPos(t);
+    double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
+    if (d.moonPeriod2 > 0 && t > d.moonChangeT)
+        th = d.moonPhase * DEG + 2 * PI * (d.moonChangeT / d.moonPeriod + (t - d.moonChangeT) / d.moonPeriod2);
+    if (d.libA != 0 || d.libB != 0) {
+        double w = 2 * PI * t / (70.56 * 365.25);
+        th += (d.libA * std::sin(w) + d.libB * std::cos(w)) * DEG;
+    }
+    return PosAt(B, d.parent, t) + (B[i].oN * std::cos(th) + B[i].oQ * std::sin(th)) * d.moonA;
+}
+static double SpinAt(const std::vector<Body>& B, int i, double t) {
+    const Body& b = B[i];
+    const BodyDef& d = b.d;
+    if (d.parent > 0 && d.rotPeriod == 0) {
+        V3 u = PosAt(B, d.parent, t) - PosAt(B, i, t);
+        return std::atan2(-Dot(u, b.ez), Dot(u, b.ex));
+    }
+    double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
+    if (!std::isnan(d.w0)) return std::fmod(b.primeOffset + d.w0 * DEG + 2 * PI * t / rp, 2 * PI);
+    return std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
+}
+
+// 地上の点（天体固定座標 f）から見たターゲットの高度・方位 rad（方位は北から東回り）
+static void AltAz(const std::vector<Body>& B, int g, V3 f, int target, double t, double* alt, double* az) {
+    const Body& b = B[g];
+    double s = SpinAt(B, g, t), cs = std::cos(s), sn = std::sin(s);
+    V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;
+    V3 pg = PosAt(B, g, t), rel = X * f.x + b.pole * f.y + Z * f.z;
+    V3 up = Norm(rel), v = Norm(PosAt(B, target, t) - (pg + rel));
+    V3 north = b.pole - up * Dot(b.pole, up);
+    north = Len(north) < 1e-9 ? Norm(X - up * Dot(X, up)) : Norm(north);
+    V3 east = Cross(north, up);
+    *alt = std::asin(std::max(-1.0, std::min(1.0, Dot(v, up))));
+    *az = std::fmod(std::atan2(Dot(v, east), Dot(v, north)) + 2 * PI, 2 * PI);
+}
+
 static double MinAltitude(const Body& b) { return std::max(0.03, b.d.radius * 1e-5); }
 
 static Color BodyColor(const Body& b, float bright = 1.0f) {

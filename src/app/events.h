@@ -190,6 +190,85 @@ static std::vector<AstroEvent> FindCometEvents(const App& app) {
     return out;
 }
 
+// ---------------------------------------------------------------- 流星群
+// 主な流星群（IMO の資料による極大の太陽黄経・放射点・ZHR。幅は活動の広がり（太陽黄経の標準偏差 deg）の目安）
+struct MeteorShower {
+    UiId name;
+    double solLon, ra, dec, zhr, width;
+};
+static const MeteorShower SHOWERS[] = {
+    {UI_MS_QUA, 283.15, 230.1, 48.5, 110, 0.45},   // しぶんぎ座
+    {UI_MS_LYR, 32.32, 271.4, 33.6, 18, 0.6},      // 4 月こと座
+    {UI_MS_ETA, 45.5, 338.0, -1.0, 50, 2.5},       // みずがめ座η
+    {UI_MS_PER, 140.0, 48.0, 58.0, 100, 1.3},      // ペルセウス座
+    {UI_MS_ORI, 208.0, 95.0, 16.0, 20, 2.5},       // オリオン座
+    {UI_MS_LEO, 235.27, 152.0, 22.0, 15, 0.6},     // しし座
+    {UI_MS_GEM, 262.2, 112.0, 33.0, 150, 0.9},     // ふたご座
+};
+static const int SHOWER_COUNT = sizeof SHOWERS / sizeof SHOWERS[0];
+
+// 太陽黄経 deg（地球から見た太陽の黄経。春分で 0）
+static double SolarLongitude(const std::vector<Body>& B, double t) {
+    V3 s = PosAt(B, B_SUN, t) - PosAt(B, B_EARTH, t);
+    return std::fmod(std::atan2(-s.z, s.x) / DEG + 360.0, 360.0);
+}
+
+// その時の流星群の ZHR（極大からの太陽黄経の差で減る）
+static double ShowerZHR(const MeteorShower& m, double solLon) {
+    double d = std::fabs(std::fmod(solLon - m.solLon + 540.0, 360.0) - 180.0);
+    if (d > m.width * 4) return 0;
+    return m.zhr * std::exp(-0.5 * (d / m.width) * (d / m.width));
+}
+
+// 地上の点（緯度・経度 deg）の真上の向き（時刻 t）
+static V3 GroundUp(const std::vector<Body>& B, int g, double latDeg, double lonDeg, double t) {
+    const Body& b = B[g];
+    double s = SpinAt(B, g, t), cs = std::cos(s), sn = std::sin(s);
+    V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;
+    double la = latDeg * DEG, lo = lonDeg * DEG;
+    return X * (std::cos(la) * std::cos(lo)) + b.pole * std::sin(la) - Z * (std::cos(la) * std::sin(lo));
+}
+
+// 極大の前後 1 日で、東京から一番よく見える時刻（空が暗く、放射点が高い）
+static double BestMeteorTime(const std::vector<Body>& B, const MeteorShower& m, double tPeak, double lat, double lon) {
+    V3 rad = EquToRender(m.ra, m.dec);
+    double best = tPeak, bestScore = -1;
+    for (double t = tPeak - 1; t <= tPeak + 1; t += 1.0 / 144) {
+        V3 up = GroundUp(B, B_EARTH, lat, lon, t);
+        double sunAlt = Dot(Norm(PosAt(B, B_SUN, t) - PosAt(B, B_EARTH, t)), up);
+        if (sunAlt > std::sin(-12 * DEG)) continue;
+        double score = Dot(rad, up) * ShowerZHR(m, SolarLongitude(B, t)) / m.zhr;
+        if (score > bestScore) { bestScore = score; best = t; }
+    }
+    return best;
+}
+
+static void FindMeteorEvents(const std::vector<Body>& B, double t0, double span, std::vector<AstroEvent>* out) {
+    for (int k = 0; k < SHOWER_COUNT; k++) {
+        const MeteorShower& m = SHOWERS[k];
+        auto f = [&](double t) { return std::fmod(SolarLongitude(B, t) - m.solLon + 540.0, 360.0) - 180.0; };   // 極大で 0
+        double prev = f(t0);
+        for (double t = t0 + 1; t < t0 + span; t += 1) {
+            double cur = f(t);
+            if (prev < 0 && cur >= 0 && cur - prev < 10) {
+                double a = t - 1, b = t;
+                for (int i = 0; i < 30; i++) {
+                    double mid = (a + b) / 2;
+                    if (f(mid) < 0) a = mid; else b = mid;
+                }
+                AstroEvent ev;
+                ev.kind = EV_METEOR;
+                ev.t = (a + b) / 2;
+                ev.moon = k;   // 流星群の番号
+                ev.body = B_EARTH;
+                ev.dist = m.zhr;
+                out->push_back(ev);
+            }
+            prev = cur;
+        }
+    }
+}
+
 // t0 から先のイベントを探す: 日食・月食は 3 年分、木星面の影の通過は 4 衛星それぞれ次の 1 回、ほかは FindPlanetEvents
 static std::vector<AstroEvent> FindEvents(const App& app, double t0) {
     std::vector<Body> B = app.B;
@@ -246,6 +325,7 @@ static std::vector<AstroEvent> FindEvents(const App& app, double t0) {
         }
     }
     FindPlanetEvents(B, t0, &out);
+    FindMeteorEvents(B, t0, span, &out);
     std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
     return out;
 }
@@ -339,6 +419,7 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
             snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_ARRIVE_SMALL : UI_EV_ARRIVE), name(ev.probe), name(ev.body));
             break;
         case EV_IMPACT: snprintf(b, sizeof b, T(UI_EV_IMPACT), name(ev.probe), name(ev.body)); break;
+        case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR), T(SHOWERS[ev.moon].name)); break;
         default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
@@ -355,6 +436,7 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_FROM_EARTH), FmtDist(ev.dist).c_str()); return b;
         case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_FROM_SUN), FmtDist(ev.dist).c_str()); return b;
         case EV_IMPACT: return T(UI_EV_IMPACT_D);
+        case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
         default: break;
     }
     if (ev.kind > EV_SOLAR_PARTIAL && ev.kind != EV_ECLIPSE_GROUND) return "";
@@ -450,6 +532,15 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         V3 aim = m.pos + (host.pos - m.pos) * 0.3;
         app.ship.q = QuatFromBasis(aim - (m.pos + app.ship.local), host.pole);
         app.target = ev.body;
+    } else if (ev.kind == EV_METEOR) {
+        // 東京の地上から、極大の前後 1 日で一番よく見える夜に、放射点の方角の空を見上げる
+        const MeteorShower& ms = SHOWERS[ev.moon];
+        app.tDays = BestMeteorTime(app.B, ms, ev.t, CITIES[0].lat, CITIES[0].lon);
+        UpdateBodies(app.B, app.tDays);
+        GoToCity(app, 0);
+        V3 up = Norm(app.ship.local), rad = EquToRender(ms.ra, ms.dec);
+        V3 h = rad - up * Dot(rad, up);
+        if (Len(h) > 1e-6) app.ship.q = QuatFromBasis(Norm(h) * std::cos(50 * DEG) + up * std::sin(50 * DEG), up);
     } else if (ev.kind >= EV_FLYBY) {
         // 探査機の斜め後ろ（惑星と反対側）から惑星の方を見る。探査機は画面の横に、惑星は正面に見える。
         // 惑星の夜側を通る時は、昼側の縁（三日月形に光る部分）を正面にする

@@ -195,6 +195,34 @@
     X(INFO_CLOSE, "I / タップ: 閉じる", "I / tap: close") \
     X(TB_INFO, "情報", "Info") \
     X(TB_SEARCH, "検索", "Search") \
+    X(MS_QUA, "しぶんぎ座流星群", "Quadrantids") \
+    X(MS_LYR, "4 月こと座流星群", "Lyrids") \
+    X(MS_ETA, "みずがめ座η流星群", "Eta Aquariids") \
+    X(MS_PER, "ペルセウス座流星群", "Perseids") \
+    X(MS_ORI, "オリオン座流星群", "Orionids") \
+    X(MS_LEO, "しし座流星群", "Leonids") \
+    X(MS_GEM, "ふたご座流星群", "Geminids") \
+    X(EV_METEOR, "%sが極大", "%s peak") \
+    X(EV_METEOR_D, "1 時間に最大 約 %d 個（ZHR）。東京の夜空で見る", "up to about %d per hour (ZHR); watch from Tokyo") \
+    X(INFO_MAG_EARTH, "地球から見た明るさ", "Brightness from Earth") \
+    X(INFO_MAG_HERE, "ここから見た明るさ", "Brightness from here") \
+    X(INFO_MAG_UNIT, "%.1f 等", "mag %.1f") \
+    X(INFO_PHASE, "満ち欠け（光って見える割合）", "Phase (illuminated)") \
+    X(INFO_ASIZE, "見かけの大きさ", "Apparent size") \
+    X(INFO_AGE, "月齢", "Moon age") \
+    X(SHAPE0, "ほとんど見えない", "nearly dark") \
+    X(SHAPE1, "細い三日月形", "thin crescent") \
+    X(SHAPE2, "半月形", "half") \
+    X(SHAPE3, "ふくらんだ形", "gibbous") \
+    X(SHAPE4, "まんまる", "full") \
+    X(MOON0, "新月", "new moon") \
+    X(MOON1, "三日月", "waxing crescent") \
+    X(MOON2, "上弦の月", "first quarter") \
+    X(MOON3, "満ちていく月", "waxing gibbous") \
+    X(MOON4, "満月", "full moon") \
+    X(MOON5, "欠けていく月", "waning gibbous") \
+    X(MOON6, "下弦の月", "last quarter") \
+    X(MOON7, "明け方の細い月", "waning crescent") \
     X(DIR0, "北", "N") \
     X(DIR1, "北北東", "NNE") \
     X(DIR2, "北東", "NE") \

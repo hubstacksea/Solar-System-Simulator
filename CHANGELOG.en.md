@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.14.0 (2026-10-30)
+
+- Appearance: the info card and the ground panel show the magnitude, phase, apparent size and Moon age as seen from Earth (or from where you stand)
+- Meteor showers: seven major showers stream meteors from their radiants across the night sky from the ground; their peaks are in the events list (choosing one takes you to the best night from Tokyo)
+
 ## 2.13.0 (2026-10-30)
 
 - Observing from the ground: the ground below the horizon is filled in (hiding the body's image stretched up close), with the horizon, compass points, local time, the target's altitude and azimuth, and its next rise, transit and set (within a minute or two of the almanac for the Sun at Tokyo)

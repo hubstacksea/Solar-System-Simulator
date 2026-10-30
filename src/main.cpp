@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
     app.physics = GetSetting("physics") == "1";
 
     // フォント
-    std::string allText = "°²·×〜";
+    std::string allText = "°²·×〜′″";
     for (int cp = 0x3041; cp <= 0x30FC; cp++) {   // 検索欄に打つひらがな・カタカナ
         int len = 0;
         const char* u = CodepointToUTF8(cp, &len);
@@ -448,6 +448,7 @@ int main(int argc, char** argv) {
         double spin0 = app.B[spinRef].spin;
         UpdateBodies(app.B, app.tDays);
         CoRotateWithGround(app, spinRef, spin0);
+        UpdateMeteors(app, dt, simDt);
         UpdateShip(app, simDt);
         sfx::Update(app.ship.engine, app.ship.thrusting && app.warpT < 0,
                     std::fabs(app.ship.speed) * 1000.0 / ENGINES[app.ship.engine].vmax);

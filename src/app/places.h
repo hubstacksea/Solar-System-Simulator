@@ -219,3 +219,33 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
         if (kv["tg"] == app.B[k].d.en && app.B[k].active) app.target = (int)k;
     return true;
 }
+
+// ---------------------------------------------------------------- 地上の場所（検索の「地上」・流星群）
+// 地上から空を見る場所（天体, 緯度・経度 deg, 標準時 UTC+時間（夏時間は考えない。NAN は UTC で表示））。
+// 選ぶと地表に降り、赤道側（北半球なら南）の空を見上げる。月面では地球が出ていれば地球を見る
+struct City { const char* jp; const char* en; double lat, lon; int body; double tz; };
+static const City CITIES[] = {
+    {"東京", "Tokyo", 35.68, 139.69, B_EARTH, 9},         {"札幌", "Sapporo", 43.06, 141.35, B_EARTH, 9},
+    {"那覇", "Naha", 26.21, 127.68, B_EARTH, 9},          {"北京", "Beijing", 39.90, 116.41, B_EARTH, 8},
+    {"シンガポール", "Singapore", 1.35, 103.82, B_EARTH, 8}, {"ムンバイ", "Mumbai", 19.08, 72.88, B_EARTH, 5.5},
+    {"カイロ", "Cairo", 30.04, 31.24, B_EARTH, 2},        {"モスクワ", "Moscow", 55.76, 37.62, B_EARTH, 3},
+    {"ロンドン", "London", 51.51, -0.13, B_EARTH, 0},      {"パリ", "Paris", 48.86, 2.35, B_EARTH, 1},
+    {"レイキャビク", "Reykjavik", 64.15, -21.94, B_EARTH, 0}, {"ニューヨーク", "New York", 40.71, -74.01, B_EARTH, -5},
+    {"ロサンゼルス", "Los Angeles", 34.05, -118.24, B_EARTH, -8},
+    {"マウナケア山頂（ハワイ）", "Mauna Kea (Hawaii)", 19.82, -155.47, B_EARTH, -10},
+    {"アタカマ砂漠（チリ）", "Atacama Desert (Chile)", -24.63, -70.40, B_EARTH, -4},
+    {"リオデジャネイロ", "Rio de Janeiro", -22.91, -43.17, B_EARTH, -3}, {"ケープタウン", "Cape Town", -33.92, 18.42, B_EARTH, 2},
+    {"シドニー", "Sydney", -33.87, 151.21, B_EARTH, 10},
+    {"南極点", "South Pole", -89.99, 0.0, B_EARTH, NAN},  {"北極点", "North Pole", 89.99, 0.0, B_EARTH, NAN},
+    // 月面（経度は東が正）
+    {"静かの海（アポロ11号の着陸地点）", "Sea of Tranquility (Apollo 11)", 0.674, 23.473, B_MOON, NAN},
+    {"タウルス・リットロウ谷（アポロ17号）", "Taurus-Littrow (Apollo 17)", 20.19, 30.77, B_MOON, NAN},
+    {"月の南極", "Lunar south pole", -89.9, 0.0, B_MOON, NAN},
+    {"フォン・カルマン・クレーター（嫦娥4号、月の裏側）", "Von Karman crater (Chang'e 4, far side)", -45.44, 177.6, B_MOON, NAN},
+    // 火星（経度は東が正）
+    {"ジェゼロ・クレーター（パーシビアランス）", "Jezero crater (Perseverance)", 18.44, 77.45, B_MARS, NAN},
+    {"ゲール・クレーター（キュリオシティ）", "Gale crater (Curiosity)", -4.59, 137.44, B_MARS, NAN},
+    {"クリュセ平原（バイキング1号）", "Chryse Planitia (Viking 1)", 22.27, -47.95, B_MARS, NAN},
+};
+static const int CITY_COUNT = sizeof CITIES / sizeof CITIES[0];
+static void GoToCity(App& app, int k, double elDeg = 35);

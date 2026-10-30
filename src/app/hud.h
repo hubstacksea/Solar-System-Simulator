@@ -525,6 +525,80 @@ static void DrawToast(const App& app) {
     TxtC(app.toast.c_str(), app.cam.W * 0.5f, app.cam.H * 0.24f, 24, Fade({255, 240, 200, 255}, a));
 }
 
+// ---------------------------------------------------------------- 見え方（明るさ・満ち欠け・見かけの大きさ・月齢）
+// 地上にいればその場所から、そうでなければ地球の中心から見た値。等級は惑星は Mallama & Hilton (2018) の式、
+// 月・太陽は標準的な式、準惑星・大きな衛星は絶対等級 H から（位相の補正は 0.03 等/度の目安）
+static int GroundBody(const App& app);
+
+struct Appearance {
+    bool ok = false, here = false;
+    double mag = NAN, k = 0, alpha = 0, size = 0, age = NAN;
+    int moonPhase = -1;
+};
+
+static Appearance SeenFrom(const App& app, int i) {
+    Appearance a;
+    int g = GroundBody(app);
+    a.here = g >= 0;
+    V3 O = a.here ? ShipWorld(app) : app.B[B_EARTH].pos;
+    const Body& b = app.B[i];
+    if (i == g || (!a.here && i == B_EARTH) || b.d.kind == KIND_PROBE) return a;
+    V3 T = b.pos, S = app.B[B_SUN].pos;
+    double delta = Len(T - O), r = Len(T - S);
+    if (delta <= b.d.radius) return a;
+    a.ok = true;
+    a.size = 2 * std::atan(b.d.radius / delta);
+    if (i == B_SUN) {
+        a.k = 1;
+        a.mag = -26.74 + 5 * std::log10(delta / AU_KM);
+        return a;
+    }
+    double ca = Dot(Norm(S - T), Norm(O - T));
+    a.alpha = std::acos(std::max(-1.0, std::min(1.0, ca))) / DEG;
+    a.k = (1 + ca) / 2;
+    double x = a.alpha, rd = 5 * std::log10((r / AU_KM) * (delta / AU_KM));
+    std::string en = b.d.en;
+    switch (i) {
+        case B_MERCURY:
+            a.mag = -0.613 + x * (6.3280e-2 + x * (-1.6336e-3 + x * (3.3644e-5 + x * (-3.4265e-7 + x * (1.6893e-9 - x * 3.0334e-12))))) + rd;
+            break;
+        case B_VENUS: a.mag = -4.384 + x * (-1.044e-3 + x * (3.687e-4 + x * (-2.814e-6 + x * 8.938e-9))) + rd; break;
+        case B_MARS: a.mag = -1.601 + x * (2.267e-2 - x * 1.302e-4) + rd; break;
+        case B_JUPITER: a.mag = -9.395 + x * (3.7e-4 + x * 6.16e-4) + rd; break;
+        case B_SATURN: {   // 環の傾き（観測者から見た土星の環の開き）で明るさが変わる
+            double sb = std::fabs(Dot(Norm(O - T), b.pole));
+            a.mag = -8.914 - 1.825 * sb + 0.026 * x - 0.378 * sb * std::exp(-2.25 * x) + rd;
+            break;
+        }
+        case B_URANUS: a.mag = -7.110 + x * (6.587e-3 + x * 1.045e-4) + rd; break;
+        case B_NEPTUNE: a.mag = -7.00 + rd; break;
+        case B_MOON: a.mag = 0.23 + rd + 0.026 * x + 4.0e-9 * x * x * x * x; break;
+        default: {
+            static const struct { const char* en; double H; } HS[] = {{"Pluto", -0.76}, {"Ceres", 3.34}, {"Vesta", 3.20},
+                {"Eris", -1.11}, {"Io", -1.68}, {"Europa", -1.41}, {"Ganymede", -2.09}, {"Callisto", -1.05}, {"Titan", -1.28}};
+            for (const auto& h : HS)
+                if (en == h.en) a.mag = h.H + rd + 0.03 * x;
+        }
+    }
+    // 月齢: 地球（の上）から見た月と太陽の黄経の差から
+    if (i == B_MOON && (!a.here || g == B_EARTH)) {
+        V3 e = app.B[B_EARTH].pos, m = T - e, s = S - e;
+        double D = std::fmod((std::atan2(-m.z, m.x) - std::atan2(-s.z, s.x)) / DEG + 720.0, 360.0);
+        a.age = D / 360.0 * 29.530589;
+        a.moonPhase = (int)std::floor((D + 22.5) / 45.0) % 8;
+    }
+    return a;
+}
+
+static std::string FmtAngle(double rad) {
+    char b[32];
+    double d = rad / DEG;
+    if (d >= 1) snprintf(b, sizeof b, "%.2f°", d);
+    else if (d * 60 >= 1) snprintf(b, sizeof b, "%.1f′", d * 60);
+    else snprintf(b, sizeof b, "%.1f″", d * 3600);
+    return b;
+}
+
 // ---------------------------------------------------------------- 天体の情報（I キー）
 // ターゲットの天体の大きさ・重力・自転と公転・今の距離などを、データから計算して右側に出す
 struct InfoLine {
@@ -606,6 +680,24 @@ static std::vector<InfoLine> InfoLines(const App& app) {
     }
     if (i != B_EARTH) L.push_back({T(UI_INFO_FROM_EARTH), FmtDist(Len(b.pos - app.B[B_EARTH].pos))});
     L.push_back({T(UI_INFO_FROM_SHIP), FmtDist(std::max(0.0, SurfaceDist(b, ShipWorld(app))))});
+    // 見え方（地上にいればそこから、ほかは地球から）
+    Appearance ap = SeenFrom(app, i);
+    if (ap.ok) {
+        if (!std::isnan(ap.mag)) {
+            snprintf(v, sizeof v, T(UI_INFO_MAG_UNIT), ap.mag);
+            L.push_back({T(ap.here ? UI_INFO_MAG_HERE : UI_INFO_MAG_EARTH), v});
+        }
+        if (i != B_SUN) {
+            int sh = ap.k < 0.03 ? 0 : ap.k < 0.35 ? 1 : ap.k < 0.65 ? 2 : ap.k < 0.97 ? 3 : 4;
+            snprintf(v, sizeof v, "%.0f%%  (%s)", ap.k * 100, T((UiId)(UI_SHAPE0 + sh)));
+            L.push_back({T(UI_INFO_PHASE), v});
+        }
+        L.push_back({T(UI_INFO_ASIZE), FmtAngle(ap.size)});
+        if (!std::isnan(ap.age)) {
+            snprintf(v, sizeof v, "%.1f  (%s)", ap.age, T((UiId)(UI_MOON0 + ap.moonPhase)));
+            L.push_back({T(UI_INFO_AGE), v});
+        }
+    }
     // その天体のまわりのデータがある探査機（地球は打ち上げた全機が当たるので除く）
     if (i != B_SUN && i != B_EARTH && d.kind != KIND_PROBE) {
         std::string list;
@@ -695,58 +787,12 @@ static void DrawInfoCard(const App& app) {
 // ---------------------------------------------------------------- 地上からの観測
 // 地表（高度 2 km 以下）にいる時: 地平線と方位、ターゲットの高度・方位、出・南中・入りの時刻を出す
 
-// 時刻 t の天体の位置と自転角（UpdateBodies と同じ式を 1 天体分だけ。出入りの時刻を探すのに何百回も呼ぶ）
-static V3 PosAt(const std::vector<Body>& B, int i, double t) {
-    const BodyDef& d = B[i].d;
-    if (d.parent < 0) return V3();
-    if (d.tleN > 0) return PosAt(B, B_EARTH, t) + SatellitePos(d, t);
-    if (d.probe >= 0) {
-        bool act;
-        return ProbePosAt(d, t, [&](int k) { return PosAt(B, k, t); }, &act);
-    }
-    if (d.parent == 0) return i == B_EARTH ? EarthPos(d, t) : PlanetPos(d, t);
-    if (i == B_MOON) return PosAt(B, B_EARTH, t) + MoonGeoPos(t);
-    double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
-    if (d.moonPeriod2 > 0 && t > d.moonChangeT)
-        th = d.moonPhase * DEG + 2 * PI * (d.moonChangeT / d.moonPeriod + (t - d.moonChangeT) / d.moonPeriod2);
-    if (d.libA != 0 || d.libB != 0) {
-        double w = 2 * PI * t / (70.56 * 365.25);
-        th += (d.libA * std::sin(w) + d.libB * std::cos(w)) * DEG;
-    }
-    return PosAt(B, d.parent, t) + (B[i].oN * std::cos(th) + B[i].oQ * std::sin(th)) * d.moonA;
-}
-static double SpinAt(const std::vector<Body>& B, int i, double t) {
-    const Body& b = B[i];
-    const BodyDef& d = b.d;
-    if (d.parent > 0 && d.rotPeriod == 0) {
-        V3 u = PosAt(B, d.parent, t) - PosAt(B, i, t);
-        return std::atan2(-Dot(u, b.ez), Dot(u, b.ex));
-    }
-    double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
-    if (!std::isnan(d.w0)) return std::fmod(b.primeOffset + d.w0 * DEG + 2 * PI * t / rp, 2 * PI);
-    return std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
-}
-
 // 立っている天体（地表にいなければ -1）
 static int GroundBody(const App& app) {
     const Body& b = app.B[app.ship.ref];
     // 小惑星など小さな天体は地平線がすぐ近くで丸いので対象にしない（半径 100 km 以上）
     if (app.warpT >= 0 || b.d.kind == KIND_PROBE || b.d.kind == KIND_GAS || b.d.kind == KIND_STAR || b.d.radius < 100) return -1;
     return SurfaceDist(b, ShipWorld(app)) < 2 ? app.ship.ref : -1;
-}
-
-// 地上の点（天体固定座標 f）から見たターゲットの高度・方位 rad（方位は北から東回り）
-static void AltAz(const App& app, int g, V3 f, int target, double t, double* alt, double* az) {
-    const Body& b = app.B[g];
-    double s = SpinAt(app.B, g, t), cs = std::cos(s), sn = std::sin(s);
-    V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;
-    V3 pg = PosAt(app.B, g, t), rel = X * f.x + b.pole * f.y + Z * f.z;
-    V3 up = Norm(rel), v = Norm(PosAt(app.B, target, t) - (pg + rel));
-    V3 north = b.pole - up * Dot(b.pole, up);
-    north = Len(north) < 1e-9 ? Norm(X - up * Dot(X, up)) : Norm(north);
-    V3 east = Cross(north, up);
-    *alt = std::asin(std::max(-1.0, std::min(1.0, Dot(v, up))));
-    *az = std::fmod(std::atan2(Dot(v, east), Dot(v, north)) + 2 * PI, 2 * PI);
 }
 
 static V3 GroundFixed(const App& app, int g) {
@@ -782,7 +828,7 @@ static const RiseSet& GetRiseSet(const App& app, int g) {
     double h0 = g == B_EARTH ? (app.target == B_SUN || app.target == B_MOON ? -0.833 : -0.567) * DEG : 0.0;
     const int N = 480;
     double prevAlt = 0, az, maxAlt = -10;
-    auto altAt = [&](double t) { double a, z; AltAz(app, g, f, app.target, t, &a, &z); return a - h0; };
+    auto altAt = [&](double t) { double a, z; AltAz(app.B, g, f, app.target, t, &a, &z); return a - h0; };
     auto refine = [&](double a, double b) {   // 符号が変わる所を二分法で
         double fa = altAt(a);
         for (int k = 0; k < 24; k++) {
@@ -794,7 +840,7 @@ static const RiseSet& GetRiseSet(const App& app, int g) {
     bool anyUp = false, anyDown = false;
     for (int k = 0; k <= N; k++) {
         double t = r.t0 + r.span * k / N, a;
-        AltAz(app, g, f, app.target, t, &a, &az);
+        AltAz(app.B, g, f, app.target, t, &a, &az);
         a -= h0;
         if (a > 0) anyUp = true; else anyDown = true;
         if (a > maxAlt) { maxAlt = a; r.transit = t; }
@@ -826,6 +872,69 @@ static std::string GroundTime(double t, double tz, bool withDate) {
     return withDate ? s.substr(5, 11) : s.substr(11, 5);
 }
 
+// 流れ星（地球の地上で、夜に）。流星群の放射点から飛び出す向きに流れる。散在流星（1 時間に 6 個）も
+// 数は 1 時間あたり ZHR × 放射点の高さの sin。時間倍率をかけると増える（実時間 1 秒に 4 個まで）
+static void UpdateMeteors(App& app, double dt, double simDt) {
+    for (size_t k = 0; k < app.meteors.size();) {
+        app.meteors[k].t += (float)dt;
+        if (app.meteors[k].t > app.meteors[k].dur) app.meteors.erase(app.meteors.begin() + k);
+        else k++;
+    }
+    int g = GroundBody(app);
+    if (g != B_EARTH || simDt <= 0) return;
+    V3 up = Norm(ShipWorld(app) - app.B[g].pos);
+    double sunAlt = std::asin(Dot(Norm(app.B[B_SUN].pos - ShipWorld(app)), up)) / DEG;
+    double dark = std::max(0.0, std::min(1.0, (-6 - sunAlt) / 6));   // 太陽が −6° から −12° で暗くなる
+    if (dark <= 0) return;
+    double solLon = SolarLongitude(app.B, app.tDays);
+    auto spawn = [&](V3 rad, double rate) {   // rate: 1 時間あたり
+        double expect = std::min(rate * simDt / 3600.0, 4.0 * dt) * dark;
+        int n = (int)expect + (GetRandomValue(0, 9999) < (int)((expect - (int)expect) * 10000) ? 1 : 0);
+        for (int i = 0; i < n && app.meteors.size() < 40; i++) {
+            App::Meteor m;
+            V3 any = std::fabs(rad.y) < 0.9 ? V3(0, 1, 0) : V3(1, 0, 0);
+            V3 u = Norm(Cross(rad, any)), v = Cross(rad, u);
+            double ph = GetRandomValue(0, 3599) / 10.0 * DEG;
+            m.rad = rad;
+            m.side = u * std::cos(ph) + v * std::sin(ph);
+            m.d = (float)(GetRandomValue(8, 60) * DEG);
+            m.len = (float)(GetRandomValue(4, 18) * DEG);
+            m.dur = GetRandomValue(35, 110) / 100.0f;
+            m.bright = GetRandomValue(40, 100) / 100.0f;
+            V3 start = rad * std::cos(m.d) + m.side * std::sin(m.d);
+            if (Dot(start, up) > std::sin(8 * DEG)) app.meteors.push_back(m);
+        }
+    };
+    for (const MeteorShower& ms : SHOWERS) {
+        double zhr = ShowerZHR(ms, solLon);
+        if (zhr <= 0) continue;
+        V3 rad = EquToRender(ms.ra, ms.dec);
+        double h = Dot(rad, up);
+        if (h > 0) spawn(rad, zhr * h);
+    }
+    // 散在流星: 放射点はでたらめ（地平線より上）
+    V3 r = Norm(V3(GetRandomValue(-1000, 1000), GetRandomValue(-1000, 1000), GetRandomValue(-1000, 1000)));
+    if (Dot(r, up) < 0) r = r - up * (2 * Dot(r, up));
+    spawn(r, 6);
+}
+
+static void DrawMeteors(const App& app) {
+    const Cam& c = app.cam;
+    for (const App::Meteor& m : app.meteors) {
+        float s = m.t / m.dur;
+        float fade = s < 0.15f ? s / 0.15f : s > 0.75f ? (1 - s) / 0.25f : 1.0f;
+        auto at = [&](float u) { double a = m.d + m.len * u; return m.rad * std::cos(a) + m.side * std::sin(a); };
+        const int K = 8;   // 尾ほど淡く
+        for (int k = 0; k < K; k++) {
+            float u0 = std::max(0.0f, s - 0.35f * (k + 1) / K), u1 = std::max(0.0f, s - 0.35f * k / K);
+            Vector2 a, b;
+            if (u1 <= u0 || !Project(c, at(u0), &a) || !Project(c, at(u1), &b)) continue;
+            unsigned char al = (unsigned char)(255 * m.bright * fade * (1.0f - (float)k / K));
+            DrawLineEx(a, b, 2.0f - 1.2f * k / K, {255, 250, 235, al});
+        }
+    }
+}
+
 static void DrawGroundView(const App& app) {
     int g = GroundBody(app);
     if (g < 0 || app.photoMode > 0) return;
@@ -840,6 +949,7 @@ static void DrawGroundView(const App& app) {
     }
     north = Norm(north);
     V3 east = Cross(north, up);
+    DrawMeteors(app);
     // 地面: 地平線より下を塗る。間近では天体の画像（1 画素が数 km）が引き伸ばされて見えるため。
     // 地平線はカメラを通る平面なので、画面上では直線になる。画面の四角形をその直線で切った下側を塗る
     {
@@ -858,7 +968,7 @@ static void DrawGroundView(const App& app) {
         }
         if (poly.size() >= 3) {
             double sunAlt, sunAz;
-            AltAz(app, g, GroundFixed(app, g), B_SUN, app.tDays, &sunAlt, &sunAz);
+            AltAz(app.B, g, GroundFixed(app, g), B_SUN, app.tDays, &sunAlt, &sunAz);
             float day = (float)std::max(0.0, std::min(1.0, (sunAlt / DEG + 6) / 16));   // 薄明（−6°）から昼（10°）まで
             const Col3& gc = b.d.c2;
             float k = 0.05f + 0.30f * day;
@@ -903,10 +1013,18 @@ static void DrawGroundView(const App& app) {
     l2[0] = l3[0] = 0;
     if (app.target != g) {
         double alt, az;
-        AltAz(app, g, f, app.target, app.tDays, &alt, &az);
+        AltAz(app.B, g, f, app.target, app.tDays, &alt, &az);
         int dir = (int)std::floor(az / (2 * PI) * 16 + 0.5) % 16;
         snprintf(l2, sizeof l2, "%s   %s %.1f°   %s %.1f° (%s)", TR(tb.d.jp, tb.d.en), T(UI_GND_ALT), alt / DEG, T(UI_GND_AZ), az / DEG,
                  T((UiId)(UI_DIR0 + dir)));
+        Appearance ap = SeenFrom(app, app.target);   // 明るさと満ち欠け
+        if (ap.ok && !std::isnan(ap.mag)) {
+            char m[64];
+            snprintf(m, sizeof m, T(UI_INFO_MAG_UNIT), ap.mag);
+            size_t n = strlen(l2);
+            if (app.target == B_SUN) snprintf(l2 + n, sizeof l2 - n, "   %s", m);
+            else snprintf(l2 + n, sizeof l2 - n, "   %s  %.0f%%", m, ap.k * 100);
+        }
         const RiseSet& rs = GetRiseSet(app, g);
         bool date = rs.span > 2;
         auto tm = [&](double t) { return std::isnan(t) ? std::string("--:--") : GroundTime(t, tz, date); };
