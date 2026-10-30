@@ -32,6 +32,7 @@
 | ![国際宇宙ステーション](docs/screenshots/iss.jpg) 地球の上空を回る国際宇宙ステーション | ![重力モード](docs/screenshots/gravity_mode.jpg) 重力モード（R キー）: 地球を回る軌道の予測線 |
 | ![ブラウザ版](docs/screenshots/browser.jpg) ブラウザ版（WebGL2） | ![スマホでのタッチ操作](docs/screenshots/touch.jpg) スマホの横向きでのタッチ操作（ツアー中） |
 | ![初回の案内](docs/screenshots/first_run.jpg) 最初の起動時の案内 | ![共有リンク](docs/screenshots/share_link.jpg) 共有リンクで開いた場面（火星上空、F2 でコピー） |
+| ![文字の大きさ 特大](docs/screenshots/settings_large.jpg) 設定画面（文字の大きさ「特大」） | |
 
 ## はじめての方へ
 
@@ -93,11 +94,11 @@ open build/SolarSystemVoyager.app
 
 ### 自動ビルドとリリース（GitHub Actions）
 
-`v2.5.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。
+`v2.6.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。
 
 ```sh
-git tag v2.5.0
-git push origin master v2.5.0
+git tag v2.6.0
+git push origin master v2.6.0
 ```
 
 ### ブラウザ版（Emscripten）
