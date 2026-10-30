@@ -4,11 +4,17 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.9.0 (2026-10-30)
+
+- Body info card (I key / touch "Info"): type, radius, mass, surface gravity, escape velocity, rotation and orbital periods, orbit, moons, current distances and spacecraft that flew by. Mouse inversion is now only in the settings
+- Resume: the next launch starts where you quit, with "Place only (current time)", "Place and time" or "Off" in the settings
+- Gamepad for every menu: the help screen (Menu) opens the map, settings, events, date entry and body info, operated with the D-pad and A / B
+
 ## 2.8.0 (2026-10-30)
 
 - System map: probe trajectories, time controls while the map is open (pause, faster / slower, reverse) and gamepad support
 - Browser version: sharp rendering on high-resolution screens (phones, Retina) following the device pixel ratio; text and HUD scale with it
-- Changelog (this file) and release notes that include the changes of each version
+- A changelog (CHANGELOG.en.md) and release notes that include the changes of each version
 - Release workflow: GitHub Actions updated to the Node.js 24 versions (checkout v7, upload-artifact v7, download-artifact v8)
 
 ## 2.7.1 (2026-10-30)

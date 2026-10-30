@@ -168,11 +168,11 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP8, "右クリック(押している間) : ズーム    B : 現在地をブックマーク    N : ブックマークへワープ", "Right mouse (hold) : zoom    B : bookmark this spot    N : warp to next bookmark") \
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード    R : 重力モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode    R : gravity mode") \
-    X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
+    X(HELP11, "I : 天体の情報    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : body info    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F2 : 共有リンク    F3 : 全体図    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F2 : share link    F3 : map    F9 : quality    F10 : settings    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
-    X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明    LB+RB : 全体図", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help    LB+RB : map") \
+    X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明・メニュー    LB+RB : 全体図", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help/menu    LB+RB : map") \
     X(REAL_TIME_ETA, "実時間で", "real") \
     X(AP, "自動操縦", "AUTOPILOT") \
     X(AP_ON, "自動操縦 ON", "Autopilot ON") \
@@ -272,6 +272,41 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(TB_SETTINGS, "設定", "Settings") \
     X(TB_HELP, "説明", "Help") \
     X(TB_SHARE, "共有", "Share") \
+    X(HELP_PAD, "[パッド] この画面で A : 全体図    X : 設定    Y : イベント一覧    LB : 日時指定    RB : 天体の情報    B : 閉じる", "[Pad] On this screen A : map    X : settings    Y : events    LB : set date    RB : body info    B : close") \
+    X(PAD_DATE, "[パッド] 十字上下 : ±1 日    十字左右 : ±30 日    LB / RB : ±1 年    A : 決定    B : 閉じる", "[Pad] D-pad Up/Down : ±1 day    Left/Right : ±30 days    LB / RB : ±1 year    A : set    B : close") \
+    X(INFO_STAR, "恒星", "Star") \
+    X(INFO_PLANET, "惑星", "Planet") \
+    X(INFO_DWARF, "準惑星", "Dwarf planet") \
+    X(INFO_MOON_OF, "%s の衛星", "Moon of %s") \
+    X(INFO_ASTEROID, "小惑星", "Asteroid") \
+    X(INFO_COMET, "彗星", "Comet") \
+    X(INFO_PROBE, "探査機・宇宙望遠鏡", "Spacecraft") \
+    X(INFO_SAT, "地球を回る人工衛星", "Earth-orbiting satellite") \
+    X(INFO_RADIUS, "赤道半径", "Equatorial radius") \
+    X(INFO_MASS, "質量", "Mass") \
+    X(INFO_GRAVITY, "表面の重力", "Surface gravity") \
+    X(INFO_ESCAPE, "脱出速度", "Escape velocity") \
+    X(INFO_DAY, "自転周期", "Rotation period") \
+    X(INFO_SYNC, "公転と同じ（いつも同じ面を向ける）", "same as its orbit (tidally locked)") \
+    X(INFO_RETRO, "逆回り", "retrograde") \
+    X(INFO_YEAR, "公転周期", "Orbital period") \
+    X(INFO_SMA, "軌道の大きさ（長半径）", "Semi-major axis") \
+    X(INFO_ECC, "離心率 / 軌道傾斜角", "Eccentricity / inclination") \
+    X(INFO_MOONS, "衛星（このシミュレータ内）", "Moons (in this simulator)") \
+    X(INFO_FROM_SUN, "太陽からの距離", "Distance from the Sun") \
+    X(INFO_FROM_EARTH, "地球からの距離", "Distance from Earth") \
+    X(INFO_FROM_SHIP, "自機からの距離", "Distance from you") \
+    X(INFO_VISITS, "近くを飛んだ探査機", "Spacecraft that flew by") \
+    X(INFO_DATA, "軌跡のデータ", "Trajectory data") \
+    X(INFO_ALT, "高度 / 周期", "Altitude / period") \
+    X(INFO_EARTHX, "地球の %s 倍", "%s x Earth") \
+    X(INFO_CLOSE, "I / タップ: 閉じる", "I / tap: close") \
+    X(TB_INFO, "情報", "Info") \
+    X(SET_RESUME, "起動したら前回の続きから", "Resume the last session") \
+    X(SET_RES0, "オフ（地球の近くから）", "Off (start near Earth)") \
+    X(SET_RES1, "場所だけ（日時は今）", "Place only (current time)") \
+    X(SET_RES2, "場所と日時", "Place and time") \
+    X(RESUMED, "前回の続きから: %s", "Resumed: %s") \
     X(TB_MAP, "全体図", "Map") \
     X(MAP_TITLE, "全体図", "System map") \
     X(MAP_SUN, "太陽中心", "centered on the Sun") \
@@ -1390,6 +1425,8 @@ struct Options {
     bool map = false;            // 全体図を開いた状態で始める（確認用）
     bool noMsaa = false;         // アンチエイリアス (MSAA) なしで始める（MSAA を使えない環境の確認用）
     bool checkAssets = false;    // データが読めるかを確かめて終了（ウィンドウを作れない CI の確認用）
+    bool info = false;           // 天体の情報を開いて始める（確認用）
+    bool resume = false;         // --shot でも前回の続きから始める（確認用）
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -1437,6 +1474,8 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--map") o.map = true;
         else if (a == "--no-msaa") o.noMsaa = true;
         else if (a == "--check-assets") o.checkAssets = true;
+        else if (a == "--info") o.info = true;
+        else if (a == "--resume") o.resume = true;
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
@@ -1497,6 +1536,8 @@ struct App {
     double mapRange = 0;                  // 全体図の半径 km（0: 中心に合わせて自動）
     bool mapWasCaptured = false;          // 全体図を開く前にマウスを捕捉していたか
     bool timeReverse = false;             // 時間を逆に進める（全体図を開いている間だけ）
+    bool showInfo = false;                // ターゲットの天体の情報（I キー）
+    int resumeMode = 1;                   // 起動時に前回の続きから 0: しない, 1: 場所だけ, 2: 場所と日時
     int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）
     std::vector<AstroEvent> cometEvents;  // 彗星の近日点と地球への最接近（起動時に求める）
@@ -1790,8 +1831,28 @@ static void ShareScene(App& app) {
 #endif
 }
 
+// 前回の続き（設定の resume に共有リンクと同じ形で保存）。場所だけの時は日時・時間倍率・停止を除く
+static std::string ResumeQuery(const std::string& saved, bool withTime) {
+    if (withTime) return saved;
+    std::string out;
+    size_t i = 0;
+    while (i < saved.size()) {
+        size_t amp = saved.find('&', i);
+        if (amp == std::string::npos) amp = saved.size();
+        std::string item = saved.substr(i, amp - i), key = item.substr(0, item.find('='));
+        if (key != "t" && key != "ts" && key != "p") out += (out.empty() ? "" : "&") + item;
+        i = amp + 1;
+    }
+    return out;
+}
+
+static void SaveResume(const App& app) {
+    SetSetting("resume", ShareQuery(app).substr(1));   // 先頭の ? を除く
+    SaveSettings();
+}
+
 // 共有リンクの場面にする（起動時に一度）。読めた項目だけ使う
-static bool ApplyShareQuery(App& app, std::string q) {
+static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENED) {
     size_t qm = q.find('?');
     if (qm != std::string::npos) q = q.substr(qm + 1);
     std::map<std::string, std::string> kv;
@@ -1816,7 +1877,7 @@ static bool ApplyShareQuery(App& app, std::string q) {
     if (kv.count("at") && ParseBookmark(app, kv["at"], &bm) && app.B[bm.body].active) {
         ApplyBookmark(app, bm);
         char msg[256];
-        snprintf(msg, sizeof msg, T(UI_SHARE_OPENED), BookmarkLabel(app, bm).c_str());
+        snprintf(msg, sizeof msg, T(msgId), BookmarkLabel(app, bm).c_str());
         Toast(app, msg);
     }
     for (size_t k = 0; k < app.B.size(); k++)
@@ -2533,7 +2594,8 @@ static V3 CircularVelocity(const App& app);
 
 // ---------------------------------------------------------------- 設定（F10 キー。それぞれのキー操作も同じ関数を使う）
 enum SettingItem { SET_LANG, SET_TEXTSIZE, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_MILKYWAY, SET_ORBITS, SET_ASTEROIDS,
-                   SET_MARKERS, SET_INVERT, SET_PHYSICS, SET_FULLSCREEN, SET_COUNT };
+                   SET_MARKERS, SET_INVERT, SET_PHYSICS, SET_RESUME, SET_FULLSCREEN, SET_COUNT };
+static const float SET_ROW_H = 28;   // 設定画面の 1 行の高さ
 
 // 項目を dir（+1 / -1）の向きに変える。変えたらすぐ保存し、知らせを出すかは toast で選ぶ
 static void ChangeSetting(App& app, int item, int dir, bool toast) {
@@ -2601,6 +2663,10 @@ static void ChangeSetting(App& app, int item, int dir, bool toast) {
             SetSetting("physics", onoff(app.physics));
             if (toast) Toast(app, T(app.physics ? UI_PHYS_ON : UI_PHYS_OFF));
             break;
+        case SET_RESUME:
+            app.resumeMode = (app.resumeMode + dir + 3) % 3;
+            SetSetting("resume_mode", std::to_string(app.resumeMode));
+            break;
         case SET_FULLSCREEN:
             ToggleBorderlessWindowed();
             break;
@@ -2623,13 +2689,14 @@ static std::string SettingValue(const App& app, int item) {
         case SET_MARKERS: return onoff(app.showMoonMarkers);
         case SET_INVERT: return onoff(app.invertY);
         case SET_PHYSICS: return T(app.physics ? UI_SET_GRAVITY : UI_SET_ARCADE);
+        case SET_RESUME: return T((UiId)(UI_SET_RES0 + app.resumeMode));
         default: return onoff(IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE));
     }
 }
 
 // ---------------------------------------------------------------- タッチ操作（スマホ・タブレット）
-enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_MAP, TB_SETTINGS, TB_HELP,
-                   TB_SHARE, TB_COUNT };
+enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_MAP, TB_INFO, TB_SETTINGS,
+                   TB_HELP, TB_SHARE, TB_COUNT };
 
 // 画面のボタンの位置: 右に速度、左に行き先、下にメニュー（画面の高さに合わせた大きさ）
 static Rectangle TouchButtonRect(const Cam& c, int i) {
@@ -2642,7 +2709,7 @@ static Rectangle TouchButtonRect(const Cam& c, int i) {
         case TB_TARGET: return {12, ly, s * 1.5f, s * 0.8f};
         case TB_WARP: return {12, ly + s * 0.8f + g, s * 1.5f, s * 0.8f};
         case TB_AUTO: return {12, ly + (s * 0.8f + g) * 2, s * 1.5f, s * 0.8f};
-        default: {   // ツアー・イベント・全体図・設定・説明・共有: 左上のパネルの下に横に並べる
+        default: {   // ツアー・イベント・全体図・情報・設定・説明・共有: 左上のパネルの下に横に並べる
             int k = i - TB_TOUR;
             float w = s * 1.15f;
             return {12 + k * (w + g), 160, w, s * 0.55f};
@@ -2705,11 +2772,11 @@ static void DrawTouchButtons(const App& app) {
     if (!app.touchUI) return;
     const Cam& c = app.cam;
     static const UiId LABEL[TB_COUNT] = {UI_TB_THRUST, UI_TB_BRAKE, UI_TB_STOP, UI_TB_TARGET, UI_TB_WARP, UI_TB_AUTO,
-                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_MAP, UI_TB_SETTINGS, UI_TB_HELP, UI_TB_SHARE};
+                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_MAP, UI_TB_INFO, UI_TB_SETTINGS, UI_TB_HELP, UI_TB_SHARE};
     for (int i = 0; i < TB_COUNT; i++) {
         Rectangle r = TouchButtonRect(c, i);
         bool held = app.touchHeld == i;
-        bool on = (i == TB_AUTO && app.autopilot) || (i == TB_TOUR && app.tourOn);
+        bool on = (i == TB_AUTO && app.autopilot) || (i == TB_TOUR && app.tourOn) || (i == TB_INFO && app.showInfo);
         DrawRectangleRounded(r, 0.3f, 6, held ? Color{70, 110, 170, 220} : on ? Color{40, 90, 70, 200} : Color{0, 12, 30, 150});
         DrawRectangleRoundedLinesEx(r, 0.3f, 6, 1.5f, {110, 150, 200, 200});
         float fs = std::min(r.height * 0.36f, 20.0f);
@@ -3039,6 +3106,35 @@ static void DrawMap(const App& app) {
     if (app.pad >= 0) TxtC(T(UI_MAP_PAD), c.W * 0.5f, c.H - 46, 13, {150, 210, 180, 255});
 }
 
+// 日時の入力欄の内容の日時へ移る（Enter / パッドの A）
+static void ApplyDateEntry(App& app) {
+    double t = ParseDateDigits(app.dateDigits);
+    if (std::isnan(t)) {
+        Toast(app, T(UI_DATE_BAD));
+        return;
+    }
+    app.tDays = t;
+    UpdateBodies(app.B, app.tDays);
+    UpdateReferenceFrame(app);
+    app.dateOpen = false;
+    char b[96];
+    snprintf(b, sizeof b, T(UI_DATE_SET), FmtDate(t).c_str());
+    Toast(app, b);
+}
+
+// イベント一覧で選んでいるイベントへワープする（Enter / パッドの A）
+static void GoSelectedEvent(App& app) {
+    if (app.events.empty() || app.warpT >= 0) return;
+    const AstroEvent& ev = app.events[app.eventSel];
+    StartWarp(app, EventBody(ev), false);
+    app.warpEvent = app.eventSel;
+    app.eventsOpen = false;
+    std::string when = FmtDate(ev.t).substr(0, 16) + " UTC";
+    char b[256];
+    snprintf(b, sizeof b, T(UI_EV_GO), when.c_str(), EventTitle(app, ev).c_str());
+    Toast(app, b);
+}
+
 static bool HandleModalInput(App& app) {
     const Cam c = UiCam(app.cam);   // タップの位置は 2D の表示の座標
     if (app.introPage >= 0) {
@@ -3085,11 +3181,11 @@ static bool HandleModalInput(App& app) {
     }
     if (app.settingsOpen && app.tapped) {
         // タッチ: 項目をタップすると変わる。パネルの外をタップすると閉じる
-        float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * SET_ROW_H, x = (c.W - w) / 2, y = (c.H - h) / 2;
         if (!CheckCollisionPointRec(app.tapPos, {x, y, w, h})) {
             app.settingsOpen = false;
         } else {
-            int row = (int)std::floor((app.tapPos.y - (y + 68)) / 30.0f);
+            int row = (int)std::floor((app.tapPos.y - (y + 68)) / SET_ROW_H);
             if (row >= 0 && row < SET_COUNT) {
                 app.settingsSel = row;
                 ChangeSetting(app, row, 1, false);
@@ -3143,20 +3239,7 @@ static bool HandleModalInput(App& app) {
             if (ch >= '0' && ch <= '9' && app.dateDigits.size() < 12) app.dateDigits += (char)ch;
         if (IsKeyPressed(KEY_BACKSPACE) && !app.dateDigits.empty()) app.dateDigits.pop_back();
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_Y)) app.dateOpen = false;
-        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
-            double t = ParseDateDigits(app.dateDigits);
-            if (std::isnan(t)) {
-                Toast(app, T(UI_DATE_BAD));
-            } else {
-                app.tDays = t;
-                UpdateBodies(app.B, app.tDays);
-                UpdateReferenceFrame(app);
-                app.dateOpen = false;
-                char b[96];
-                snprintf(b, sizeof b, T(UI_DATE_SET), FmtDate(t).c_str());
-                Toast(app, b);
-            }
-        }
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) ApplyDateEntry(app);
         return true;
     }
     if (app.eventsOpen) {
@@ -3171,16 +3254,7 @@ static bool HandleModalInput(App& app) {
             OpenEventsPage(app);
             return true;
         }
-        if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && n > 0 && app.warpT < 0) {
-            const AstroEvent& ev = app.events[app.eventSel];
-            StartWarp(app, EventBody(ev), false);
-            app.warpEvent = app.eventSel;
-            app.eventsOpen = false;
-            std::string when = FmtDate(ev.t).substr(0, 16) + " UTC";
-            char b[256];
-            snprintf(b, sizeof b, T(UI_EV_GO), when.c_str(), EventTitle(app, ev).c_str());
-            Toast(app, b);
-        }
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) GoSelectedEvent(app);
         return true;
     }
     return false;
@@ -3192,16 +3266,16 @@ static void DrawModalPanels(const App& app) {
     if (app.settingsOpen) {
         static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_TEXTSIZE, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY,
                                              UI_SET_MILKYWAY, UI_SET_ORBITS, UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT,
-                                             UI_SET_PHYSICS, UI_SET_FULLSCREEN};
-        float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * 30.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
+                                             UI_SET_PHYSICS, UI_SET_RESUME, UI_SET_FULLSCREEN};
+        float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * SET_ROW_H, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
         TxtC(T(UI_SET_TITLE), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
         TxtC(T(UI_SET_KEYS), c.W * 0.5f, y + 40, 14, {170, 200, 230, 255});
         for (int i = 0; i < SET_COUNT; i++) {
-            float ry = y + 72 + i * 30.0f;
+            float ry = y + 72 + i * SET_ROW_H;
             bool sel = i == app.settingsSel;
-            if (sel) DrawRectangle((int)x + 12, (int)ry - 4, (int)w - 24, 28, {60, 90, 140, 200});
+            if (sel) DrawRectangle((int)x + 12, (int)ry - 4, (int)w - 24, (int)SET_ROW_H - 1, {60, 90, 140, 200});
             Color col = sel ? Color{255, 240, 200, 255} : Color{215, 228, 245, 255};
             Txt(T(NAME[i]), x + 28, ry, 18, col);
             std::string v = SettingValue(app, i);
@@ -3235,12 +3309,13 @@ static void DrawModalPanels(const App& app) {
         TxtC(T(NOTE[app.eventsPage]), c.W * 0.5f, y + h - 26, 13, {150, 170, 190, 255});
     }
     if (app.dateOpen) {
-        float w = std::min(c.W - 20, 620.0f), h = 150, x = (c.W - w) / 2, y = (c.H - h) / 2;
+        float w = std::min(c.W - 20, 620.0f), h = app.pad >= 0 ? 176 : 150, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.06f, 6, {0, 8, 20, 235});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.06f, 6, 1.5f, {90, 130, 180, 255});
         TxtC(T(UI_DATE_TITLE), c.W * 0.5f, y + 12, 22, {255, 220, 120, 255});
         TxtC((FormatDateDigits(app.dateDigits) + " UTC").c_str(), c.W * 0.5f, y + 52, 32, {255, 255, 255, 255});
         TxtC(T(UI_DATE_KEYS), c.W * 0.5f, y + 108, 15, {170, 200, 230, 255});
+        if (app.pad >= 0) TxtC(T(UI_PAD_DATE), c.W * 0.5f, y + 136, 14, {150, 210, 180, 255});
     }
     DrawIntro(app);
 }
@@ -3312,6 +3387,7 @@ struct PadState {
     double throttle = 0, brake = 0;       // 0..1
     bool engineUp = false, engineDown = false, timeUp = false, timeDown = false;
     bool autopilot = false, stop = false, nextTarget = false, warp = false, land = false, view = false, help = false, zoom = false;
+    bool lb = false, rb = false;   // LB / RB を押した瞬間（メニューの操作用。押している間のロールは roll に入る）
 };
 
 static double StickCurve(double v) {
@@ -3372,8 +3448,12 @@ static PadState ReadPad(App& app) {
     p.zoom = IsGamepadButtonDown(g, GAMEPAD_BUTTON_RIGHT_THUMB);
     p.view = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_MIDDLE_LEFT);
     p.help = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+    p.lb = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_TRIGGER_1);
+    p.rb = IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
     return p;
 }
+
+static bool InfoCardHit(const App& app, Vector2 p);
 
 // タッチのボタンをパッドの入力に重ねる（押し続ける加速・減速と、タップで動くボタン）
 static void TouchToPad(App& app, PadState& pad) {
@@ -3382,6 +3462,10 @@ static void TouchToPad(App& app, PadState& pad) {
     if (app.touchHeld == TB_BRAKE) pad.brake = 1;
     if (!app.tapped) return;
     const Cam c = UiCam(app.cam);   // タップの位置は 2D の表示の座標
+    if (app.showInfo && InfoCardHit(app, app.tapPos)) {   // 天体の情報はタップで閉じる
+        app.showInfo = false;
+        return;
+    }
     int b = TouchButtonAt(c, app.tapPos);
     switch (b) {
         case TB_STOP: pad.stop = true; break;
@@ -3391,6 +3475,7 @@ static void TouchToPad(App& app, PadState& pad) {
         case TB_TOUR: if (app.tourOn) StopTour(app); else StartTour(app); break;
         case TB_EVENTS: OpenEventsPage(app); app.eventsOpen = true; break;
         case TB_MAP: OpenMap(app); break;
+        case TB_INFO: app.showInfo = !app.showInfo; break;
         case TB_SETTINGS: app.settingsOpen = true; app.settingsSel = 0; break;
         case TB_HELP: pad.help = true; break;
         case TB_SHARE: ShareScene(app); break;
@@ -3403,6 +3488,60 @@ static void TouchToPad(App& app, PadState& pad) {
 
 // 自機の加速・移動に使う経過時間（時間倍率を反映、停止中は 0）
 static double SimDt(const App& app, double dt) { return app.paused ? 0.0 : dt * TIME_SCALES[app.timeIdx]; }
+
+// ゲームパッドで案内・設定・イベント一覧・日時指定・操作説明を操作する。ボタンを使ったら true
+static bool PadMenus(App& app, const PadState& pad) {
+    bool any = pad.autopilot || pad.stop || pad.nextTarget || pad.warp || pad.engineUp || pad.engineDown || pad.timeUp ||
+               pad.timeDown || pad.lb || pad.rb;
+    if (!any) return false;
+    if (app.introPage >= 0) {
+        if (pad.stop) CloseIntro(app);
+        else if (pad.engineDown) app.introPage = std::max(0, app.introPage - 1);
+        else if ((pad.autopilot || pad.engineUp) && ++app.introPage >= INTRO_PAGES) CloseIntro(app);
+        return true;
+    }
+    if (app.settingsOpen) {
+        if (pad.timeDown) app.settingsSel = (app.settingsSel + 1) % SET_COUNT;
+        if (pad.timeUp) app.settingsSel = (app.settingsSel + SET_COUNT - 1) % SET_COUNT;
+        if (pad.engineUp || pad.autopilot) ChangeSetting(app, app.settingsSel, 1, false);
+        if (pad.engineDown) ChangeSetting(app, app.settingsSel, -1, false);
+        if (pad.stop) app.settingsOpen = false;
+        return true;
+    }
+    if (app.eventsOpen) {
+        int n = (int)app.events.size();
+        if (n > 0 && pad.timeDown) app.eventSel = (app.eventSel + 1) % n;
+        if (n > 0 && pad.timeUp) app.eventSel = (app.eventSel + n - 1) % n;
+        if (pad.nextTarget || pad.rb) {
+            app.eventsPage = (app.eventsPage + 1) % 3;
+            OpenEventsPage(app);
+        }
+        if (pad.autopilot) GoSelectedEvent(app);
+        if (pad.stop) app.eventsOpen = false;
+        return true;
+    }
+    if (app.dateOpen) {
+        double t = ParseDateDigits(app.dateDigits);
+        if (std::isnan(t)) t = app.tDays;
+        double d = (pad.timeUp ? 1 : 0) - (pad.timeDown ? 1 : 0) + (pad.engineUp ? 30 : 0) - (pad.engineDown ? 30 : 0) +
+                   (pad.rb ? 365.25 : 0) - (pad.lb ? 365.25 : 0);
+        if (d != 0) app.dateDigits = DigitsOfTime(t + d);
+        if (pad.autopilot) ApplyDateEntry(app);
+        if (pad.stop) app.dateOpen = false;
+        return true;
+    }
+    if (app.showHelp) {   // 操作説明をメニューとして使う
+        app.showHelp = false;
+        if (pad.autopilot) OpenMap(app);
+        else if (pad.nextTarget) { app.settingsOpen = true; app.settingsSel = 0; }
+        else if (pad.warp) { OpenEventsPage(app); app.eventsOpen = true; }
+        else if (pad.lb) { app.dateDigits = DigitsOfTime(app.tDays); app.dateOpen = true; }
+        else if (pad.rb) app.showInfo = !app.showInfo;
+        else if (!pad.stop) app.showHelp = true;   // ほかのボタンは説明を開いたまま
+        return true;
+    }
+    return false;
+}
 
 static void HandleInput(App& app, double dt) {
     Ship& s = app.ship;
@@ -3437,6 +3576,8 @@ static void HandleInput(App& app, double dt) {
                 CloseMap(app);
                 return;
             }
+        } else if (PadMenus(app, pad)) {
+            return;
         }
     }
     if (HandleModalInput(app)) return;
@@ -3610,7 +3751,7 @@ static void HandleInput(App& app, double dt) {
     if (IsKeyPressed(KEY_F2)) ShareScene(app);
     if (IsKeyPressed(KEY_F3)) OpenMap(app);
     if (IsKeyPressed(KEY_F9)) ChangeSetting(app, SET_QUALITY, 1, true);
-    if (IsKeyPressed(KEY_I)) ChangeSetting(app, SET_INVERT, 1, true);
+    if (IsKeyPressed(KEY_I)) app.showInfo = !app.showInfo;   // マウス上下反転は設定画面（F10）で
     if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
     if (IsKeyPressed(KEY_F11)) ChangeSetting(app, SET_FULLSCREEN, 1, false);
 
@@ -5182,6 +5323,173 @@ static void DrawToast(const App& app) {
     TxtC(app.toast.c_str(), app.cam.W * 0.5f, app.cam.H * 0.24f, 24, Fade({255, 240, 200, 255}, a));
 }
 
+// ---------------------------------------------------------------- 天体の情報（I キー）
+// ターゲットの天体の大きさ・重力・自転と公転・今の距離などを、データから計算して右側に出す
+struct InfoLine {
+    std::string label, value;
+    bool title = false;
+};
+
+static std::vector<InfoLine> InfoLines(const App& app) {
+    const int i = app.target;
+    const Body& b = app.B[i];
+    const BodyDef& d = b.d;
+    std::vector<InfoLine> L;
+    char v[256];
+    auto earthX = [&](double ratio) {
+        char r[32], o[64];
+        snprintf(r, sizeof r, "%.3g", ratio);
+        snprintf(o, sizeof o, T(UI_INFO_EARTHX), r);
+        return std::string(o);
+    };
+    // 種類
+    std::string kind, en = d.en;
+    if (i == B_SUN) kind = T(UI_INFO_STAR);
+    else if (d.kind == KIND_PROBE) kind = T(d.tleN > 0 ? UI_INFO_SAT : UI_INFO_PROBE);
+    else if (d.parent > 0) {
+        snprintf(v, sizeof v, T(UI_INFO_MOON_OF), TR(app.B[d.parent].d.jp, app.B[d.parent].d.en));
+        kind = v;
+    } else if (i <= B_NEPTUNE) kind = T(UI_INFO_PLANET);
+    else if (i == B_PLUTO || en == "Ceres" || en == "Eris") kind = T(UI_INFO_DWARF);
+    else if (std::string(d.jp).find("彗星") != std::string::npos) kind = T(UI_INFO_COMET);
+    else kind = T(UI_INFO_ASTEROID);
+    L.push_back({TR(d.jp, d.en), kind, true});
+
+    const double G = 6.674e-11;
+    if (d.kind != KIND_PROBE) {
+        snprintf(v, sizeof v, "%s km", Grouped(d.radius, d.radius < 10 ? 2 : d.radius < 100 ? 1 : 0).c_str());
+        L.push_back({T(UI_INFO_RADIUS), std::string(v) + "  (" + earthX(d.radius / 6371.0) + ")"});
+        snprintf(v, sizeof v, "%.3e kg", d.mass);
+        L.push_back({T(UI_INFO_MASS), std::string(v) + "  (" + earthX(d.mass / 5.9722e24) + ")"});
+        double g = G * d.mass / std::pow(d.radius * 1000, 2), esc = std::sqrt(2 * G * d.mass / (d.radius * 1000));
+        snprintf(v, sizeof v, g < 0.1 ? "%.4f m/s²  (%.4g g)" : "%.2f m/s²  (%.2f g)", g, g / 9.80665);
+        L.push_back({T(UI_INFO_GRAVITY), v});
+        if (esc < 1000) snprintf(v, sizeof v, "%.1f m/s", esc);
+        else snprintf(v, sizeof v, "%.2f km/s", esc / 1000);
+        L.push_back({T(UI_INFO_ESCAPE), v});
+        // 自転（0 は公転と同期）
+        if (d.rotPeriod == 0) L.push_back({T(UI_INFO_DAY), T(UI_INFO_SYNC)});
+        else {
+            std::string r = FmtDuration(std::fabs(d.rotPeriod) * 86400);
+            if (d.rotPeriod < 0) r += std::string("  (") + T(UI_INFO_RETRO) + ")";
+            L.push_back({T(UI_INFO_DAY), r});
+        }
+        // 公転
+        if (d.parent == 0 && d.a_au > 0) {
+            L.push_back({T(UI_INFO_YEAR), FmtDuration(std::pow(d.a_au, 1.5) * 365.25 * 86400)});
+            snprintf(v, sizeof v, "%.3f AU", d.a_au);
+            L.push_back({T(UI_INFO_SMA), v});
+            snprintf(v, sizeof v, "%.3f / %.2f°", d.e, d.inc);
+            L.push_back({T(UI_INFO_ECC), v});
+        } else if (d.parent > 0 && d.moonPeriod > 0) {
+            L.push_back({T(UI_INFO_YEAR), FmtDuration(std::fabs(d.moonPeriod) * 86400)});
+            snprintf(v, sizeof v, "%s km", Grouped(d.moonA, 0).c_str());
+            L.push_back({T(UI_INFO_SMA), v});
+        }
+        int moons = 0;
+        for (const Body& o : app.B)
+            if (o.d.parent == i && o.d.kind != KIND_PROBE) moons++;
+        if (moons > 0) L.push_back({T(UI_INFO_MOONS), std::to_string(moons)});
+    } else if (d.tleN > 0) {
+        double alt = Len(b.pos - app.B[B_EARTH].pos) - app.B[B_EARTH].d.radius;
+        L.push_back({T(UI_INFO_ALT), FmtDist(alt) + " / " + FmtDuration(86400 / d.tleN)});
+    } else if (d.probe >= 0 && d.probe < (int)g_probes.size() && !g_probes[d.probe].segs.empty()) {
+        const auto& segs = g_probes[d.probe].segs;
+        L.push_back({T(UI_INFO_DATA), FmtDate(segs.front().t.front()).substr(0, 10) + " - " + FmtDate(segs.back().t.back()).substr(0, 10)});
+    }
+    // 今の距離
+    if (i != B_SUN) {
+        double ds = Len(b.pos - app.B[B_SUN].pos);
+        L.push_back({T(UI_INFO_FROM_SUN), FmtDist(ds) + "  (" + T(UI_LIGHT) + " " + FmtDuration(ds / C_KMS) + ")"});
+    }
+    if (i != B_EARTH) L.push_back({T(UI_INFO_FROM_EARTH), FmtDist(Len(b.pos - app.B[B_EARTH].pos))});
+    L.push_back({T(UI_INFO_FROM_SHIP), FmtDist(std::max(0.0, SurfaceDist(b, ShipWorld(app))))});
+    // その天体のまわりのデータがある探査機（地球は打ち上げた全機が当たるので除く）
+    if (i != B_SUN && i != B_EARTH && d.kind != KIND_PROBE) {
+        std::string list;
+        for (const Body& o : app.B) {
+            if (o.d.probe < 0 || o.d.probe >= (int)g_probes.size()) continue;
+            for (const ProbeSeg& sg : g_probes[o.d.probe].segs)
+                if (sg.body == i) {
+                    if (!list.empty()) list += g_jp ? "、" : ", ";
+                    list += TR(o.d.jp, o.d.en);
+                    break;
+                }
+        }
+        if (!list.empty()) L.push_back({T(UI_INFO_VISITS), list});
+    }
+    return L;
+}
+
+// 表示する行（値が長ければ次の行から折り返す）
+struct InfoRow {
+    std::string label, value;
+    bool title, wrapped;
+};
+static const float INFO_W = 380, INFO_LH = 20;
+
+static std::vector<InfoRow> InfoRows(const App& app) {
+    std::vector<InfoRow> rows;
+    for (const InfoLine& l : InfoLines(app)) {
+        if (l.title || TxtW(l.label.c_str(), 13) + TxtW(l.value.c_str(), 14) + 30 < INFO_W) {
+            rows.push_back({l.label, l.value, l.title, false});
+            continue;
+        }
+        rows.push_back({l.label, "", false, false});
+        std::string line, word;
+        auto put = [&](const std::string& w) {
+            if (!line.empty() && TxtW((line + w).c_str(), 14) > INFO_W - 40) {
+                rows.push_back({"", line, false, true});
+                line.clear();
+            }
+            line += w;
+        };
+        for (size_t k = 0; k < l.value.size(); k++) {   // 区切り（、 , 空白）の後で折り返す
+            word += l.value[k];
+            bool sep = l.value[k] == ' ' || l.value[k] == ',' || (k >= 2 && l.value.compare(k - 2, 3, "、") == 0);
+            if (sep) { put(word); word.clear(); }
+        }
+        if (!word.empty()) put(word);
+        if (!line.empty()) rows.push_back({"", line, false, true});
+    }
+    return rows;
+}
+
+// 右上のターゲット情報の下。タッチ操作の時は右の加速・減速ボタンの列にかからないよう左へずらす
+static Rectangle InfoCardRect(const App& app, const Cam& c, size_t nrows) {
+    float shift = app.touchUI ? TouchButtonRect(c, TB_THRUST).width + 18 : 0;
+    return {c.W - INFO_W - 6 - shift, 118, INFO_W, 34 + nrows * INFO_LH + 22};
+}
+
+static bool InfoCardHit(const App& app, Vector2 p) {
+    return CheckCollisionPointRec(p, InfoCardRect(app, UiCam(app.cam), InfoRows(app).size()));
+}
+
+static void DrawInfoCard(const App& app) {
+    if (!app.showInfo || app.photoMode > 0) return;
+    const Cam& c = app.cam;
+    std::vector<InfoRow> rows = InfoRows(app);
+    Rectangle r = InfoCardRect(app, c, rows.size());
+    DrawRectangleRounded(r, 0.04f, 6, {0, 10, 25, 200});
+    DrawRectangleRoundedLinesEx(r, 0.04f, 6, 1.0f, {90, 130, 180, 200});
+    float y = r.y + 10;
+    for (const InfoRow& row : rows) {
+        if (row.title) {
+            Txt(row.label.c_str(), r.x + 12, y, 19, {255, 220, 80, 255});
+            Txt(row.value.c_str(), r.x + r.width - 12 - TxtW(row.value.c_str(), 14), y + 4, 14, {170, 200, 230, 255});
+            y += 34;
+            continue;
+        }
+        if (!row.label.empty()) Txt(row.label.c_str(), r.x + 12, y + 1, 13, {150, 175, 210, 255});
+        if (!row.value.empty()) {
+            float vx = row.wrapped ? r.x + 28 : r.x + r.width - 12 - TxtW(row.value.c_str(), 14);
+            Txt(row.value.c_str(), vx, y, 14, {225, 235, 250, 255});
+        }
+        y += INFO_LH;
+    }
+    Txt(T(UI_INFO_CLOSE), r.x + 12, r.y + r.height - 20, 12, {120, 145, 180, 220});
+}
+
 static void DrawHUD(App& app) {
     const Cam& c = app.cam;
     if (app.photoMode > 0) {   // 写真モード: 一覧・入力欄と、切り替えの知らせだけ
@@ -5299,14 +5607,16 @@ static void DrawHUD(App& app) {
 
     if (app.showHelp) {
         const int lines = UI_HELP15 - UI_HELP1 + 1;
-        float w = std::min(c.W - 20, 980.0f), h = 74 + lines * 26.0f, hx = (c.W - w) / 2, hy = (c.H - h) / 2;
+        float w = std::min(c.W - 20, 980.0f), h = 74 + lines * 26.0f + (app.pad >= 0 ? 26 : 0), hx = (c.W - w) / 2, hy = (c.H - h) / 2;
         DrawRectangleRounded({hx, hy, w, h}, 0.04f, 6, {0, 8, 20, 225});
         DrawRectangleRoundedLinesEx({hx, hy, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
         TxtC(T(UI_HELP_TITLE), c.W * 0.5f, hy + 10, 22, {255, 220, 120, 255});
         for (int i = 0; i < lines; i++)
             Txt(T((UiId)(UI_HELP1 + i)), hx + 24, hy + 44 + i * 26.0f, i >= 12 ? 15 : 17, i >= 12 ? Color{170, 220, 190, 255} : Color{215, 228, 245, 255});
+        if (app.pad >= 0) Txt(T(UI_HELP_PAD), hx + 24, hy + 44 + lines * 26.0f, 15, {255, 220, 140, 255});
         TxtC(CREDIT, c.W * 0.5f, hy + h - 26, 13, {150, 170, 190, 255});
     }
+    DrawInfoCard(app);
     DrawTourPanel(app);
     DrawModalPanels(app);
 }
@@ -5458,6 +5768,7 @@ int main(int argc, char** argv) {
     }
     app.showAsteroids = GetSetting("asteroids") != "0";
     app.showMilkyWay = GetSetting("milkyway") != "0";
+    if (std::string rm = GetSetting("resume_mode"); !rm.empty()) app.resumeMode = std::max(0, std::min(2, atoi(rm.c_str())));
     g_uiScaleIdx = std::max(0, std::min(2, atoi(GetSetting("textsize").c_str())));
     app.showOrbits = GetSetting("orbits") != "0";
     app.showMoonMarkers = GetSetting("markers") != "0";
@@ -5596,6 +5907,8 @@ int main(int argc, char** argv) {
         free(q);
 #endif
         if (!share.empty()) ApplyShareQuery(app, share);
+        else if ((!opt.shot || opt.resume) && app.resumeMode > 0 && !GetSetting("resume").empty())   // 前回の続きから
+            ApplyShareQuery(app, ResumeQuery(GetSetting("resume"), app.resumeMode == 2), UI_RESUMED);
     }
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);
     app.cockpit = opt.cockpit;
@@ -5625,6 +5938,7 @@ int main(int argc, char** argv) {
     }
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
     if (opt.map) OpenMap(app);
+    app.showInfo = opt.info;
 
     int frame = 0;
     while (!WindowShouldClose()) {
@@ -5783,6 +6097,7 @@ int main(int argc, char** argv) {
         }
 
         frame++;
+        if (!opt.shot && frame % 1800 == 0) SaveResume(app);   // 30 秒ごと（ブラウザ版は閉じる時に保存できないので）
         if (opt.trace && frame % 60 == 0) {
             const Body& tb = app.B[app.target];
             int mt;
@@ -5811,6 +6126,7 @@ int main(int argc, char** argv) {
         if (quitAfterShot) break;
     }
 
+    if (!opt.shot) SaveResume(app);
     UnloadMesh(app.sphere);
     UnloadMesh(app.ring);
     for (Mesh& m : app.shapeMesh) UnloadMesh(m);

@@ -155,12 +155,12 @@ After building, run `cpack` in the build directory.
 | [ / ] | Time scale (x1 real time to 1 year per second). Affects both orbits/rotation of the bodies and the ship's acceleration and movement |
 | P / Backspace | Pause time / sync to current time at x1 |
 | Y | Set the date and time (UTC; type the digits and press Enter) |
-| F10 | Settings (language, text size, quality, sound effects, music, constellations, Milky Way, orbit lines, asteroids, markers, invert mouse, flight mode, fullscreen; Up/Down to select, Left/Right / Enter to change, saved at once). Text size is Normal / Large / Extra large and enlarges the HUD, markers and panels together (limited so they still fit on small screens). On Windows and Linux with display scaling above 100% (4K screens etc.), the window and text start enlarged to match |
+| F10 | Settings (language, text size, quality, sound effects, music, constellations, Milky Way, orbit lines, asteroids, markers, invert mouse, flight mode, resume, fullscreen; Up/Down to select, Left/Right / Enter to change, saved at once). Text size is Normal / Large / Extra large and enlarges the HUD, markers and panels together (limited so they still fit on small screens). On Windows and Linux with display scaling above 100% (4K screens etc.), the window and text start enlarged to match |
 | R | Switch the flight model (arcade / gravity). In gravity mode you fall under the bodies' gravity: W / S thrust along the nose and X stops relative to the reference body. The predicted trajectory is drawn, with the periapsis and apoapsis altitudes and the period |
 | Z | Photo mode (each press: hide gauges and markers → hide the ship too → back to normal; orbit lines are toggled with O) |
 | U | Guided tour: 15 scenes (spacecraft highlights, great comets, an eclipse and more) in chronological order with captions, 15 seconds each. Enter for next, Shift+Enter for previous, U again to stop |
 | K | Event list (select one and press Enter to warp to that time and place). Tab / Shift+Tab switches pages: astronomical events (solar and lunar eclipses, planetary conjunctions and oppositions over the next 3 years, the next shadow transit of each Galilean moon across Jupiter, and transits of Mercury and Venus up to 150 years ahead), comets (perihelia and closest approaches to Earth) and spacecraft events (closest approaches, orbit insertions, end of mission) |
-| I | Invert mouse Y |
+| I | Info card for the target (type, radius, mass, surface gravity, escape velocity, rotation and orbital periods, orbit, number of moons, distances from the Sun / Earth / you, spacecraft that flew by; data period for spacecraft, altitude and period for satellites). "Info" button on touch screens, tap the card to close. Mouse inversion is in the settings (F10) |
 | J | Switch language (日本語 / English) |
 | B / N | Bookmark the current spot / warp to bookmarks in turn (up to 9; position and orientation are stored relative to the rotating body) |
 | M / Shift+M | Sound effects (engine and warp) / music on/off |
@@ -188,7 +188,8 @@ They are detected automatically when connected (hot-plugging works). Button name
 | X | Next target |
 | Y / left stick click | Warp to target / warp to near its surface |
 | Right stick click (hold) | Zoom |
-| View (Back) / Menu (Start) | Switch view / help |
+| View (Back) / Menu (Start) | Switch view / help (also a menu: A map, X settings, Y events, LB set date, RB body info, B close) |
+| Settings / events / date / guide | D-pad Up/Down to select, Left/Right / A to change or confirm, B to close. X / RB switch event pages. In the date entry, Up/Down ±1 day, Left/Right ±30 days, LB / RB ±1 year, A to set |
 | LB + RB (together) | System map. While open: D-pad Left/Right: target, D-pad Up/Down: zoom, A / Y: warp, X: switch center, B: close |
 
 ## Autopilot
@@ -223,6 +224,7 @@ The values can be changed in the `ENGINES` table in `src/main.cpp`. Switching to
 - **Speedometer** (bottom right): analog gauge whose full scale is the current engine's top speed, plus a digital readout
 - **Heading indicator** (top center): near a body (within 30 times its radius), heading, pitch and roll with that body's rotation axis as north. Farther away, ecliptic longitude and latitude. The yellow ▲ marks the target's bearing
 - **Body markers**: name and distance to the surface for the Sun and every planet. Off-screen bodies are shown as arrows at the screen edge. Moons are shown when near their parent
+- **Resume**: the place, view and target are saved when you quit (and every 30 seconds in the browser version) and the next launch starts there. The settings offer "Place only (current time)" (default), "Place and time" and "Off". A share link takes precedence
 - **Target info** (top right): distance, estimated arrival time at current speed, light travel time, and travel time at top speed. With a time scale applied, it also shows how many seconds of real time you will wait
 
 ## How it works
