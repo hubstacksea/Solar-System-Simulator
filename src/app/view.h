@@ -70,6 +70,7 @@ static Mesh GenRing(float inner, float outer, int segs) {
 // ---------------------------------------------------------------- カメラ・投影
 struct Cam {
     V3 pos, fwd, up, right;
+    V3 shipRel;   // カメラから見た自機の位置。太陽から遠いと pos が km 単位で丸まり、自機の位置 − pos ではブレるので別に持つ
     double fovy = 60 * DEG;
     double fovBase = 60 * DEG;  // ズーム込みの視野角（fovy はこれにワープ演出を加えたもの）
     double focal = 1;  // ピクセル単位の焦点距離

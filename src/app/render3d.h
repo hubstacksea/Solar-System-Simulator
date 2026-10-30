@@ -795,7 +795,7 @@ static void DrawShipPass(App& app, double dt) {
 
     if (!app.cockpit) {
         V3 sw = ShipWorld(app);
-        V3 rel = sw - c.pos;
+        V3 rel = c.shipRel;
         double target = s.thrusting ? 1.0 : (!app.physics && std::fabs(s.speed) > 0 ? 0.25 : 0.0);   // 重力モードの慣性飛行では噴射しない
         app.glow += (target - app.glow) * std::min(1.0, dt * 6);
 

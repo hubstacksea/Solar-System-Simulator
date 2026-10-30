@@ -283,7 +283,7 @@ static void DrawMarkers(const App& app) {
     if (app.autopilot) g_placed.push_back({c.W * 0.5f - 320, c.H - 118, 640, 40});  // 自動操縦表示
     if (!app.cockpit) {  // 自機の上にラベルを重ねない
         Vector2 sp;
-        V3 rel = ShipWorld(app) - c.pos;
+        V3 rel = c.shipRel;
         if (Project(c, rel, &sp)) {
             float r = (float)(0.017 / Len(rel) * c.focal);
             g_placed.push_back({sp.x - r, sp.y - r * 0.7f, 2 * r, r * 1.5f});

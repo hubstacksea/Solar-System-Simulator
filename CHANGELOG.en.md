@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.15.3 (2026-10-31)
+
+- Fixed the ship jittering in the chase view while turning far from the Solar System (around a light-year out)
+
 ## 2.15.2 (2026-10-31)
 
 - The light-speed engine now sounds high and clear like glass instead of a low, motorbike-like growl

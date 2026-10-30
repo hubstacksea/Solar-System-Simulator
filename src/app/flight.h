@@ -753,29 +753,34 @@ static void UpdateCamera(App& app) {
     V3 sw = ShipWorld(app);
     // ワープ中は自機が前へ飛び出し、カメラが置いていかれる。閃光の前後は小刻みに揺れる
     double lag = 0.055 + (app.warpJumped ? 0.12 : 0.2) * wi;
-    c.pos = app.cockpit ? sw + c.up * 0.0025 : sw - c.fwd * lag + c.up * 0.013;
+    V3 off = app.cockpit ? c.up * 0.0025 : c.up * 0.013 - c.fwd * lag;   // 自機からカメラへ
     double shake = WarpFlash(app) * 0.0012;
     if (shake > 0) {
         double t = GetTime() * 61.0;
-        c.pos = c.pos + c.right * (std::sin(t) * shake) + c.up * (std::sin(t * 1.37 + 1.0) * shake);
+        off = off + c.right * (std::sin(t) * shake) + c.up * (std::sin(t * 1.37 + 1.0) * shake);
     }
     if (!std::isnan(app.camYaw)) {
         // 確認用: 自機の周囲を回る視点（yaw 0 = 真後ろ）
         double y = app.camYaw * DEG, p = app.camPitch * DEG;
         V3 f0 = ShipFwd(s), u0 = ShipUp(s), r0 = ShipRight(s);
         V3 dir = (f0 * -std::cos(y) + r0 * std::sin(y)) * std::cos(p) + u0 * std::sin(p);
-        c.pos = sw + dir * (app.camDist / 1000.0);
+        off = dir * (app.camDist / 1000.0);
         c.fwd = Norm(-dir);
         c.right = Norm(Cross(c.fwd, u0));
         c.up = Cross(c.right, c.fwd);
     }
+    c.pos = sw + off;
     for (const Body& b : app.B) {
         V3 rel = c.pos - b.pos;
         double d = Len(rel);
         if (d > b.d.radius * 1.2 + 1) continue;
         V3 dir = rel * (1.0 / d);
         double rs = SurfaceRadius(b, dir) + MinAltitude(b) * 0.5;
-        if (d < rs) c.pos = b.pos + dir * rs;
+        if (d < rs) {   // 地面にめり込まないよう押し上げる（天体のそばなので座標は小さく、引き算でよい）
+            c.pos = b.pos + dir * rs;
+            off = c.pos - sw;
+        }
     }
+    c.shipRel = off * -1.0;
     g_view = MatrixLookAt({0, 0, 0}, ToF(c.fwd), ToF(c.up));
 }
