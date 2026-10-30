@@ -4,6 +4,7 @@
 # タグ（v1.2.3 の形）を push すると:
 #   1. Linux (.deb / .rpm)・Windows (.7z、Linux からクロスビルド)・macOS (.zip、Apple Silicon と Intel の両対応)・
 #      ブラウザ版 (Emscripten) を作る
+#      Linux と macOS は実際に起動してスクリーンショットを撮る（screenshots-* として保存。失敗してもリリースは止めない）
 #   2. GitHub のリリースを作ってパッケージを添付する
 #   3. ブラウザ版を gh-pages ブランチへ置き、GitHub Pages で公開する
 # Actions タブから手動で動かした時（workflow_dispatch）は、ビルドだけしてリリースと公開はしない
@@ -28,13 +29,30 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build rpm \
+          sudo apt-get install -y build-essential cmake ninja-build rpm xvfb libgl1-mesa-dri \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
       - name: Build and package
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
           cd build && cpack
+      - name: Launch test (screenshots)
+        continue-on-error: true
+        run: |
+          mkdir -p shots
+          shot() { name=$1; shift; timeout 300 xvfb-run -a -s "-screen 0 1280x720x24" ./build/solar_voyager \
+                     --shot "$PWD/shots/$name.png" --frames 60 "$@" > "shots/$name.log" 2>&1 || echo "$name: exit $?"; }
+          shot earth --lang ja
+          shot mars --lang ja --share "?t=9800.25&at=Mars,5500,1500,0,-0.96,-0.27,0,-0.27,0.96,0&tg=Phobos&ts=3"
+          shot map --lang ja --map
+          shot settings_en --lang en --settings
+          ls -la shots
+          test -s shots/earth.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-linux
+          path: shots/
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -73,6 +91,25 @@ jobs:
           unzip -q -o SolarSystemVoyager-*-macos.zip -d check
           lipo -info check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager
           codesign --verify --verbose check/*/SolarSystemVoyager.app
+      - name: Launch test (screenshots)
+        continue-on-error: true
+        run: |
+          # 配布する .zip から展開した .app を起動する（macOS には timeout が無いので perl の alarm で打ち切る）
+          mkdir -p shots
+          APP=$(echo build-mac/check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager)
+          shot() { name=$1; shift; perl -e 'alarm 300; exec @ARGV' "$APP" --shot "$PWD/shots/$name.png" --frames 60 "$@" \
+                     > "shots/$name.log" 2>&1 || echo "$name: exit $?"; }
+          shot earth --lang ja
+          shot mars --lang ja --share "?t=9800.25&at=Mars,5500,1500,0,-0.96,-0.27,0,-0.27,0.96,0&tg=Phobos&ts=3"
+          shot map --lang ja --map
+          shot settings_en --lang en --settings
+          ls -la shots
+          test -s shots/earth.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-macos
+          path: shots/
       - uses: actions/upload-artifact@v4
         with:
           name: macos

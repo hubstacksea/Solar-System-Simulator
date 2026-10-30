@@ -152,7 +152,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード    R : 重力モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode    R : gravity mode") \
     X(HELP11, "I : マウス上下反転    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : invert mouse    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
-    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F2 : 共有リンク    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F2 : share link    F9 : quality    F10 : settings    Ctrl+Q : quit") \
+    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F2 : 共有リンク    F3 : 全体図    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F2 : share link    F3 : map    F9 : quality    F10 : settings    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
@@ -255,6 +255,14 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(TB_SETTINGS, "設定", "Settings") \
     X(TB_HELP, "説明", "Help") \
     X(TB_SHARE, "共有", "Share") \
+    X(TB_MAP, "全体図", "Map") \
+    X(MAP_TITLE, "全体図", "System map") \
+    X(MAP_SUN, "太陽中心", "centered on the Sun") \
+    X(MAP_NOTE, "真上（黄道の北）から見た図。距離は中心ほど広げた対数目盛り。半径 %s", "Seen from above (ecliptic north), logarithmic distances, radius %s") \
+    X(MAP_KEYS, "クリック/タップ: ターゲット（もう一度でワープ）   Enter/G: ワープ   Shift: 地表へ   Tab: 次のターゲット   ↑↓/ホイール: 拡大縮小   Space: 中心の切替   Esc/F3: 閉じる", "Click/tap: target (again: warp)   Enter/G: warp   Shift: to surface   Tab: next target   Up/Down/wheel: zoom   Space: switch center   Esc/F3: close") \
+    X(MAP_SHIP, "自機", "You") \
+    X(MAP_CLOSE, "閉じる", "Close") \
+    X(MAP_CENTER, "中心の切替", "Center") \
     X(SHARED, "この場面のリンクをコピーしました（日時・場所・向き・時間倍率）", "Link to this scene copied (date, place, view, time scale)") \
     X(SHARED_BAR, "この場面のリンクをアドレス欄に入れました（コピーして共有できます）", "Link to this scene is in the address bar (copy it to share)") \
     X(SHARE_OPENED, "共有リンクの場面: %s", "Shared scene: %s") \
@@ -890,8 +898,15 @@ static bool Project(const Cam& c, V3 rel, Vector2* out) {
 // 配置は画面を倍率で割った大きさ（UiCam）で計算する
 static const float UI_SCALES[3] = {1.0f, 1.15f, 1.3f};
 static int g_uiScaleIdx = 0;
+// 画面の表示倍率（Windows の 150% など、高解像度の画面）。2D の表示はこれと文字の大きさを掛けた倍率で描く。
+// macOS は raylib が Retina の倍率を受け持つので 1
+static float g_dpiScale = 1;
 static float g_uiK = 1;   // 2D の表示を描いている間の倍率（画面のピクセルを直接使う切り抜きで使う）
-static float UiScale(const Cam& c) { return std::max(1.0f, std::min(UI_SCALES[g_uiScaleIdx], c.H / 540.0f)); }   // パネルが収まる範囲で
+// 表示倍率の分は、上の左右のパネルとコンパスが横に並ぶ幅（1110）が残る範囲で。文字の大きさの分は縦にパネルが収まる範囲で
+static float UiScale(const Cam& c) {
+    float dpi = std::max(1.0f, std::min(g_dpiScale, c.W / 1110.0f));
+    return std::max(1.0f, std::min(dpi * UI_SCALES[g_uiScaleIdx], c.H / 540.0f));
+}
 static Cam UiCam(const Cam& c) {
     float k = UiScale(c);
     Cam u = c;
@@ -1352,6 +1367,8 @@ struct Options {
     int quality = -1;            // 0〜2（確認用）
     int sky = -1;                // 星座の表示 0〜2（確認用）
     std::string share;           // 共有リンク（URL か ? 以降）の場面で始める。ブラウザ版はページの URL から
+    float dpi = 0;               // 画面の表示倍率を指定（確認用）
+    bool map = false;            // 全体図を開いた状態で始める（確認用）
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -1395,6 +1412,8 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--quality") o.quality = atoi(next());
         else if (a == "--sky") o.sky = atoi(next());
         else if (a == "--share") o.share = next();
+        else if (a == "--dpi") o.dpi = (float)atof(next());
+        else if (a == "--map") o.map = true;
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }
@@ -1450,6 +1469,10 @@ struct App {
     int warpBookmark = -1;                // ブックマークへのワープ中はその番号
     int nextBookmark = 0;                 // N キーで次に向かうブックマーク
     bool eventsOpen = false;              // 天文イベント一覧（K キー）
+    bool mapOpen = false;                 // 全体図（F3 キー）
+    int mapCenter = 0;                    // 全体図の中心の天体（0: 太陽、ほかは惑星など）
+    double mapRange = 0;                  // 全体図の半径 km（0: 中心に合わせて自動）
+    bool mapWasCaptured = false;          // 全体図を開く前にマウスを捕捉していたか
     int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）
     std::vector<AstroEvent> cometEvents;  // 彗星の近日点と地球への最接近（起動時に求める）
@@ -2581,8 +2604,8 @@ static std::string SettingValue(const App& app, int item) {
 }
 
 // ---------------------------------------------------------------- タッチ操作（スマホ・タブレット）
-enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_SETTINGS, TB_HELP, TB_SHARE,
-                   TB_COUNT };
+enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_MAP, TB_SETTINGS, TB_HELP,
+                   TB_SHARE, TB_COUNT };
 
 // 画面のボタンの位置: 右に速度、左に行き先、下にメニュー（画面の高さに合わせた大きさ）
 static Rectangle TouchButtonRect(const Cam& c, int i) {
@@ -2595,7 +2618,7 @@ static Rectangle TouchButtonRect(const Cam& c, int i) {
         case TB_TARGET: return {12, ly, s * 1.5f, s * 0.8f};
         case TB_WARP: return {12, ly + s * 0.8f + g, s * 1.5f, s * 0.8f};
         case TB_AUTO: return {12, ly + (s * 0.8f + g) * 2, s * 1.5f, s * 0.8f};
-        default: {   // ツアー・イベント・設定・説明・共有: 左上のパネルの下に横に並べる
+        default: {   // ツアー・イベント・全体図・設定・説明・共有: 左上のパネルの下に横に並べる
             int k = i - TB_TOUR;
             float w = s * 1.15f;
             return {12 + k * (w + g), 160, w, s * 0.55f};
@@ -2658,7 +2681,7 @@ static void DrawTouchButtons(const App& app) {
     if (!app.touchUI) return;
     const Cam& c = app.cam;
     static const UiId LABEL[TB_COUNT] = {UI_TB_THRUST, UI_TB_BRAKE, UI_TB_STOP, UI_TB_TARGET, UI_TB_WARP, UI_TB_AUTO,
-                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_SETTINGS, UI_TB_HELP, UI_TB_SHARE};
+                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_MAP, UI_TB_SETTINGS, UI_TB_HELP, UI_TB_SHARE};
     for (int i = 0; i < TB_COUNT; i++) {
         Rectangle r = TouchButtonRect(c, i);
         bool held = app.touchHeld == i;
@@ -2728,6 +2751,223 @@ static void DrawIntro(const App& app) {
 }
 
 // 一覧・入力欄が開いている間のキー操作。開いていれば true（ほかの操作は止める）
+// ---------------------------------------------------------------- 全体図（F3 キー）
+// 太陽（または惑星）を中心に、黄道の北から見下ろした図。距離は対数目盛り（中心付近を広げる）で、
+// 内惑星から外縁天体までを 1 枚に収める。天体をクリック / タップするとターゲットにし、もう一度でワープする
+struct MapItem {
+    int body;
+    Vector2 p;
+};
+
+static bool IsProbeLike(const Body& b) { return b.d.kind == KIND_PROBE; }
+
+// 中心の天体の既定の半径 km: 太陽は 40 AU、惑星は一番外の衛星の 1.4 倍
+static double MapDefaultRange(const App& app, int center) {
+    if (center == 0) return 40 * AU_KM;
+    double r = app.B[center].d.radius * 40;
+    for (const Body& b : app.B)
+        if (b.d.parent == center && !IsProbeLike(b)) r = std::max(r, b.d.moonA * 1.4);
+    return r;
+}
+
+struct MapView {
+    float cx, cy, R;   // 画面上の中心と半径
+    double range;      // 半径に当たる距離 km
+    V3 origin;         // 中心の天体の位置
+    // 太陽中心の位置 → 画面。黄道面に投影して、距離を対数目盛りに
+    Vector2 Project(V3 w, bool* inside = nullptr) const {
+        V3 r = w - origin;
+        double d = std::sqrt(r.x * r.x + r.z * r.z);
+        double r0 = range / 40;
+        double f = std::log1p(d / r0) / std::log1p(range / r0);
+        if (inside) *inside = f <= 1.0;
+        f = std::min(f, 1.0);
+        double k = d > 0 ? f * R / d : 0;
+        return {(float)(cx + r.x * k), (float)(cy + r.z * k)};   // 右が春分点、上が黄経 90°
+    }
+};
+
+static MapView GetMapView(const App& app, const Cam& c) {
+    MapView v;
+    v.cx = c.W * 0.5f;
+    v.cy = c.H * 0.5f + 8;
+    v.R = std::min(c.W * 0.5f - 40, c.H * 0.5f - 64);
+    v.range = app.mapRange > 0 ? app.mapRange : MapDefaultRange(app, app.mapCenter);
+    v.origin = app.B[app.mapCenter].pos;
+    return v;
+}
+
+// 図に載せる天体（クリックで選べるもの）と画面の位置。中心が太陽なら惑星・準惑星・彗星・探査機、惑星なら衛星と近くの探査機
+static std::vector<MapItem> MapItems(const App& app, const MapView& v) {
+    std::vector<MapItem> items;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        if (!b.active) continue;
+        bool in = (int)i == app.mapCenter || b.d.parent == app.mapCenter ||
+                  (IsProbeLike(b) && Len(b.pos - v.origin) < v.range && (app.mapCenter != 0 || b.d.tleN <= 0));
+        if (!in) continue;
+        bool inside;
+        Vector2 p = v.Project(b.pos, &inside);
+        if (inside || (int)i == app.target) items.push_back({(int)i, p});
+    }
+    return items;
+}
+
+// 右上のボタン: 0 閉じる, 1 拡大, 2 縮小, 3 中心の切替（タッチ・マウス用）
+static Rectangle MapButtonRect(const Cam& c, int i) {
+    switch (i) {
+        case 0: return {c.W - 110, 10, 96, 28};
+        case 1: return {c.W - 110, 46, 44, 28};
+        case 2: return {c.W - 58, 46, 44, 28};
+        default: return {c.W - 110, 82, 96, 28};
+    }
+}
+
+static void MapZoom(App& app, double factor) {
+    double range = app.mapRange > 0 ? app.mapRange : MapDefaultRange(app, app.mapCenter);
+    app.mapRange = std::max(app.B[app.mapCenter].d.radius * 4, std::min(200 * AU_KM, range * factor));
+}
+
+// 中心: 太陽 ↔ ターゲット（衛星ならその惑星）のまわり
+static void MapToggleCenter(App& app) {
+    const Body& t = app.B[app.target];
+    int planet = IsProbeLike(t) ? 0 : t.d.parent > 0 ? t.d.parent : app.target;
+    app.mapCenter = app.mapCenter == 0 ? planet : 0;
+    app.mapRange = 0;
+}
+
+static void OpenMap(App& app) {
+    const Body& ref = app.B[app.ship.ref];
+    // 中心: 惑星（衛星ならその惑星）の近くにいればその惑星、ほかは太陽
+    app.mapCenter = IsProbeLike(ref) ? 0 : ref.d.parent > 0 ? ref.d.parent : app.ship.ref;
+    if (app.mapCenter != 0 && Len(ShipWorld(app) - app.B[app.mapCenter].pos) > MapDefaultRange(app, app.mapCenter)) app.mapCenter = 0;
+    app.mapRange = 0;
+    app.mapWasCaptured = app.mouseCaptured;
+    if (app.mouseCaptured) {
+        app.mouseCaptured = false;
+        EnableCursor();
+    }
+    app.mapOpen = true;
+}
+
+static void CloseMap(App& app) {
+    app.mapOpen = false;
+    if (app.mapWasCaptured && !app.touchUI) {
+        app.mouseCaptured = true;
+        DisableCursor();
+    }
+}
+
+static void MapPick(App& app, Vector2 p, bool land) {
+    const Cam c = UiCam(app.cam);
+    for (int i = 0; i < 4; i++)
+        if (CheckCollisionPointRec(p, MapButtonRect(c, i))) {
+            if (i == 0) CloseMap(app);
+            else if (i == 3) MapToggleCenter(app);
+            else MapZoom(app, i == 1 ? 1 / 1.6 : 1.6);
+            return;
+        }
+    MapView v = GetMapView(app, c);
+    int best = -1;
+    float bd = 18;
+    for (const MapItem& it : MapItems(app, v)) {
+        float d = Vector2Distance(p, it.p);
+        if (d < bd) { bd = d; best = it.body; }
+    }
+    if (best < 0) return;
+    if (best == app.target && app.warpT < 0) {   // もう一度選ぶとワープ
+        StartWarp(app, best, land);
+        CloseMap(app);
+    } else {
+        app.target = best;
+    }
+}
+
+static void DrawMap(const App& app) {
+    const Cam& c = app.cam;
+    MapView v = GetMapView(app, c);
+    DrawRectangle(0, 0, (int)c.W, (int)c.H, {0, 4, 12, 252});
+    // 距離の目安の円（1 / 10 / 100 AU、惑星中心なら 10 万 km ごとの桁）
+    double unit = app.mapCenter == 0 ? AU_KM : 1e4;
+    for (double r = unit * 0.1; r <= v.range * 1.001; r *= 10) {
+        float rp = (float)(std::log1p(r / (v.range / 40)) / std::log1p(40.0) * v.R);
+        if (rp < 6) continue;
+        DrawCircleLinesV({v.cx, v.cy}, rp, {40, 60, 90, 120});
+        char rl[32];
+        if (app.mapCenter == 0) snprintf(rl, sizeof rl, "%g AU", r / AU_KM);
+        else snprintf(rl, sizeof rl, "%s", FmtDist(r).c_str());
+        Txt(rl, v.cx + rp * 0.707f + 4, v.cy - rp * 0.707f - 14, 12, {90, 120, 160, 200});
+    }
+    DrawCircleLinesV({v.cx, v.cy}, v.R, {70, 100, 140, 160});
+    // 軌道
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        if (b.d.parent != app.mapCenter || IsProbeLike(b) || b.orbit.size() < 2 || !b.active) continue;
+        Color col = BodyColor(b, 0.8f);
+        col.a = (int)i == app.target ? 200 : 90;
+        Vector2 prev = v.Project(v.origin + b.orbit[0]);   // 軌道点は中心の天体からの位置
+        for (size_t k = 1; k < b.orbit.size(); k++) {
+            Vector2 p = v.Project(v.origin + b.orbit[k]);
+            DrawLineEx(prev, p, 1.0f, col);
+            prev = p;
+        }
+    }
+    // 天体（名前は重ならないものだけ。ターゲットは必ず）
+    std::vector<MapItem> items = MapItems(app, v);
+    Vector2 shipP = v.Project(ShipWorld(app));
+    std::vector<Rectangle> labels = {{shipP.x + 10, shipP.y + 4, TxtW(T(UI_MAP_SHIP), 13), 15}};
+    for (int pass = 0; pass < 3; pass++)   // 名前はターゲット → 大きな天体 → ほかの順に置く
+        for (const MapItem& it : items) {
+            const Body& b = app.B[it.body];
+            bool tgt = it.body == app.target, probe = IsProbeLike(b);
+            int order = tgt ? 0 : (!probe && (b.d.radius > 2000 || it.body == app.mapCenter)) ? 1 : 2;
+            if (order != pass) continue;
+            Color col = probe ? Color{255, 196, 120, 255} : BodyColor(b, 1.0f);
+            float r = it.body == app.mapCenter ? 7.0f : probe ? 2.5f : b.d.parent == app.mapCenter && b.d.radius > 2000 ? 4.5f : 3.0f;
+            if (probe) DrawPoly(it.p, 4, r + 1, 45, col);
+            else DrawCircleV(it.p, r, col);
+            if (tgt) {
+                DrawCircleLinesV(it.p, r + 6, {255, 220, 80, 255});
+                DrawLineEx(shipP, it.p, 1.0f, {255, 220, 80, 140});
+            }
+            const char* name = TR(b.d.jp, b.d.en);
+            float fs = tgt ? 15.0f : probe ? 11.0f : 13.0f;
+            Rectangle lr = {it.p.x + r + 4, it.p.y - fs * 0.6f, TxtW(name, fs), fs + 2};
+            bool clash = false;
+            for (const Rectangle& o : labels)
+                if (CheckCollisionRecs(lr, o)) clash = true;
+            if (clash && !tgt) continue;
+            labels.push_back(lr);
+            Color lc = tgt ? Color{255, 220, 80, 255} : probe ? Color{220, 180, 130, 200} : Color{210, 225, 245, 230};
+            Txt(name, lr.x, lr.y, fs, lc);
+        }
+    // 自機
+    DrawPoly(shipP, 3, 7, -90, {120, 255, 160, 255});
+    DrawPolyLines(shipP, 3, 10, -90, {20, 60, 40, 255});
+    Txt(T(UI_MAP_SHIP), shipP.x + 10, shipP.y + 4, 13, {120, 255, 160, 255});
+    // 見出しと操作
+    char b[200];
+    std::string title = std::string(T(UI_MAP_TITLE)) + "  /  " +
+                        (app.mapCenter == 0 ? std::string(T(UI_MAP_SUN)) : std::string(TR(app.B[app.mapCenter].d.jp, app.B[app.mapCenter].d.en)));
+    Txt(title.c_str(), 20, 14, 22, {255, 220, 120, 255});
+    char rs[32];
+    if (app.mapCenter == 0) snprintf(rs, sizeof rs, "%.3g AU", v.range / AU_KM);
+    else snprintf(rs, sizeof rs, "%s", FmtDist(v.range).c_str());
+    snprintf(b, sizeof b, T(UI_MAP_NOTE), rs);
+    Txt(b, 20, 44, 14, {160, 190, 225, 255});
+    snprintf(b, sizeof b, "%s %s", T(UI_DATE), FmtDate(app.tDays).c_str());
+    Txt(b, 20, 66, 14, {160, 190, 225, 255});
+    const char* btn[4] = {T(UI_MAP_CLOSE), "+", "-", T(UI_MAP_CENTER)};
+    for (int i = 0; i < 4; i++) {
+        Rectangle r = MapButtonRect(c, i);
+        DrawRectangleRounded(r, 0.3f, 6, {20, 40, 70, 220});
+        DrawRectangleRoundedLinesEx(r, 0.3f, 6, 1.0f, {90, 130, 180, 200});
+        float fs = i == 1 || i == 2 ? 20.0f : 15.0f;
+        TxtC(btn[i], r.x + r.width / 2, r.y + (r.height - fs) / 2 - 1, fs, {225, 235, 250, 255});
+    }
+    TxtC(T(UI_MAP_KEYS), c.W * 0.5f, c.H - 26, 13, {150, 175, 210, 255});
+}
+
 static bool HandleModalInput(App& app) {
     const Cam c = UiCam(app.cam);   // タップの位置は 2D の表示の座標
     if (app.introPage >= 0) {
@@ -2742,6 +2982,30 @@ static bool HandleModalInput(App& app) {
         if (next) {
             if (++app.introPage >= INTRO_PAGES) CloseIntro(app);
         }
+        return true;
+    }
+    if (app.mapOpen) {
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        float k = UiScale(app.cam);
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_F3)) { CloseMap(app); return true; }
+        float wheel = GetMouseWheelMove();
+        if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP) || wheel > 0) MapZoom(app, 1 / 1.6);
+        if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN) || wheel < 0) MapZoom(app, 1.6);
+        if (IsKeyPressed(KEY_SPACE)) MapToggleCenter(app);
+        if (IsKeyPressed(KEY_TAB)) {
+            int n = (int)app.B.size(), step = shift ? -1 : 1;
+            for (int i = 0; i < n; i++) {
+                app.target = (app.target + step + n) % n;
+                if (app.B[app.target].active) break;
+            }
+        }
+        if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_G)) && app.warpT < 0) {
+            StartWarp(app, app.target, shift);
+            CloseMap(app);
+            return true;
+        }
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !app.touchUI) MapPick(app, Vector2Scale(GetMousePosition(), 1 / k), shift);
+        if (app.tapped) MapPick(app, app.tapPos, false);
         return true;
     }
     if (app.settingsOpen && app.tapped) {
@@ -2849,6 +3113,7 @@ static bool HandleModalInput(App& app) {
 
 static void DrawModalPanels(const App& app) {
     const Cam& c = app.cam;
+    if (app.mapOpen) DrawMap(app);
     if (app.settingsOpen) {
         static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_TEXTSIZE, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY,
                                              UI_SET_MILKYWAY, UI_SET_ORBITS, UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT,
@@ -3050,6 +3315,7 @@ static void TouchToPad(App& app, PadState& pad) {
         case TB_AUTO: pad.autopilot = true; break;
         case TB_TOUR: if (app.tourOn) StopTour(app); else StartTour(app); break;
         case TB_EVENTS: OpenEventsPage(app); app.eventsOpen = true; break;
+        case TB_MAP: OpenMap(app); break;
         case TB_SETTINGS: app.settingsOpen = true; app.settingsSel = 0; break;
         case TB_HELP: pad.help = true; break;
         case TB_SHARE: ShareScene(app); break;
@@ -3239,6 +3505,7 @@ static void HandleInput(App& app, double dt) {
         }
     }
     if (IsKeyPressed(KEY_F2)) ShareScene(app);
+    if (IsKeyPressed(KEY_F3)) OpenMap(app);
     if (IsKeyPressed(KEY_F9)) ChangeSetting(app, SET_QUALITY, 1, true);
     if (IsKeyPressed(KEY_I)) ChangeSetting(app, SET_INVERT, 1, true);
     if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
@@ -5006,9 +5273,28 @@ int main(int argc, char** argv) {
     // ブラウザ版: 大きさはページに合わせて毎フレーム自分で変える（raylib の自動の変更は縮小表示に対応しない）
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(WebViewW(), WebViewH(), "Solar System Voyager");
+#elif defined(__APPLE__)
+    // Retina: 座標は今までどおり（ポイント単位）で、描画だけ細かくする
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
+    InitWindow(1280, 720, "Solar System Voyager");
 #else
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "Solar System Voyager");
+    {   // 高解像度の画面: ウィンドウと 2D の表示を画面の表示倍率に合わせて大きくする（画面の 9 割まで）
+        Vector2 dpi = GetWindowScaleDPI();
+        g_dpiScale = std::max(1.0f, std::min(3.0f, dpi.y > 0 ? dpi.y : 1.0f));
+        if (opt.dpi > 0) g_dpiScale = opt.dpi;
+        if (g_dpiScale > 1.01f && (!opt.shot || opt.dpi > 0)) {
+            int m = GetCurrentMonitor(), mw = GetMonitorWidth(m), mh = GetMonitorHeight(m);
+            float k = std::min(g_dpiScale, std::min(mw * 0.9f / 1280, mh * 0.9f / 720));
+            if (k > 1.01f) {
+                int w = (int)(1280 * k), h = (int)(720 * k);
+                Vector2 pos = GetMonitorPosition(m);
+                SetWindowSize(w, h);
+                SetWindowPosition((int)pos.x + (mw - w) / 2, (int)pos.y + (mh - h) / 2);
+            }
+        }
+    }
 #endif
     SetExitKey(KEY_NULL);
     {
@@ -5194,6 +5480,7 @@ int main(int argc, char** argv) {
         app.dateOpen = true;
     }
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
+    if (opt.map) OpenMap(app);
 
     int frame = 0;
     while (!WindowShouldClose()) {

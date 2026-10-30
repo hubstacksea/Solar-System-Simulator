@@ -1,23 +1,37 @@
 // Solar System Voyager — Copyright (c) 2026 hubstacksea
 // MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
+// データを実行ファイルに埋め込まず、ファイルとして読む版（ブラウザ版と macOS 版）。
 // ブラウザ版 (Emscripten): 起動に要るファイルは .data にまとめて配り（--preload-file）、起動時に読み込む。
-// 大きなデータ（地図・形・月・雲・季節・小惑星）はページの assets/ に置き、起動してから裏で取得する。
+//   大きなデータ（地図・形・月・雲・季節・小惑星）はページの assets/ に置き、起動してから裏で取得する。
+// macOS 版: .app の Contents/Resources/assets/ に置く（Apple Silicon 用と Intel 用で 1 回分を共有する）。
 // 読めないファイル（まだ届いていないもの・ブラウザ版に入れていない音楽）は空として返す
 #include "embedded_assets.h"
 
+#if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
+#else
+#include "raylib.h"
+#endif
 
 #include <cstdio>
 #include <map>
 #include <string>
 #include <vector>
 
+static std::string AssetDir() {
+#if defined(__EMSCRIPTEN__)
+    return "/assets/";
+#else
+    return std::string(GetApplicationDirectory()) + "../Resources/assets/";   // 実行ファイルは Contents/MacOS/
+#endif
+}
+
 static EmbeddedFile Load(const char* name) {
     static std::map<std::string, std::vector<unsigned char>> cache;
     auto it = cache.find(name);
     if (it == cache.end() || it->second.empty()) {   // 読めなかったものは、届いているかもう一度見る
         std::vector<unsigned char> buf;
-        if (FILE* f = std::fopen((std::string("/assets/") + name).c_str(), "rb")) {
+        if (FILE* f = std::fopen((AssetDir() + name).c_str(), "rb")) {
             std::fseek(f, 0, SEEK_END);
             long n = std::ftell(f);
             std::fseek(f, 0, SEEK_SET);
@@ -34,6 +48,7 @@ static EmbeddedFile Load(const char* name) {
     return {it->second.data(), it->second.size() - 1};
 }
 
+#if defined(__EMSCRIPTEN__)
 // 後から取得するファイル（CMakeLists.txt の WEB_DEFERRED と同じ）
 static const char* const DEFERRED[] = {"maps.bin", "shapes.bin", "moon_data.png", "moon_color.jpg", "earth_clouds.jpg",
                                        "asteroids.bin", "earth_months.jpg"};
@@ -46,6 +61,7 @@ void StartDeferredAssetDownloads() {
                               [](const char*) { g_pending--; }, [](const char*) { g_pending--; });
 }
 int DeferredAssetsPending() { return g_pending; }
+#endif
 
 EmbeddedFile EarthColorJpg() { return Load("earth_color.jpg"); }
 EmbeddedFile EarthDataPng() { return Load("earth_data.png"); }

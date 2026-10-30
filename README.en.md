@@ -45,7 +45,7 @@ Try it in your browser without installing anything: **https://hubstacksea.github
 - Runs in browsers with WebGL2 (recent Chrome / Edge / Firefox / Safari). Only the 8 MB needed to start is loaded first; the planet and moon maps, asteroid shapes, Moon maps, Earth's clouds and seasons and the asteroid belt (about 25 MB) are loaded in the background while you play. Until they arrive, surfaces are drawn procedurally and "Loading maps (N left)" is shown at the bottom left
 - Music is not included (sound effects are). Japanese text uses the bundled Noto Sans JP font
 - Click the view to steer with the mouse (Esc to release). Settings and bookmarks are kept in the browser
-- On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Settings / Help / Share at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down
+- On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Map / Settings / Help / Share at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down
 - If it runs slowly, lower the quality with F9
 - **F2 (or "Share" on touch screens) copies a link to the current scene** (date, place, view, target and time scale; the address bar shows the same link). Opening the link starts from that scene. F2 in the PC version copies a link to the browser version
 
@@ -55,7 +55,7 @@ Download `SolarSystemVoyager-<version>-macos.zip` (macOS 11 or later, Apple Sili
 
 - The app is not notarized by Apple, so the first launch shows an "unidentified developer" warning. **Right-click (Control-click) the app → Open → Open.** If macOS 15 or later does not offer that, try to launch it once, then press **System Settings → Privacy & Security → Open Anyway**
 - If it still does not open, run `xattr -dr com.apple.quarantine SolarSystemVoyager.app` in Terminal and try again
-- Settings and bookmarks are saved in `~/Library/Application Support/SolarSystemVoyager/solar_voyager.cfg`. Japanese text uses Hiragino Sans
+- Settings and bookmarks are saved in `~/Library/Application Support/SolarSystemVoyager/solar_voyager.cfg`. Japanese text uses Hiragino Sans. Retina displays are drawn at full resolution
 - It is built by GitHub Actions but has not been tested on the developer's machine. Please report problems in Issues
 
 ## Building
@@ -94,7 +94,7 @@ open build/SolarSystemVoyager.app
 
 ### Automatic builds and releases (GitHub Actions)
 
-Pushing a tag such as `v2.6.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages.
+Pushing a tag such as `v2.6.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux and macOS builds are also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` / `screenshots-macos` in the run (a failed launch does not stop the release).
 
 ```sh
 git tag v2.6.0
@@ -126,7 +126,7 @@ After building, run `cpack` in the build directory.
 |---|---|---|
 | Windows (7-Zip) | `cd build-win && cpack` | `SolarSystemVoyager-<version>-win64.7z` (portable: extract and run) |
 | Linux (.deb / .rpm) | `cd build && cpack` | `solar-voyager_<version>_amd64.deb` / `solar-voyager-<version>-1.x86_64.rpm` |
-| macOS (.zip) | `cd build && cpack` | `SolarSystemVoyager-<version>-macos.zip` (`.app` with an ad-hoc signature) |
+| macOS (.zip) | `cd build && cpack` | `SolarSystemVoyager-<version>-macos.zip` (the maps and other data sit in the `.app` Resources instead of the executable, shared by the Apple Silicon and Intel code; ad-hoc signature) |
 
 - The Linux packages install `/usr/bin/solar_voyager` and add it, with its icon, to the application menu (Games). Building the `.rpm` requires `rpmbuild`
 - To build only one: `cpack -G DEB` / `cpack -G RPM`
@@ -154,7 +154,7 @@ After building, run `cpack` in the build directory.
 | [ / ] | Time scale (x1 real time to 1 year per second). Affects both orbits/rotation of the bodies and the ship's acceleration and movement |
 | P / Backspace | Pause time / sync to current time at x1 |
 | Y | Set the date and time (UTC; type the digits and press Enter) |
-| F10 | Settings (language, text size, quality, sound effects, music, constellations, Milky Way, orbit lines, asteroids, markers, invert mouse, flight mode, fullscreen; Up/Down to select, Left/Right / Enter to change, saved at once). Text size is Normal / Large / Extra large and enlarges the HUD, markers and panels together (limited so they still fit on small screens) |
+| F10 | Settings (language, text size, quality, sound effects, music, constellations, Milky Way, orbit lines, asteroids, markers, invert mouse, flight mode, fullscreen; Up/Down to select, Left/Right / Enter to change, saved at once). Text size is Normal / Large / Extra large and enlarges the HUD, markers and panels together (limited so they still fit on small screens). On Windows and Linux with display scaling above 100% (4K screens etc.), the window and text start enlarged to match |
 | R | Switch the flight model (arcade / gravity). In gravity mode you fall under the bodies' gravity: W / S thrust along the nose and X stops relative to the reference body. The predicted trajectory is drawn, with the periapsis and apoapsis altitudes and the period |
 | Z | Photo mode (each press: hide gauges and markers → hide the ship too → back to normal; orbit lines are toggled with O) |
 | U | Guided tour: 15 scenes (spacecraft highlights, great comets, an eclipse and more) in chronological order with captions, 15 seconds each. Enter for next, Shift+Enter for previous, U again to stop |
@@ -164,6 +164,7 @@ After building, run `cpack` in the build directory.
 | B / N | Bookmark the current spot / warp to bookmarks in turn (up to 9; position and orientation are stored relative to the rotating body) |
 | M / Shift+M | Sound effects (engine and warp) / music on/off |
 | F9 | Quality High → Low → Medium (use Low if it runs slowly: 3D at 60% resolution with less detail) |
+| F3 | System map (seen from above, centered on the Sun or a planet, logarithmic distances). Click / tap a body to target it, again (or Enter / G) to warp, with Shift to the surface. Up/Down / wheel / + - to zoom, Space / "Center" to switch between the Sun and the target's planet, Esc / F3 to close |
 | F2 | Copy a share link to this scene (date, place, view, target, time scale; opening it in the browser version starts from the same scene; the PC version opens one with `--share <link>`) |
 | F11 / F12 | Fullscreen / screenshot (saved to `SolarSystemVoyager` in your Pictures folder) |
 | Esc | Release / capture the mouse |

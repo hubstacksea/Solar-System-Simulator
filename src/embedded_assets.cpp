@@ -3,16 +3,12 @@
 // assets/ のファイルをアセンブラの .incbin でそのまま埋め込む（gcc / MinGW 共通）
 #include "embedded_assets.h"
 
-// 読み取り専用セクション名と、元のセクションへ戻す方法は ELF・PE (Windows)・Mach-O (macOS) で異なる。
-// macOS は C の名前の先頭に _ が付く
+// 読み取り専用セクション名と、元のセクションへ戻す方法は ELF と PE (Windows) で異なる
+// （macOS 版は埋め込まず .app の中のファイルを読む: embedded_assets_files.cpp）
 #ifdef _WIN32
 #define RODATA_SECTION ".section .rdata,\"dr\"\n"
 #define END_SECTION ".text\n"
 #define SYM_PREFIX ""
-#elif defined(__APPLE__)
-#define RODATA_SECTION ".const_data\n"
-#define END_SECTION ".text\n"
-#define SYM_PREFIX "_"
 #else
 #define RODATA_SECTION ".section .rodata\n"
 #define END_SECTION ".previous\n"

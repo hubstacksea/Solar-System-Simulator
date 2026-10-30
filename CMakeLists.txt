@@ -34,7 +34,7 @@ endif()
 
 if(EMSCRIPTEN)
   # ブラウザ版: データは実行ファイルに埋め込まず、.data ファイルにまとめてページと一緒に配る
-  add_executable(solar_voyager src/main.cpp src/embedded_assets_web.cpp src/platform_paths.cpp)
+  add_executable(solar_voyager src/main.cpp src/embedded_assets_files.cpp src/platform_paths.cpp)
   option(SOLAR_WEB_MUSIC "ブラウザ版に音楽を入れる（約 17 MB 増える）" OFF)
   set(WEB_LINK -sUSE_GLFW=3 -sASYNCIFY -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=268435456 -sSTACK_SIZE=4194304
       -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
@@ -58,7 +58,19 @@ if(EMSCRIPTEN)
   target_compile_definitions(solar_voyager PRIVATE APP_VERSION="${PROJECT_VERSION}")
   target_link_libraries(solar_voyager PRIVATE raylib)
 else()
-add_executable(solar_voyager src/main.cpp src/embedded_assets.cpp src/platform_paths.cpp)
+add_executable(solar_voyager src/main.cpp src/platform_paths.cpp)
+if(APPLE)
+  # macOS: データは埋め込まず .app の Resources/assets に 1 回分だけ置く（Apple Silicon 用と Intel 用で共有）
+  target_sources(solar_voyager PRIVATE src/embedded_assets_files.cpp)
+  file(GLOB APP_ASSETS "${CMAKE_CURRENT_SOURCE_DIR}/assets/*.jpg" "${CMAKE_CURRENT_SOURCE_DIR}/assets/*.png"
+                       "${CMAKE_CURRENT_SOURCE_DIR}/assets/*.bin" "${CMAKE_CURRENT_SOURCE_DIR}/assets/*.txt")
+  file(GLOB APP_MUSIC "${CMAKE_CURRENT_SOURCE_DIR}/assets/music/*.ogg")
+  target_sources(solar_voyager PRIVATE ${APP_ASSETS} ${APP_MUSIC})
+  set_source_files_properties(${APP_ASSETS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/assets)
+  set_source_files_properties(${APP_MUSIC} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/assets/music)
+else()
+  target_sources(solar_voyager PRIVATE src/embedded_assets.cpp)
+endif()
 if(WIN32)
   # exe のファイルアイコンとバージョン情報
   enable_language(RC)
@@ -68,7 +80,7 @@ if(WIN32)
   target_sources(solar_voyager PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc")
   set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/solar_voyager.rc" PROPERTIES OBJECT_DEPENDS "${ICON_PATH};${MANIFEST_PATH}")
 endif()
-# assets/ の地球データを実行ファイルに埋め込む
+# assets/ のデータを実行ファイルに埋め込む（macOS 以外）
 target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets" APP_VERSION="${PROJECT_VERSION}")
 file(GLOB MUSIC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/music/*.ogg")
 set_source_files_properties(src/embedded_assets.cpp PROPERTIES
@@ -87,7 +99,8 @@ elseif(UNIX AND NOT APPLE)
   find_package(OpenGL REQUIRED)
   target_link_libraries(solar_voyager PRIVATE OpenGL::GL m)
 elseif(APPLE)
-  # macOS: SolarSystemVoyager.app（アイコンは iconutil があれば icon.png から作る）
+  # macOS: SolarSystemVoyager.app（アイコンは iconutil があれば icon.png から作る。
+  # Retina で細かく描けるよう、Info.plist は NSHighResolutionCapable を入れた自前のひな形）
   set_target_properties(solar_voyager PROPERTIES
     MACOSX_BUNDLE TRUE
     OUTPUT_NAME "SolarSystemVoyager"
@@ -95,7 +108,8 @@ elseif(APPLE)
     MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.hubstacksea.solarvoyager"
     MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_COPYRIGHT "(c) 2026 hubstacksea, MIT License")
+    MACOSX_BUNDLE_COPYRIGHT "(c) 2026 hubstacksea, MIT License"
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/Info.plist.in")
   find_program(ICONUTIL iconutil)
   find_program(SIPS sips)
   if(ICONUTIL AND SIPS)
