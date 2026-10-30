@@ -35,7 +35,7 @@
 | ![文字の大きさ 特大](docs/screenshots/settings_large.jpg) 設定画面（文字の大きさ「特大」） | ![全体図](docs/screenshots/system_map.jpg) 全体図（F3。1989 年、ボイジャー 1 号の軌跡） |
 | ![天体の情報](docs/screenshots/body_info.jpg) 天体の情報（I キー。木星） | ![天王星の環](docs/screenshots/uranus_rings.jpg) 横倒しの天王星と細い環 |
 | ![エウロパ・クリッパー](docs/screenshots/europa_clipper.jpg) 木星へ向かうエウロパ・クリッパー（太陽電池パネルは両翼で 30 m） | ![マウナケア山頂から見た南の空](docs/screenshots/sky_from_ground.jpg) マウナケア山頂の地上から見た夜の南の空（検索の「地上」） |
-| ![東京の地上から](docs/screenshots/ground_view.jpg) 東京の明け方の南の空。地平線・方位と、金星の高度・方位・出入りの時刻（左下） | |
+| ![東京の地上から](docs/screenshots/ground_view.jpg) 東京の明け方の南の空。地平線・方位と、金星の高度・方位・出入りの時刻（左下） | ![ふたご座流星群の夜](docs/screenshots/geminids.jpg) ふたご座流星群の夜の東京（左上に流れ星）。右は木星の明るさ・満ち欠け・見かけの大きさ |
 
 ## はじめての方へ
 
@@ -98,11 +98,11 @@ open build/SolarSystemVoyager.app
 
 ### 自動ビルドとリリース（GitHub Actions）
 
-`v2.13.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。Linux 版と macOS 版は実際に起動してスクリーンショット（地球・火星・全体図・英語の設定画面）とログを撮り、実行結果の `screenshots-linux` / `screenshots-macos` に保存します（起動に失敗してもリリースは止めません）。
+`v2.14.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。Linux 版と macOS 版は実際に起動してスクリーンショット（地球・火星・全体図・英語の設定画面）とログを撮り、実行結果の `screenshots-linux` / `screenshots-macos` に保存します（起動に失敗してもリリースは止めません）。
 
 ```sh
-git tag v2.13.0
-git push origin master v2.13.0
+git tag v2.14.0
+git push origin master v2.14.0
 ```
 
 ### ブラウザ版（Emscripten）
