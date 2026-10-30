@@ -4,9 +4,14 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
-## 2.15.1 (2026-10-30)
+## 2.15.2 (2026-10-31)
 
 - The light-speed engine now sounds high and clear like glass instead of a low, motorbike-like growl
+- The macOS version is now built on macOS 15 runners (GitHub retires macOS 14 in November 2026)
+
+## 2.15.1 (2026-10-30)
+
+- Not released (the macOS build runner was unavailable); its changes are in 2.15.2
 
 ## 2.15.0 (2026-10-30)
 
