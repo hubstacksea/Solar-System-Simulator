@@ -36,6 +36,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Body info](docs/screenshots/body_info.jpg) The info card (I key; Jupiter) | ![Rings of Uranus](docs/screenshots/uranus_rings.jpg) Tipped-over Uranus and its narrow rings |
 | ![Europa Clipper](docs/screenshots/europa_clipper.jpg) Europa Clipper on its way to Jupiter (30 m solar array span) | ![Southern sky from Mauna Kea](docs/screenshots/sky_from_ground.jpg) The night sky to the south from the summit of Mauna Kea (search, "On Earth") |
 | ![From the ground in Tokyo](docs/screenshots/ground_view.jpg) Before dawn in Tokyo: the horizon, compass points and Venus's altitude, azimuth and rise/set times (lower left) | ![Geminids night](docs/screenshots/geminids.jpg) Geminids night in Tokyo (a meteor at the upper left), with Jupiter's magnitude, phase and apparent size on the right |
+| ![Frame fixed to the ship](docs/screenshots/frame_lock.jpg) Reference frame fixed to the ship (Shift+F): Earth leaving at 30 km/s (top right) | |
 
 ## Getting started
 
@@ -98,11 +99,11 @@ open build/SolarSystemVoyager.app
 
 ### Automatic builds and releases (GitHub Actions)
 
-Pushing a tag such as `v2.14.1` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux and macOS builds are also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` / `screenshots-macos` in the run (a failed launch does not stop the release).
+Pushing a tag such as `v2.15.0` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux and macOS builds are also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` / `screenshots-macos` in the run (a failed launch does not stop the release).
 
 ```sh
-git tag v2.14.1
-git push origin master v2.14.1
+git tag v2.15.0
+git push origin master v2.15.0
 ```
 
 ### Browser version (Emscripten)
