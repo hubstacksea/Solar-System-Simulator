@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.14.1 (2026-10-30)
+
+- Fixed the ground hiding the surface texture: below 2 km the area under the horizon was painted a flat color. Instead, Earth's city lights, which blur into large glowing patches up close, are now dimmed near the ground
+
 ## 2.14.0 (2026-10-30)
 
 - Appearance: the info card and the ground panel show the magnitude, phase, apparent size and Moon age as seen from Earth (or from where you stand)

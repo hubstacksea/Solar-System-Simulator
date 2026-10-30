@@ -718,6 +718,8 @@ void main() {
         vec3 H = normalize(L + V);
         float nh = max(dot(N, H), 0.0);
         col += vec3(1.0, 0.96, 0.88) * sunTint * specMask * (pow(nh, 90.0) * 0.6 + pow(nh, 12.0) * 0.04) * step(0.0, ndlG) * sh;
+        // 夜景の画像は 1 画素が数 km なので、地上近く（1 画素が数百 m より細かい）では引き伸ばされた光の塊になる。そこでは弱める
+        lights *= mix(0.04, 1.0, smoothstep(1e-5, 8e-5, fw));
         col += vec3(1.0, 0.72, 0.38) * lights * 1.4 * (1.0 - smoothstep(-0.18, 0.02, ndlG)) * (1.0 - cloud);
         vec3 cl = max(ndlG, 0.0) * sh * sunTint + 0.01;
         col = mix(col, cl, cloud * 0.92);

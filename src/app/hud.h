@@ -918,7 +918,7 @@ static void UpdateMeteors(App& app, double dt, double simDt) {
     spawn(r, 6);
 }
 
-static void DrawMeteors(const App& app) {
+static void DrawMeteors(const App& app, V3 up) {
     const Cam& c = app.cam;
     for (const App::Meteor& m : app.meteors) {
         float s = m.t / m.dur;
@@ -928,7 +928,8 @@ static void DrawMeteors(const App& app) {
         for (int k = 0; k < K; k++) {
             float u0 = std::max(0.0f, s - 0.35f * (k + 1) / K), u1 = std::max(0.0f, s - 0.35f * k / K);
             Vector2 a, b;
-            if (u1 <= u0 || !Project(c, at(u0), &a) || !Project(c, at(u1), &b)) continue;
+            if (u1 <= u0 || Dot(at(u0), up) < 0 || Dot(at(u1), up) < 0) continue;   // 地平線より下（地面の向こう）は描かない
+            if (!Project(c, at(u0), &a) || !Project(c, at(u1), &b)) continue;
             unsigned char al = (unsigned char)(255 * m.bright * fade * (1.0f - (float)k / K));
             DrawLineEx(a, b, 2.0f - 1.2f * k / K, {255, 250, 235, al});
         }
@@ -949,37 +950,7 @@ static void DrawGroundView(const App& app) {
     }
     north = Norm(north);
     V3 east = Cross(north, up);
-    DrawMeteors(app);
-    // 地面: 地平線より下を塗る。間近では天体の画像（1 画素が数 km）が引き伸ばされて見えるため。
-    // 地平線はカメラを通る平面なので、画面上では直線になる。画面の四角形をその直線で切った下側を塗る
-    {
-        double fu = Dot(c.fwd, up) * c.focal, ru = Dot(c.right, up), uu = Dot(c.up, up);
-        auto side = [&](Vector2 p) { return fu + (p.x - c.W * 0.5) * ru - (p.y - c.H * 0.5) * uu; };   // 負なら地平線より下
-        Vector2 corner[4] = {{0, 0}, {c.W, 0}, {c.W, c.H}, {0, c.H}};
-        std::vector<Vector2> poly;
-        for (int k = 0; k < 4; k++) {
-            Vector2 a = corner[k], bb = corner[(k + 1) % 4];
-            double sa = side(a), sb = side(bb);
-            if (sa < 0) poly.push_back(a);
-            if ((sa < 0) != (sb < 0)) {
-                float u = (float)(sa / (sa - sb));
-                poly.push_back({a.x + (bb.x - a.x) * u, a.y + (bb.y - a.y) * u});
-            }
-        }
-        if (poly.size() >= 3) {
-            double sunAlt, sunAz;
-            AltAz(app.B, g, GroundFixed(app, g), B_SUN, app.tDays, &sunAlt, &sunAz);
-            float day = (float)std::max(0.0, std::min(1.0, (sunAlt / DEG + 6) / 16));   // 薄明（−6°）から昼（10°）まで
-            const Col3& gc = b.d.c2;
-            float k = 0.05f + 0.30f * day;
-            Color col = {(unsigned char)(255 * std::min(1.0f, gc.r * k + 0.02f)), (unsigned char)(255 * std::min(1.0f, gc.g * k + 0.025f)),
-                         (unsigned char)(255 * std::min(1.0f, gc.b * k + 0.02f)), 255};
-            for (size_t k2 = 1; k2 + 1 < poly.size(); k2++) {   // 向きによらず塗れるよう両回りで
-                DrawTriangle(poly[0], poly[k2], poly[k2 + 1], col);
-                DrawTriangle(poly[0], poly[k2 + 1], poly[k2], col);
-            }
-        }
-    }
+    DrawMeteors(app, up);
     // 地平線（5° ごと）と 8 方位の名前
     Vector2 prev{};
     bool have = false;
