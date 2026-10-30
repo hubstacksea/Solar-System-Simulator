@@ -714,6 +714,13 @@ static void DrawBodies(App& app) {
         }
         DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
 
+        if (d.style == S_TITAN) {   // 上空のもやの層（地表から 約 500 km 上）
+            float hp[4] = {5.0f, 0, 0, 0.7f};
+            Vector3 hc = {0.50f, 0.66f, 0.95f};
+            SetShaderValue(app.shader, app.locParams, hp, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locC1, &hc, SHADER_UNIFORM_VEC3);
+            DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * 1.19 * s, d.radius * 1.19 * s, 0));
+        }
         if (ri >= 0 && app.ringTex[ri].id) {
             const RingSet& rs = RingSets()[ri];
             float rp[4] = {4.0f, (float)d.radius, 0, 0};

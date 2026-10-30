@@ -228,7 +228,8 @@ private:
 // 探査機の機体モデル。単位 m。-Z が姿勢の基準（パーカーは耐熱シールドを太陽へ、ほかは高利得アンテナを地球へ向ける）
 enum ProbeModel {
     PM_VOYAGER = 0, PM_PIONEER, PM_GALILEO, PM_GALILEO_PROBE, PM_CASSINI, PM_CASSINI_HUYGENS, PM_NEW_HORIZONS, PM_PARKER,
-    PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_OSIRIS_REX, PM_DART, PM_JWST, PM_ISS, PM_HUBBLE, PM_COUNT
+    PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_OSIRIS_REX, PM_DART, PM_JWST, PM_ISS, PM_HUBBLE,
+    PM_BEPICOLOMBO, PM_JUICE, PM_EUROPA_CLIPPER, PM_LUCY, PM_PSYCHE, PM_COUNT
 };
 
 inline Mesh GenProbeMesh(int model) {
@@ -481,6 +482,98 @@ inline Mesh GenProbeMesh(int model) {
             }
         for (int sx = -1; sx <= 1; sx += 2)   // 放熱板
             mb.Box({sx * 20.0f, 3.2f, 9.0f}, {1.6f, 0.05f, 6.5f}, white, SM_PAINT);
+        break;
+    }
+    case PM_BEPICOLOMBO: {
+        // ベピコロンボ（巡航中の結合状態）: 下から電気推進モジュール MTM（両側に長さ 約 14 m の太陽電池パネル）、
+        // 水星表面探査機 MPO（片側の太陽電池パネルと放熱板、直径 1 m の高利得アンテナ）、
+        // 水星磁気圏探査機みお（八角柱）と、それを覆う日よけ MOSIF
+        mb.Box({0, 0, 1.3f}, {0.9f, 0.9f, 0.6f}, gold, SM_METAL);                  // MTM
+        mb.Tube({0, 0, 1.9f}, {0, 0, 2.2f}, 0.25f, 12, dark, SM_METAL);            // イオンエンジン
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 0.9f, 0, 1.3f}, {sx * 1.3f, 0, 1.3f}, 0.05f, 6, metal, SM_METAL);
+            for (int k = 0; k < 5; k++) mb.Box({sx * (1.95f + k * 1.3f), 0, 1.3f}, {0.63f, 0.02f, 0.9f}, panel, SM_GLASS);
+        }
+        mb.Box({0, 0, 0}, {0.9f, 0.75f, 0.7f}, white, SM_PAINT);                  // MPO
+        mb.Box({0, 0.76f, 0}, {0.85f, 0.02f, 0.65f}, metal, SM_METAL);            // 放熱板
+        mb.Tube({0, -0.75f, 0}, {0, -1.4f, 0}, 0.05f, 6, metal, SM_METAL);
+        for (int k = 0; k < 3; k++) mb.Box({0, -2.0f - k * 1.45f, 0}, {0.6f, 0.7f, 0.02f}, panel, SM_GLASS);
+        mb.Tube({0.6f, 0, -0.7f}, {0.6f, 0, -1.0f}, 0.04f, 6, metal, SM_METAL);
+        mb.Dish({0.6f, 0, -1.4f}, {0, 0, -1}, 0.5f, 0.15f, white, SM_PAINT);
+        mb.Revolve(0, 0, {{-0.7f, 0.95f}, {-1.6f, 0.95f}, {-2.1f, 0.6f}, {-2.2f, 0.0f}}, 8, white, SM_PAINT);   // MOSIF と、みお
+        break;
+    }
+    case PM_JUICE: {
+        // JUICE: 箱形の本体、直径 2.5 m の高利得アンテナ、十字形に並ぶ 10 枚の太陽電池パネル（両翼で 約 27 m、85 m²）、
+        // 長さ 10.6 m の磁力計のブームと 16 m の電波・プラズマ観測のアンテナ
+        mb.Box({0, 0, 0}, {1.2f, 1.2f, 2.0f}, gold, SM_METAL);
+        mb.Dish({0, 0, -2.6f}, {0, 0, -1}, 1.25f, 0.4f, white, SM_PAINT);
+        mb.Tube({0, 0, -2.0f}, {0, 0, -2.2f}, 0.12f, 8, metal, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 1.2f, 0, 0.5f}, {sx * 1.8f, 0, 0.5f}, 0.06f, 6, metal, SM_METAL);
+            for (int k = 0; k < 3; k++) mb.Box({sx * (2.95f + k * 2.3f), 0, 0.5f}, {1.12f, 0.02f, 1.3f}, panel, SM_GLASS);
+            for (int sz = -1; sz <= 1; sz += 2)   // 十字の横の 2 枚
+                mb.Box({sx * 5.25f, 0, 0.5f + sz * 2.65f}, {1.12f, 0.02f, 1.3f}, panel, SM_GLASS);
+        }
+        mb.Tube({0, 1.2f, 1.6f}, {0, 11.8f, 1.6f}, 0.03f, 5, metal, SM_METAL);    // 磁力計のブーム
+        for (int i = 0; i < 4; i++) {   // 電波・プラズマ観測のアンテナ
+            float ang = PI / 4 + PI / 2 * i;
+            mb.Tube({cosf(ang) * 1.0f, sinf(ang) * 1.0f, 2.0f}, {cosf(ang) * 3.0f, sinf(ang) * 3.0f, 2.2f}, 0.015f, 4, metal, SM_METAL);
+        }
+        break;
+    }
+    case PM_EUROPA_CLIPPER: {
+        // エウロパ・クリッパー: 背の高い推進モジュール（円筒）、直径 3 m の高利得アンテナ、両翼で 30.5 m の
+        // 太陽電池パネル（片翼 5 枚、2 列）、8.5 m の磁力計のブーム、氷の下を探るレーダー（REASON）の 4 本の長いアンテナ
+        mb.Tube({0, 0, -1.0f}, {0, 0, 3.0f}, 0.8f, 16, white, SM_PAINT);
+        mb.Box({0, 0, -1.3f}, {1.0f, 1.0f, 0.4f}, gold, SM_METAL);
+        mb.Dish({0, 0, -2.6f}, {0, 0, -1}, 1.5f, 0.45f, white, SM_PAINT);
+        mb.Tube({0, 0, -1.7f}, {0, 0, -2.2f}, 0.15f, 8, metal, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 0.8f, 0, 1.2f}, {sx * 1.6f, 0, 1.2f}, 0.08f, 6, metal, SM_METAL);
+            for (int k = 0; k < 5; k++)
+                for (int r = -1; r <= 1; r += 2)
+                    mb.Box({sx * (2.9f + k * 2.75f), 0, 1.2f + r * 1.05f}, {1.33f, 0.02f, 1.0f}, panel, SM_GLASS);
+        }
+        mb.Tube({0, 0.8f, 2.6f}, {0, 9.3f, 2.6f}, 0.03f, 5, metal, SM_METAL);    // 磁力計のブーム
+        for (int i = 0; i < 2; i++) {   // REASON のアンテナ（太陽電池パネルに沿う長い棒）
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 1.6f, 0.15f, 0.0f}, {sx * 17.0f, 0.15f, 0.0f}, 0.02f, 4, metal, SM_METAL);
+            mb.Tube({sx * 1.6f, 0.15f, 2.4f}, {sx * 17.0f, 0.15f, 2.4f}, 0.02f, 4, metal, SM_METAL);
+        }
+        break;
+    }
+    case PM_LUCY: {
+        // ルーシー: 箱形の本体、両側に直径 7.3 m の円形の太陽電池パネル（扇のように開く UltraFlex）、
+        // 直径 2 m の高利得アンテナ、カメラなどを載せた首振り台
+        mb.Box({0, 0, 0}, {0.9f, 0.9f, 1.0f}, gold, SM_METAL);
+        mb.Dish({0, 0, -1.6f}, {0, 0, -1}, 1.0f, 0.3f, white, SM_PAINT);
+        mb.Tube({0, 0, -1.0f}, {0, 0, -1.3f}, 0.08f, 8, metal, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 0.9f, 0, 0.2f}, {sx * 1.6f, 0, 0.2f}, 0.06f, 6, metal, SM_METAL);
+            mb.Disc({sx * 5.25f, 0.01f, 0.2f}, {0, 1, 0}, 3.65f, 24, panel, SM_GLASS);
+            mb.Disc({sx * 5.25f, -0.01f, 0.2f}, {0, -1, 0}, 3.65f, 24, dark, SM_METAL);
+        }
+        mb.Box({0, -1.1f, 0.7f}, {0.35f, 0.2f, 0.3f}, dark, SM_METAL);          // 観測機器の台
+        break;
+    }
+    case PM_PSYCHE: {
+        // サイキ: 箱形の本体、十字形に並ぶ 2 組の太陽電池パネル（両翼で 約 25 m）、直径 2 m の高利得アンテナ、
+        // 底に電気推進（ホール推進機）
+        mb.Box({0, 0, 0}, {1.0f, 1.0f, 1.2f}, white, SM_PAINT);
+        mb.Dish({0, 0, -1.8f}, {0, 0, -1}, 1.0f, 0.3f, white, SM_PAINT);
+        mb.Tube({0, 0, -1.2f}, {0, 0, -1.5f}, 0.08f, 8, metal, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 1.0f, 0, 0}, {sx * 1.5f, 0, 0}, 0.06f, 6, metal, SM_METAL);
+            for (int k = 0; k < 3; k++) mb.Box({sx * (2.5f + k * 2.0f), 0, 0}, {0.98f, 0.02f, 1.1f}, panel, SM_GLASS);
+            for (int sz = -1; sz <= 1; sz += 2) mb.Box({sx * 4.5f, 0, sz * 2.25f}, {0.98f, 0.02f, 1.1f}, panel, SM_GLASS);
+        }
+        mb.Tube({0, 0, 1.2f}, {0, 0, 1.45f}, 0.3f, 12, dark, SM_METAL);          // ホール推進機
         break;
     }
     case PM_HUBBLE: {

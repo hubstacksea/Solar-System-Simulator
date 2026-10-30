@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.11.0 (2026-10-30)
+
+- Missions in flight: BepiColombo (into Mercury orbit in November 2026), JUICE, Europa Clipper, Lucy and Psyche, on their planned Horizons trajectories, with models, events and two new tour scenes
+- Find a body (/ or F4 / touch "Search"): narrow down by part of the name (kana too), then target or warp; category tabs
+- Venus's clouds now circle the planet in about 4 days (super-rotation); Titan gets its detached blue upper haze
+
 ## 2.10.0 (2026-10-30)
 
 - Rings of Uranus, Neptune and Jupiter from the radii, widths and optical depths in NASA fact sheets (Uranus's narrow rings turn with its tipped-over axis; Neptune's Adams ring has its arcs; opacity exaggerated because they are faint and dark)

@@ -213,6 +213,11 @@ int main(int argc, char** argv) {
 
     // フォント
     std::string allText = "°²·×〜";
+    for (int cp = 0x3041; cp <= 0x30FC; cp++) {   // 検索欄に打つひらがな・カタカナ
+        int len = 0;
+        const char* u = CodepointToUTF8(cp, &len);
+        allText.append(u, len);
+    }
     for (int i = 0; i < UI_COUNT; i++) allText += UI_JP[i];
     for (const Body& b : app.B) allText += b.d.jp;
     for (const Engine& e : ENGINES) allText += e.jp;
@@ -370,6 +375,11 @@ int main(int argc, char** argv) {
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
     if (opt.map) OpenMap(app);
     app.showInfo = opt.info;
+    if (opt.search) {
+        OpenSearch(app);
+        app.searchText = opt.search;
+        app.searchTab = std::max(0, std::min(SEARCH_TABS - 1, opt.searchTab));
+    }
 
     int frame = 0;
     while (!WindowShouldClose()) {

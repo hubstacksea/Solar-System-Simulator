@@ -58,6 +58,9 @@ struct App {
     bool mapWasCaptured = false;          // 全体図を開く前にマウスを捕捉していたか
     bool timeReverse = false;             // 時間を逆に進める（全体図を開いている間だけ）
     bool showInfo = false;                // ターゲットの天体の情報（I キー）
+    bool searchOpen = false;              // 天体の検索（/ キー）
+    std::string searchText;               // 入力中の文字（UTF-8）
+    int searchSel = 0, searchTab = 0;     // 選んでいる候補・分類のタブ
     int resumeMode = 1;                   // 起動時に前回の続きから 0: しない, 1: 場所だけ, 2: 場所と日時
     int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）

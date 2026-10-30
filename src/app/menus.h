@@ -106,7 +106,7 @@ static std::string SettingValue(const App& app, int item) {
 }
 
 // ---------------------------------------------------------------- タッチ操作（スマホ・タブレット）
-enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_MAP, TB_INFO, TB_SETTINGS,
+enum TouchButton { TB_THRUST, TB_BRAKE, TB_STOP, TB_TARGET, TB_WARP, TB_AUTO, TB_TOUR, TB_EVENTS, TB_MAP, TB_INFO, TB_SEARCH, TB_SETTINGS,
                    TB_HELP, TB_SHARE, TB_COUNT };
 
 // 画面のボタンの位置: 右に速度、左に行き先、下にメニュー（画面の高さに合わせた大きさ）
@@ -120,7 +120,7 @@ static Rectangle TouchButtonRect(const Cam& c, int i) {
         case TB_TARGET: return {12, ly, s * 1.5f, s * 0.8f};
         case TB_WARP: return {12, ly + s * 0.8f + g, s * 1.5f, s * 0.8f};
         case TB_AUTO: return {12, ly + (s * 0.8f + g) * 2, s * 1.5f, s * 0.8f};
-        default: {   // ツアー・イベント・全体図・情報・設定・説明・共有: 左上のパネルの下に横に並べる
+        default: {   // ツアー・イベント・全体図・情報・検索・設定・説明・共有: 左上のパネルの下に横に並べる
             int k = i - TB_TOUR;
             float w = s * 1.15f;
             return {12 + k * (w + g), 160, w, s * 0.55f};
@@ -183,7 +183,8 @@ static void DrawTouchButtons(const App& app) {
     if (!app.touchUI) return;
     const Cam& c = app.cam;
     static const UiId LABEL[TB_COUNT] = {UI_TB_THRUST, UI_TB_BRAKE, UI_TB_STOP, UI_TB_TARGET, UI_TB_WARP, UI_TB_AUTO,
-                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_MAP, UI_TB_INFO, UI_TB_SETTINGS, UI_TB_HELP, UI_TB_SHARE};
+                                         UI_TB_TOUR, UI_TB_EVENTS, UI_TB_MAP, UI_TB_INFO, UI_TB_SEARCH, UI_TB_SETTINGS,
+                                         UI_TB_HELP, UI_TB_SHARE};
     for (int i = 0; i < TB_COUNT; i++) {
         Rectangle r = TouchButtonRect(c, i);
         bool held = app.touchHeld == i;
@@ -253,6 +254,203 @@ static void DrawIntro(const App& app) {
 }
 
 // 一覧・入力欄が開いている間のキー操作。開いていれば true（ほかの操作は止める）
+// ---------------------------------------------------------------- 天体の検索（/ キー・F4 キー）
+// 名前の一部（日本語はひらがなでも、英語は大文字小文字を区別せず）で絞り込み、Enter でターゲット、Shift+Enter でワープ。
+// タッチ操作では文字を打てないので、分類のタブと一覧から選ぶ
+enum BodyClassId { BC_STAR, BC_PLANET, BC_DWARF, BC_MOON, BC_ASTEROID, BC_COMET, BC_PROBE, BC_SAT };
+
+static int BodyClass(const App& app, int i) {
+    const BodyDef& d = app.B[i].d;
+    std::string en = d.en;
+    if (i == B_SUN) return BC_STAR;
+    if (d.kind == KIND_PROBE) return d.tleN > 0 ? BC_SAT : BC_PROBE;
+    if (d.parent > 0) return BC_MOON;
+    if (i <= B_NEPTUNE) return BC_PLANET;
+    if (i == B_PLUTO || en == "Ceres" || en == "Eris") return BC_DWARF;
+    if (std::string(d.jp).find("彗星") != std::string::npos) return BC_COMET;
+    return BC_ASTEROID;
+}
+
+// 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星
+static const int SEARCH_TABS = 5;
+static bool InSearchTab(int cls, int tab) {
+    switch (tab) {
+        case 1: return cls == BC_STAR || cls == BC_PLANET || cls == BC_DWARF;
+        case 2: return cls == BC_MOON;
+        case 3: return cls == BC_ASTEROID || cls == BC_COMET;
+        case 4: return cls == BC_PROBE || cls == BC_SAT;
+        default: return true;
+    }
+}
+
+// ひらがなをカタカナに（天体の日本語名はカタカナが多い）
+static std::string ToKatakana(const std::string& s) {
+    std::string out;
+    for (size_t i = 0; i < s.size();) {
+        unsigned char c = s[i];
+        if (c == 0xE3 && i + 2 < s.size()) {
+            int cp = ((c & 0x0F) << 12) | ((s[i + 1] & 0x3F) << 6) | (s[i + 2] & 0x3F);
+            if (cp >= 0x3041 && cp <= 0x3096) cp += 0x60;
+            out += (char)(0xE0 | (cp >> 12));
+            out += (char)(0x80 | ((cp >> 6) & 0x3F));
+            out += (char)(0x80 | (cp & 0x3F));
+            i += 3;
+        } else {
+            out += (char)std::tolower(c);
+            i++;
+        }
+    }
+    return out;
+}
+
+// 候補（名前の先頭が合うもの → 途中が合うもの の順）
+static std::vector<int> SearchResults(const App& app) {
+    std::string q = ToKatakana(app.searchText);
+    std::vector<int> head, mid;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        if (!app.B[i].active || !InSearchTab(BodyClass(app, (int)i), app.searchTab)) continue;
+        if (q.empty()) { head.push_back((int)i); continue; }
+        std::string jp = ToKatakana(app.B[i].d.jp), en = ToKatakana(app.B[i].d.en);
+        size_t a = jp.find(q), b = en.find(q);
+        if (a == 0 || b == 0) head.push_back((int)i);
+        else if (a != std::string::npos || b != std::string::npos) mid.push_back((int)i);
+    }
+    head.insert(head.end(), mid.begin(), mid.end());
+    return head;
+}
+
+static void OpenSearch(App& app) {
+    app.searchOpen = true;
+    app.searchText.clear();
+    app.searchSel = 0;
+    while (GetCharPressed() > 0) {}   // 開いたキー（/）が入力欄に入らないように捨てる
+}
+
+// 選んだ天体をターゲットに（warp ならワープも）して閉じる
+static void SearchPick(App& app, int body, bool warp, bool land) {
+    app.target = body;
+    app.searchOpen = false;
+    if (warp && app.warpT < 0) StartWarp(app, body, land);
+}
+
+static const int SEARCH_ROWS = 12;
+struct SearchLayout {
+    float x, y, w, h, rowY;
+};
+static SearchLayout GetSearchLayout(const Cam& c) {
+    SearchLayout L;
+    L.w = std::min(c.W - 20, 640.0f);
+    L.h = 150 + SEARCH_ROWS * 26.0f;
+    L.x = (c.W - L.w) / 2;
+    L.y = (c.H - L.h) / 2;
+    L.rowY = L.y + 112;
+    return L;
+}
+static int SearchFirstRow(const App& app, int n) { return std::max(0, std::min(app.searchSel - SEARCH_ROWS / 2, n - SEARCH_ROWS)); }
+
+static void DrawSearch(const App& app) {
+    const Cam& c = app.cam;
+    SearchLayout L = GetSearchLayout(c);
+    static const UiId TAB[SEARCH_TABS] = {UI_SEARCH_ALL, UI_SEARCH_PLANETS, UI_SEARCH_MOONS, UI_SEARCH_SMALL, UI_SEARCH_PROBES};
+    static const UiId CLS[] = {UI_INFO_STAR, UI_INFO_PLANET, UI_INFO_DWARF, UI_SEARCH_MOON, UI_INFO_ASTEROID, UI_INFO_COMET,
+                               UI_INFO_PROBE, UI_INFO_SAT};
+    DrawRectangleRounded({L.x, L.y, L.w, L.h}, 0.04f, 6, {0, 8, 20, 235});
+    DrawRectangleRoundedLinesEx({L.x, L.y, L.w, L.h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
+    Txt(T(UI_SEARCH_TITLE), L.x + 20, L.y + 12, 20, {255, 220, 120, 255});
+    // 入力欄（点滅するカーソル）
+    std::string field = app.searchText + (std::fmod(GetTime(), 1.0) < 0.5 ? "_" : " ");
+    DrawRectangleRounded({L.x + 20, L.y + 42, L.w - 40, 30}, 0.3f, 6, {20, 34, 60, 255});
+    Txt(app.searchText.empty() && !app.touchUI ? T(UI_SEARCH_HINT) : field.c_str(), L.x + 30, L.y + 47, 18,
+        app.searchText.empty() ? Color{120, 140, 170, 255} : Color{240, 245, 255, 255});
+    // 分類のタブ
+    float tw = (L.w - 40) / SEARCH_TABS;
+    for (int k = 0; k < SEARCH_TABS; k++) {
+        Rectangle r = {L.x + 20 + k * tw, L.y + 80, tw - 4, 24};
+        DrawRectangleRounded(r, 0.3f, 6, k == app.searchTab ? Color{60, 90, 140, 230} : Color{18, 30, 52, 230});
+        TxtC(T(TAB[k]), r.x + r.width / 2, r.y + 4, 14, k == app.searchTab ? Color{255, 240, 200, 255} : Color{170, 195, 225, 255});
+    }
+    std::vector<int> res = SearchResults(app);
+    int n = (int)res.size(), first = SearchFirstRow(app, n);
+    if (n == 0) TxtC(T(UI_SEARCH_NONE), c.W * 0.5f, L.rowY + 20, 16, {170, 190, 215, 255});
+    for (int r = 0; r < SEARCH_ROWS && first + r < n; r++) {
+        int i = res[first + r];
+        float ry = L.rowY + r * 26.0f;
+        bool sel = first + r == app.searchSel;
+        if (sel) DrawRectangle((int)L.x + 12, (int)ry - 3, (int)L.w - 24, 25, {60, 90, 140, 200});
+        const BodyDef& d = app.B[i].d;
+        Color col = i == app.target ? Color{255, 220, 80, 255} : sel ? Color{255, 240, 200, 255} : Color{215, 228, 245, 255};
+        Txt(TR(d.jp, d.en), L.x + 28, ry, 17, col);
+        std::string kind = T(CLS[BodyClass(app, i)]);
+        if (BodyClass(app, i) == BC_MOON) kind = TR(app.B[d.parent].d.jp, app.B[d.parent].d.en) + std::string(" ") + kind;
+        std::string right = kind + "   " + FmtDist(std::max(0.0, SurfaceDist(app.B[i], ShipWorld(app))));
+        Txt(right.c_str(), L.x + L.w - 28 - TxtW(right.c_str(), 14), ry + 2, 14, {150, 175, 210, 255});
+    }
+    if (n > SEARCH_ROWS) {
+        char b[32];
+        snprintf(b, sizeof b, "%d / %d", app.searchSel + 1, n);
+        Txt(b, L.x + L.w - 28 - TxtW(b, 13), L.y + 16, 13, {150, 175, 210, 255});
+    }
+    TxtC(T(app.touchUI ? UI_SEARCH_KEYS_TOUCH : app.pad >= 0 ? UI_SEARCH_KEYS_PAD : UI_SEARCH_KEYS), c.W * 0.5f, L.y + L.h - 26, 13,
+         {150, 175, 210, 255});
+}
+
+// キーボード・マウス・タッチ（パッドは PadMenus）。開いている間は true
+static bool HandleSearchInput(App& app) {
+    if (!app.searchOpen) return false;
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    for (int ch = GetCharPressed(); ch > 0; ch = GetCharPressed()) {
+        if (ch < 32 || app.searchText.size() > 60) continue;
+        int len = 0;
+        const char* u = CodepointToUTF8(ch, &len);
+        app.searchText.append(u, len);
+        app.searchSel = 0;
+    }
+    if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !app.searchText.empty()) {
+        size_t k = app.searchText.size() - 1;   // UTF-8 の 1 文字分を消す
+        while (k > 0 && ((unsigned char)app.searchText[k] & 0xC0) == 0x80) k--;
+        app.searchText.erase(k);
+        app.searchSel = 0;
+    }
+    std::vector<int> res = SearchResults(app);
+    int n = (int)res.size();
+    if (n > 0 && (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN))) app.searchSel = (app.searchSel + 1) % n;
+    if (n > 0 && (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP))) app.searchSel = (app.searchSel + n - 1) % n;
+    if (IsKeyPressed(KEY_TAB)) {
+        app.searchTab = (app.searchTab + (shift ? SEARCH_TABS - 1 : 1)) % SEARCH_TABS;
+        app.searchSel = 0;
+    }
+    app.searchSel = std::max(0, std::min(app.searchSel, n - 1));
+    if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && n > 0) SearchPick(app, res[app.searchSel], shift, false);
+    else if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_F4)) app.searchOpen = false;
+    // マウス / タップ: タブを選ぶ、行をクリックで選び、選んだ行をもう一度でワープ。枠の外で閉じる
+    Vector2 p;
+    bool click = false;
+    if (app.tapped) { p = app.tapPos; click = true; }
+    else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !app.touchUI) {
+        p = Vector2Scale(GetMousePosition(), 1 / UiScale(app.cam));
+        click = true;
+    }
+    if (click && app.searchOpen) {
+        SearchLayout L = GetSearchLayout(UiCam(app.cam));
+        if (!CheckCollisionPointRec(p, {L.x, L.y, L.w, L.h})) {
+            app.searchOpen = false;
+        } else if (p.y >= L.y + 80 && p.y < L.y + 104) {
+            app.searchTab = std::max(0, std::min(SEARCH_TABS - 1, (int)((p.x - L.x - 20) / ((L.w - 40) / SEARCH_TABS))));
+            app.searchSel = 0;
+        } else if (p.y >= L.rowY - 3) {
+            int row = SearchFirstRow(app, n) + (int)std::floor((p.y - (L.rowY - 3)) / 26.0f);
+            if (row >= 0 && row < n) {
+                if (row == app.searchSel && app.target == res[row]) SearchPick(app, res[row], true, false);
+                else {
+                    app.searchSel = row;
+                    app.target = res[row];
+                }
+            }
+        }
+    }
+    return true;
+}
+
 // ---------------------------------------------------------------- 全体図（F3 キー）
 // 太陽（または惑星）を中心に、黄道の北から見下ろした図。距離は対数目盛り（中心付近を広げる）で、
 // 内惑星から外縁天体までを 1 枚に収める。天体をクリック / タップするとターゲットにし、もう一度でワープする
@@ -562,6 +760,7 @@ static bool HandleModalInput(App& app) {
         }
         return true;
     }
+    if (HandleSearchInput(app)) return true;
     if (app.mapOpen) {
         bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         float k = UiScale(app.cam);
@@ -674,6 +873,7 @@ static bool HandleModalInput(App& app) {
 static void DrawModalPanels(const App& app) {
     const Cam& c = app.cam;
     if (app.mapOpen) DrawMap(app);
+    if (app.searchOpen) DrawSearch(app);
     if (app.settingsOpen) {
         static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_TEXTSIZE, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY,
                                              UI_SET_MILKYWAY, UI_SET_ORBITS, UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT,

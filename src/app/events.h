@@ -259,7 +259,8 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
         const std::vector<ProbeSeg>& S = g_probes[d.probe].segs;
         for (const ProbeSeg& sg : S) {
             if (sg.body <= 0) continue;
-            bool orbiter = sg.t.back() - sg.t.front() > 200;
+            // 周回機: 長い区間か、データの最後の区間（周回に入るところや到着の直前でデータが終わる機体）
+            bool orbiter = sg.t.back() - sg.t.front() > 200 || (&sg == &S.back() && sg.t.back() - sg.t.front() > 60);
             if (orbiter && app.B[sg.body].d.kind == KIND_ROCKY && app.B[sg.body].d.a_au > 0 && sg.body > B_MOON) {
                 // 彗星・小惑星への到着は区間の始まり（周回や待機の開始）
                 AstroEvent ev;
@@ -278,6 +279,13 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
                 if (Len(sg.p[j]) < Len(sg.p[best])) best = j;
             }
             if (best == 0) continue;  // 打ち上げ直後の地球からの出発
+            if (orbiter && best + 1 == sg.t.size()) continue;   // 到着の前にデータが終わる（JUICE）
+            bool beforeArrival = false;   // 周回に入る少し前に影響圏をかすめただけの接近（ベピコロンボ）
+            for (const ProbeSeg& o : S)
+                if (&o != &sg && o.body == sg.body && o.t.front() > sg.t.back() && o.t.front() - sg.t.back() < 60 &&
+                    o.t.back() - o.t.front() > 60)
+                    beforeArrival = true;
+            if (!orbiter && beforeArrival) continue;
             if (best + 1 == sg.t.size() && &sg == &S.back() && d.probeEnd) continue;  // 突入・衝突の直前（運用終了として扱う）
             auto f = [&](double t) { return Len(SegPos(sg, t)); };
             AstroEvent ev;
@@ -610,9 +618,15 @@ static const TourStop TOUR[] = {
     {2, EV_IMPACT, "DART", "Dimorphos", "20220926",
      "小惑星の軌道を変えられるかを確かめる、人類初の惑星防衛の実験。秒速 6 km で衝突し、\nディモルフォスの公転周期を 33 分縮めた",
      "The first planetary-defense test: could a spacecraft change an asteroid's orbit? Hitting at 6 km/s,\nit shortened Dimorphos's orbital period by 33 minutes"},
+    {2, EV_ARRIVE, "BepiColombo", "Mercury", "20261121",
+     "日本と欧州の水星探査機。6 回の水星フライバイで減速し、水星を回る軌道に入る。\nこのあと日本の「みお」と欧州の MPO に分かれ、磁場と表面を調べる",
+     "The joint Japanese-European Mercury mission. Slowed by six Mercury flybys, it enters orbit.\nIt then splits into Japan's Mio and Europe's MPO to study the magnetic field and the surface"},
     {0, EV_ECLIPSE_GROUND, nullptr, nullptr, "20270802",
      "北アフリカから中東を通る皆既日食を、食の中心の地上から。皆既は最長 6 分 23 秒続き、\n今世紀でも有数の長さ。太陽の周りにコロナが広がり、空が暗くなって明るい星が見える",
      "The total eclipse crossing North Africa and the Middle East, seen from the ground at its center. Totality lasts\nup to 6 min 23 s, one of the longest this century: the corona appears and the sky darkens enough to show bright stars"},
+    {2, EV_ARRIVE, "Europa Clipper", "Jupiter", "20300411",
+     "氷の下に海があるとみられるエウロパを調べる探査機。木星を回りながら\nエウロパに 49 回近づき、生命が住める環境かどうかを探る",
+     "Bound for Europa, whose ice shell is thought to hide an ocean. From orbit around Jupiter\nit will fly past Europa 49 times to find out whether it could support life"},
     {0, EV_TRANSIT, nullptr, nullptr, "20321113",
      "水星が太陽の前を横切る太陽面通過。地球から見えるのは 100 年に 13 回ほどで、\n次は 2039 年",
      "Mercury crosses the face of the Sun. Seen from Earth this happens about 13 times a century;\nthe next one is in 2039"},

@@ -61,7 +61,7 @@
     X(HELP9, "V : 視点切替    O : 軌道表示    L : 衛星マーカー    C : 星座    Y : 日時指定    K : イベント一覧    U : 自動ツアー", "V : view    O : orbits    L : moon markers    C : constellations    Y : set date    K : events    U : guided tour") \
     X(HELP10, "[ / ] : 時間倍率    P : 時間停止    Backspace : 現在時刻に同期    Z : 写真モード    R : 重力モード", "[ / ] : time scale    P : pause    Backspace : sync to now    Z : photo mode    R : gravity mode") \
     X(HELP11, "I : 天体の情報    M : 効果音    Shift+M : 音楽    F11 : フルスクリーン    F12 : スクリーンショット", "I : body info    M : sound    Shift+M : music    F11 : fullscreen    F12 : screenshot") \
-    X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F2 : 共有リンク    F3 : 全体図    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F2 : share link    F3 : map    F9 : quality    F10 : settings    Ctrl+Q : quit") \
+    X(HELP12, "Esc : マウス解放/捕捉    J : 言語    F2 : 共有リンク    F3 : 全体図    / , F4 : 検索    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language    F2 : share link    F3 : map    / , F4 : search    F9 : quality    F10 : settings    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
     X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明・メニュー    LB+RB : 全体図", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help/menu    LB+RB : map") \
@@ -164,7 +164,7 @@
     X(TB_SETTINGS, "設定", "Settings") \
     X(TB_HELP, "説明", "Help") \
     X(TB_SHARE, "共有", "Share") \
-    X(HELP_PAD, "[パッド] この画面で A : 全体図    X : 設定    Y : イベント一覧    LB : 日時指定    RB : 天体の情報    B : 閉じる", "[Pad] On this screen A : map    X : settings    Y : events    LB : set date    RB : body info    B : close") \
+    X(HELP_PAD, "[パッド] この画面で A : 全体図    X : 設定    Y : イベント一覧    LB : 日時指定    RB : 天体の情報    十字上 : 検索    B : 閉じる", "[Pad] On this screen A : map    X : settings    Y : events    LB : set date    RB : body info    D-pad Up : search    B : close") \
     X(PAD_DATE, "[パッド] 十字上下 : ±1 日    十字左右 : ±30 日    LB / RB : ±1 年    A : 決定    B : 閉じる", "[Pad] D-pad Up/Down : ±1 day    Left/Right : ±30 days    LB / RB : ±1 year    A : set    B : close") \
     X(INFO_STAR, "恒星", "Star") \
     X(INFO_PLANET, "惑星", "Planet") \
@@ -194,6 +194,19 @@
     X(INFO_EARTHX, "地球の %s 倍", "%s x Earth") \
     X(INFO_CLOSE, "I / タップ: 閉じる", "I / tap: close") \
     X(TB_INFO, "情報", "Info") \
+    X(TB_SEARCH, "検索", "Search") \
+    X(SEARCH_TITLE, "天体の検索", "Find a body") \
+    X(SEARCH_HINT, "名前の一部を入力（ひらがな・英字）", "Type part of a name") \
+    X(SEARCH_ALL, "すべて", "All") \
+    X(SEARCH_PLANETS, "惑星", "Planets") \
+    X(SEARCH_MOONS, "衛星", "Moons") \
+    X(SEARCH_SMALL, "小天体", "Small bodies") \
+    X(SEARCH_PROBES, "探査機", "Spacecraft") \
+    X(SEARCH_MOON, "の衛星", "moon") \
+    X(SEARCH_NONE, "見つかりません", "No match") \
+    X(SEARCH_KEYS, "↑↓: 選ぶ   Enter: ターゲット   Shift+Enter: ワープ   Tab: 分類   Esc: 閉じる", "Up/Down: select   Enter: target   Shift+Enter: warp   Tab: category   Esc: close") \
+    X(SEARCH_KEYS_TOUCH, "タップ: ターゲット（もう一度でワープ）   タブで分類   枠の外で閉じる", "Tap: target (again: warp)   Tabs: category   Tap outside: close") \
+    X(SEARCH_KEYS_PAD, "[パッド] 十字上下: 選ぶ   十字左右: 分類   A: ターゲット   Y: ワープ   B: 閉じる", "[Pad] D-pad Up/Down: select   Left/Right: category   A: target   Y: warp   B: close") \
     X(SET_RESUME, "起動したら前回の続きから", "Resume the last session") \
     X(SET_RES0, "オフ（地球の近くから）", "Off (start near Earth)") \
     X(SET_RES1, "場所だけ（日時は今）", "Place only (current time)") \

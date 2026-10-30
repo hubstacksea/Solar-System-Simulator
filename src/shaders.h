@@ -37,7 +37,7 @@ uniform float sunAng;      // 太陽の視半径 rad
 uniform vec3 color1;
 uniform vec3 color2;
 uniform vec3 atmColor;
-uniform vec4 params;       // x: 種別, y: 縞の数 / 環の基準半径km, z: シード, w: 大気の強さ
+uniform vec4 params;       // x: 種別（4 環, 5 上空のもや）, y: 縞の数 / 環の基準半径km, z: シード, w: 大気の強さ
 uniform vec4 ringInfo;     // 環: x 不透明度の表の内側 km, y 表の幅 km, z 海王星のアダムズ環の弧の位置 rad（無ければ -1）,
                            //     w 1 なら画素より細い環を濃くする（天王星・海王星）
 uniform vec4 detail;       // x: 表面模様の種類, y: 1 画素の大きさの係数, z: 時刻（日）, w: 雲の濃さ
@@ -271,6 +271,12 @@ vec4 rocky(vec3 p, int style, vec3 o, out vec3 base) {
 
 // ---------------------------------------------------------------- ガス惑星・厚い大気
 vec3 gas(vec3 p, int style, vec3 o) {
+    if (style == 24) {
+        // 金星の雲は自転（243 日）よりずっと速く、約 4 日で一周する（超回転）。自転と同じ向きに、差の分だけ回す
+        float a = fract(detail.z * (1.0 / 4.0 - 1.0 / 243.025)) * 6.2831853;
+        float ca = cos(a), sa = sin(a);
+        p = vec3(ca * p.x + sa * p.z, p.y, -sa * p.x + ca * p.z);
+    }
     vec2 ll = latLon(p);
     float lat = ll.x, lon = ll.y;
     float warp = fbmL(p * vec3(1.0, 3.5, 1.0), 2.5, 6, 0.55, o);
@@ -608,6 +614,16 @@ void main() {
     int kind = int(params.x + 0.5);
     int style = int(detail.x + 0.5);
     vec3 V = normalize(-fragWorld);
+
+    if (kind == 5) {   // タイタンの上空のもや（本体より一回り大きな殻。縁でだけ見える青い層）
+        vec3 Nh = normalize(fragNormal);
+        float muH = abs(dot(Nh, V));
+        float litH = clamp(dot(Nh, normalize(lightDir)) + 0.35, 0.0, 1.0);
+        float aH = pow(1.0 - muH, 6.0) * params.w * litH;
+        if (aH <= 0.003) discard;
+        finalColor = vec4(color1 * (0.4 + 0.6 * litH), clamp(aH, 0.0, 1.0));
+        return;
+    }
 
     if (kind == 4) {   // 環
         float rkm = length(fragObj.xz) * params.y;

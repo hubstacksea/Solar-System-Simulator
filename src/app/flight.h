@@ -154,6 +154,7 @@ static void TouchToPad(App& app, PadState& pad) {
         case TB_EVENTS: OpenEventsPage(app); app.eventsOpen = true; break;
         case TB_MAP: OpenMap(app); break;
         case TB_INFO: app.showInfo = !app.showInfo; break;
+        case TB_SEARCH: OpenSearch(app); break;
         case TB_SETTINGS: app.settingsOpen = true; app.settingsSel = 0; break;
         case TB_HELP: pad.help = true; break;
         case TB_SHARE: ShareScene(app); break;
@@ -172,6 +173,19 @@ static bool PadMenus(App& app, const PadState& pad) {
     bool any = pad.autopilot || pad.stop || pad.nextTarget || pad.warp || pad.engineUp || pad.engineDown || pad.timeUp ||
                pad.timeDown || pad.lb || pad.rb;
     if (!any) return false;
+    if (app.searchOpen) {
+        std::vector<int> res = SearchResults(app);
+        int n = (int)res.size();
+        if (n > 0 && pad.timeDown) app.searchSel = (app.searchSel + 1) % n;
+        if (n > 0 && pad.timeUp) app.searchSel = (app.searchSel + n - 1) % n;
+        if (pad.engineUp || pad.engineDown) {
+            app.searchTab = (app.searchTab + (pad.engineUp ? 1 : SEARCH_TABS - 1)) % SEARCH_TABS;
+            app.searchSel = 0;
+        }
+        if (n > 0 && (pad.autopilot || pad.warp)) SearchPick(app, res[std::min(app.searchSel, n - 1)], pad.warp, false);
+        if (pad.stop) app.searchOpen = false;
+        return true;
+    }
     if (app.introPage >= 0) {
         if (pad.stop) CloseIntro(app);
         else if (pad.engineDown) app.introPage = std::max(0, app.introPage - 1);
@@ -215,6 +229,7 @@ static bool PadMenus(App& app, const PadState& pad) {
         else if (pad.warp) { OpenEventsPage(app); app.eventsOpen = true; }
         else if (pad.lb) { app.dateDigits = DigitsOfTime(app.tDays); app.dateOpen = true; }
         else if (pad.rb) app.showInfo = !app.showInfo;
+        else if (pad.timeUp) OpenSearch(app);
         else if (!pad.stop) app.showHelp = true;   // ほかのボタンは説明を開いたまま
         return true;
     }
@@ -428,6 +443,7 @@ static void HandleInput(App& app, double dt) {
     }
     if (IsKeyPressed(KEY_F2)) ShareScene(app);
     if (IsKeyPressed(KEY_F3)) OpenMap(app);
+    if (IsKeyPressed(KEY_F4) || IsKeyPressed(KEY_SLASH)) OpenSearch(app);
     if (IsKeyPressed(KEY_F9)) ChangeSetting(app, SET_QUALITY, 1, true);
     if (IsKeyPressed(KEY_I)) app.showInfo = !app.showInfo;   // マウス上下反転は設定画面（F10）で
     if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;

@@ -300,7 +300,8 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     // ---- 探査機（並びは tools/make_probe_assets.py と同じ） ----
     //   coast: データの後も直進する, end: データの終わりが運用終了（天体への突入・着地）
     //   機体の形: 0 ボイジャー, 1 パイオニア, 2 ガリレオ, 4 カッシーニ, 6 ニュー・ホライズンズ, 7 パーカー,
-    //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2, 11 オシリス・レックス, 12 DART, 13 JWST（ProbeModel）
+    //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2, 11 オシリス・レックス, 12 DART, 13 JWST,
+    //             16 ベピコロンボ, 17 JUICE, 18 エウロパ・クリッパー, 19 ルーシー, 20 サイキ（ProbeModel）
     static const struct { const char* jp; const char* en; bool coast, end; int model; } PROBES[] = {
         {"ボイジャー1号", "Voyager 1", true, false, 0}, {"ボイジャー2号", "Voyager 2", true, false, 0},
         {"パイオニア10号", "Pioneer 10", true, false, 1}, {"パイオニア11号", "Pioneer 11", true, false, 1},
@@ -311,6 +312,9 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         {"はやぶさ2", "Hayabusa2", false, false, 10},
         {"オシリス・レックス", "OSIRIS-REx", false, false, 11}, {"DART", "DART", false, true, 12},
         {"ジェイムズ・ウェッブ宇宙望遠鏡", "James Webb Space Telescope", false, false, 13},
+        {"ベピコロンボ", "BepiColombo", false, false, 16}, {"JUICE", "JUICE", false, false, 17},
+        {"エウロパ・クリッパー", "Europa Clipper", false, false, 18}, {"ルーシー", "Lucy", false, false, 19},
+        {"サイキ", "Psyche", false, false, 20},
     };
     for (int i = 0; i < (int)(sizeof PROBES / sizeof PROBES[0]); i++) {
         BodyDef d{};
