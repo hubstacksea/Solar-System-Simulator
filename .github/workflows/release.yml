@@ -25,7 +25,7 @@ jobs:
   linux:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -53,12 +53,12 @@ jobs:
             echo "::notice title=$(basename "$f")::${msg:-(empty log)}"
           done
           test -s shots/earth.png
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots-linux
           path: shots/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: |
@@ -68,7 +68,7 @@ jobs:
   windows:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -78,7 +78,7 @@ jobs:
           cmake -B build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-win
           cd build-win && cpack
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: build-win/*.7z
@@ -86,7 +86,7 @@ jobs:
   macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build and package
         run: |
           cmake -B build-mac -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
@@ -130,12 +130,12 @@ jobs:
             echo "::notice title=$(basename "$f")::${msg:-(empty log)}"
           done
           test -s shots/earth.png
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots-macos
           path: shots/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: build-mac/*.zip
@@ -143,7 +143,7 @@ jobs:
   web:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Emscripten
         run: |
           git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
@@ -154,7 +154,7 @@ jobs:
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
           cmake --build build-web -j
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web
           path: |
@@ -169,8 +169,8 @@ jobs:
     needs: [linux, windows, macos, web]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
       - name: Create the release
@@ -194,6 +194,10 @@ jobs:
           Requires OpenGL 3.3 (WebGL2 for the browser version). See README for controls.
           NOTES
           sed -i 's/^          //' notes.md
+          # その版の変更点を CHANGELOG から載せる（見出し "## 版 (日付)" から次の見出しまで）
+          section() { awk -v v="## ${V} " 'index($0, v) == 1 {f = 1; next} /^## / {f = 0} f' "$1"; }
+          { echo; echo "## Changes"; section CHANGELOG.en.md; echo; echo "## 変更点"; section CHANGELOG.md; } >> notes.md
+          cat notes.md
           gh release create "$TAG" --title "Solar System Voyager $TAG" --notes-file notes.md \
             dist/windows/*.7z dist/macos/*.zip dist/linux/*.deb dist/linux/*.rpm
       - name: Publish the browser version to gh-pages

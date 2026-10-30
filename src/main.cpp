@@ -56,8 +56,25 @@ EM_JS(void, WebSaveConfig, (const char* s), {
     try { localStorage.setItem("solar_voyager.cfg", UTF8ToString(s)); } catch (e) {}
 });
 EM_JS(int, WebCoarsePointer, (), { return (window.matchMedia && matchMedia("(pointer: coarse)").matches) ? 1 : 0; });
-EM_JS(int, WebViewW, (), { return Math.round(window.innerWidth * Math.max(1, 720 / window.innerHeight)); });
-EM_JS(int, WebViewH, (), { return Math.round(window.innerHeight * Math.max(1, 720 / window.innerHeight)); });
+// 描画の画素数とページの大きさ (CSS px) の比。縦が 720 未満のページは縦 720 相当で描いて縮め、高解像度の画面
+// (devicePixelRatio > 1) ではその倍率で細かく描く（縦 1440 画素まで）
+EM_JS(double, WebPixelScale, (), {
+    var h = window.innerHeight, base = Math.max(1, 720 / h);
+    return Math.max(base, Math.min(window.devicePixelRatio || 1, 1440 / h));
+});
+// 縦 720 相当に広げる分を除いた、画面の倍率による分（2D の表示の倍率に使う）
+EM_JS(double, WebDpiScale, (), {
+    var h = window.innerHeight, base = Math.max(1, 720 / h);
+    return Math.max(base, Math.min(window.devicePixelRatio || 1, 1440 / h)) / base;
+});
+EM_JS(int, WebViewW, (), {
+    var h = window.innerHeight, base = Math.max(1, 720 / h);
+    return Math.round(window.innerWidth * Math.max(base, Math.min(window.devicePixelRatio || 1, 1440 / h)));
+});
+EM_JS(int, WebViewH, (), {
+    var h = window.innerHeight, base = Math.max(1, 720 / h);
+    return Math.round(h * Math.max(base, Math.min(window.devicePixelRatio || 1, 1440 / h)));
+});
 #endif
 
 // ---------------------------------------------------------------- 定数
@@ -155,7 +172,7 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(HELP12, "Esc : マウス解放/捕捉    J : 言語切替 (日本語/English)    F2 : 共有リンク    F3 : 全体図    F9 : 画質    F10 : 設定    Ctrl+Q : 終了", "Esc : release/capture mouse    J : language (日本語/English)    F2 : share link    F3 : map    F9 : quality    F10 : settings    Ctrl+Q : quit") \
     X(HELP13, "[パッド] 左スティック : 機首    右スティック左右 / LB・RB : ロール    RT / LT : 加速 / 減速", "[Pad] L-stick : pitch/yaw    R-stick X / LB・RB : roll    RT / LT : throttle / brake") \
     X(HELP14, "[パッド] 十字左右 : エンジン    十字上下 : 時間倍率    A : 自動操縦    B : 停止", "[Pad] D-pad L/R : engine    D-pad U/D : time scale    A : autopilot    B : stop") \
-    X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help") \
+    X(HELP15, "[パッド] X : ターゲット    Y : ワープ    L押込 : 地表ワープ    R押込 : ズーム    View : 視点    Menu : 説明    LB+RB : 全体図", "[Pad] X : target    Y : warp    L3 : surface warp    R3 : zoom    View : camera    Menu : help    LB+RB : map") \
     X(REAL_TIME_ETA, "実時間で", "real") \
     X(AP, "自動操縦", "AUTOPILOT") \
     X(AP_ON, "自動操縦 ON", "Autopilot ON") \
@@ -259,7 +276,9 @@ static V3 EquToRender(double raDeg, double decDeg) {
     X(MAP_TITLE, "全体図", "System map") \
     X(MAP_SUN, "太陽中心", "centered on the Sun") \
     X(MAP_NOTE, "真上（黄道の北）から見た図。距離は中心ほど広げた対数目盛り。半径 %s", "Seen from above (ecliptic north), logarithmic distances, radius %s") \
-    X(MAP_KEYS, "クリック/タップ: ターゲット（もう一度でワープ）   Enter/G: ワープ   Shift: 地表へ   Tab: 次のターゲット   ↑↓/ホイール: 拡大縮小   Space: 中心の切替   Esc/F3: 閉じる", "Click/tap: target (again: warp)   Enter/G: warp   Shift: to surface   Tab: next target   Up/Down/wheel: zoom   Space: switch center   Esc/F3: close") \
+    X(MAP_KEYS, "クリック/タップ: ターゲット（もう一度でワープ）   Enter/G: ワープ   Shift: 地表へ   Tab: 次のターゲット   ↑↓/ホイール: 拡大縮小   Space: 中心の切替   ←→: 時間の速さ   P: 停止   R: 逆再生   Esc/F3: 閉じる", "Click/tap: target (again: warp)   Enter/G: warp   Shift: to surface   Tab: next target   Up/Down/wheel: zoom   Space: switch center   Left/Right: time speed   P: pause   R: reverse   Esc/F3: close") \
+    X(MAP_PAD, "[パッド] 十字左右: ターゲット   十字上下: 拡大縮小   A/Y: ワープ   X: 中心の切替   B / LB+RB: 閉じる", "[Pad] D-pad L/R: target   D-pad U/D: zoom   A/Y: warp   X: switch center   B / LB+RB: close") \
+    X(MAP_REV, "逆再生", "reverse") \
     X(MAP_SHIP, "自機", "You") \
     X(MAP_CLOSE, "閉じる", "Close") \
     X(MAP_CENTER, "中心の切替", "Center") \
@@ -1477,6 +1496,7 @@ struct App {
     int mapCenter = 0;                    // 全体図の中心の天体（0: 太陽、ほかは惑星など）
     double mapRange = 0;                  // 全体図の半径 km（0: 中心に合わせて自動）
     bool mapWasCaptured = false;          // 全体図を開く前にマウスを捕捉していたか
+    bool timeReverse = false;             // 時間を逆に進める（全体図を開いている間だけ）
     int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）
     std::vector<AstroEvent> cometEvents;  // 彗星の近日点と地球への最接近（起動時に求める）
@@ -2817,14 +2837,23 @@ static std::vector<MapItem> MapItems(const App& app, const MapView& v) {
     return items;
 }
 
-// 右上のボタン: 0 閉じる, 1 拡大, 2 縮小, 3 中心の切替（タッチ・マウス用）
+// 右上のボタン: 0 閉じる, 1 拡大, 2 縮小, 3 中心の切替, 4 時間を遅く, 5 速く, 6 停止, 7 逆再生（タッチ・マウス用）
+static const int MAP_BUTTONS = 8;
 static Rectangle MapButtonRect(const Cam& c, int i) {
     switch (i) {
         case 0: return {c.W - 110, 10, 96, 28};
         case 1: return {c.W - 110, 46, 44, 28};
         case 2: return {c.W - 58, 46, 44, 28};
-        default: return {c.W - 110, 82, 96, 28};
+        case 3: return {c.W - 110, 82, 96, 28};
+        default: return {c.W - 110 + (i % 2) * 52, 130 + (i - 4) / 2 * 36.0f, 44, 28};
     }
+}
+
+static void MapTimeButton(App& app, int i) {
+    if (i == 4) app.timeIdx = std::max(0, app.timeIdx - 1);
+    if (i == 5) app.timeIdx = std::min(TIME_SCALE_COUNT - 1, app.timeIdx + 1);
+    if (i == 6) app.paused = !app.paused;
+    if (i == 7) app.timeReverse = !app.timeReverse;
 }
 
 static void MapZoom(App& app, double factor) {
@@ -2856,6 +2885,7 @@ static void OpenMap(App& app) {
 
 static void CloseMap(App& app) {
     app.mapOpen = false;
+    app.timeReverse = false;
     if (app.mapWasCaptured && !app.touchUI) {
         app.mouseCaptured = true;
         DisableCursor();
@@ -2864,10 +2894,11 @@ static void CloseMap(App& app) {
 
 static void MapPick(App& app, Vector2 p, bool land) {
     const Cam c = UiCam(app.cam);
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < MAP_BUTTONS; i++)
         if (CheckCollisionPointRec(p, MapButtonRect(c, i))) {
             if (i == 0) CloseMap(app);
             else if (i == 3) MapToggleCenter(app);
+            else if (i >= 4) MapTimeButton(app, i);
             else MapZoom(app, i == 1 ? 1 / 1.6 : 1.6);
             return;
         }
@@ -2916,6 +2947,38 @@ static void DrawMap(const App& app) {
             prev = p;
         }
     }
+    // 探査機の軌跡（通ってきた部分は明るく、これから通る部分は暗く）。太陽中心の図は太陽中心の区間を、
+    // 惑星中心の図はその惑星のまわりの区間の前後 60 日分を描く
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        if (b.d.probe < 0 || !b.active || b.d.probe >= (int)g_probes.size()) continue;
+        bool tgt = (int)i == app.target;
+        for (const ProbeSeg& sg : g_probes[b.d.probe].segs) {
+            if (sg.body != app.mapCenter || sg.t.size() < 2) continue;
+            double ta = sg.t.front(), tb = sg.t.back();
+            if (sg.body > 0) {
+                ta = std::max(ta, app.tDays - 60);
+                tb = std::min(tb, app.tDays + 60);
+            }
+            if (ta >= tb) continue;
+            const int N = sg.body > 0 ? 4000 : 800;   // 時間で等分して補間（惑星のまわりは細かく）
+            bool have = false;
+            Vector2 prev = {0, 0};
+            for (int j = 0; j <= N; j++) {
+                double tt = ta + (tb - ta) * j / N;
+                bool in;
+                Vector2 q = v.Project(v.origin + SegPos(sg, tt), &in);
+                if (!in) { have = false; continue; }
+                if (have) {
+                    bool past = tt <= app.tDays;
+                    unsigned char a = (unsigned char)(tgt ? (past ? 190 : 80) : (past ? 80 : 30));
+                    DrawLineEx(prev, q, 1.0f, {255, 196, 120, a});
+                }
+                prev = q;
+                have = true;
+            }
+        }
+    }
     // 天体（名前は重ならないものだけ。ターゲットは必ず）
     std::vector<MapItem> items = MapItems(app, v);
     Vector2 shipP = v.Project(ShipWorld(app));
@@ -2959,17 +3022,21 @@ static void DrawMap(const App& app) {
     else snprintf(rs, sizeof rs, "%s", FmtDist(v.range).c_str());
     snprintf(b, sizeof b, T(UI_MAP_NOTE), rs);
     Txt(b, 20, 44, 14, {160, 190, 225, 255});
-    snprintf(b, sizeof b, "%s %s", T(UI_DATE), FmtDate(app.tDays).c_str());
-    Txt(b, 20, 66, 14, {160, 190, 225, 255});
-    const char* btn[4] = {T(UI_MAP_CLOSE), "+", "-", T(UI_MAP_CENTER)};
-    for (int i = 0; i < 4; i++) {
+    std::string ts = app.paused ? T(UI_PAUSED) : TIME_SCALE_NAMES[app.timeIdx];
+    if (app.timeReverse && !app.paused) ts = std::string(T(UI_MAP_REV)) + " " + ts;
+    snprintf(b, sizeof b, "%s %s    %s %s", T(UI_DATE), FmtDate(app.tDays).c_str(), T(UI_TSCALE), ts.c_str());
+    Txt(b, 20, 66, 14, app.timeReverse ? Color{255, 190, 140, 255} : Color{160, 190, 225, 255});
+    const char* btn[MAP_BUTTONS] = {T(UI_MAP_CLOSE), "+", "-", T(UI_MAP_CENTER), "<<", ">>", app.paused ? ">" : "||", "<-"};
+    for (int i = 0; i < MAP_BUTTONS; i++) {
         Rectangle r = MapButtonRect(c, i);
-        DrawRectangleRounded(r, 0.3f, 6, {20, 40, 70, 220});
+        bool on = (i == 6 && app.paused) || (i == 7 && app.timeReverse);
+        DrawRectangleRounded(r, 0.3f, 6, on ? Color{70, 110, 170, 230} : Color{20, 40, 70, 220});
         DrawRectangleRoundedLinesEx(r, 0.3f, 6, 1.0f, {90, 130, 180, 200});
-        float fs = i == 1 || i == 2 ? 20.0f : 15.0f;
+        float fs = i == 1 || i == 2 ? 20.0f : i >= 4 ? 16.0f : 15.0f;
         TxtC(btn[i], r.x + r.width / 2, r.y + (r.height - fs) / 2 - 1, fs, {225, 235, 250, 255});
     }
     TxtC(T(UI_MAP_KEYS), c.W * 0.5f, c.H - 26, 13, {150, 175, 210, 255});
+    if (app.pad >= 0) TxtC(T(UI_MAP_PAD), c.W * 0.5f, c.H - 46, 13, {150, 210, 180, 255});
 }
 
 static bool HandleModalInput(App& app) {
@@ -2996,6 +3063,10 @@ static bool HandleModalInput(App& app) {
         if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP) || wheel > 0) MapZoom(app, 1 / 1.6);
         if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN) || wheel < 0) MapZoom(app, 1.6);
         if (IsKeyPressed(KEY_SPACE)) MapToggleCenter(app);
+        if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_LEFT_BRACKET)) MapTimeButton(app, 4);
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_RIGHT_BRACKET)) MapTimeButton(app, 5);
+        if (IsKeyPressed(KEY_P)) MapTimeButton(app, 6);
+        if (IsKeyPressed(KEY_R)) MapTimeButton(app, 7);
         if (IsKeyPressed(KEY_TAB)) {
             int n = (int)app.B.size(), step = shift ? -1 : 1;
             for (int i = 0; i < n; i++) {
@@ -3340,6 +3411,34 @@ static void HandleInput(App& app, double dt) {
     UpdateTouch(app);
     PadState pad = ReadPad(app);
     app.padZoom = pad.zoom;
+    // ゲームパッド: LB+RB の同時押しで全体図。開いている間は十字キーなどで操作する
+    if (app.pad >= 0) {
+        int g = app.pad;
+        bool lb = IsGamepadButtonDown(g, GAMEPAD_BUTTON_LEFT_TRIGGER_1), rb = IsGamepadButtonDown(g, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
+        bool combo = (lb && IsGamepadButtonPressed(g, GAMEPAD_BUTTON_RIGHT_TRIGGER_1)) || (rb && IsGamepadButtonPressed(g, GAMEPAD_BUTTON_LEFT_TRIGGER_1));
+        if (combo && !app.mapOpen && !app.settingsOpen && !app.eventsOpen && !app.dateOpen && app.introPage < 0) {
+            OpenMap(app);
+            return;
+        }
+        if (app.mapOpen) {
+            if (combo || pad.stop) { CloseMap(app); return; }
+            if (pad.engineUp || pad.engineDown) {
+                int n = (int)app.B.size(), step = pad.engineUp ? 1 : -1;
+                for (int i = 0; i < n; i++) {
+                    app.target = (app.target + step + n) % n;
+                    if (app.B[app.target].active) break;
+                }
+            }
+            if (pad.timeUp) MapZoom(app, 1 / 1.6);
+            if (pad.timeDown) MapZoom(app, 1.6);
+            if (pad.nextTarget) MapToggleCenter(app);
+            if ((pad.autopilot || pad.warp || pad.land) && app.warpT < 0) {
+                StartWarp(app, app.target, pad.land);
+                CloseMap(app);
+                return;
+            }
+        }
+    }
     if (HandleModalInput(app)) return;
     TouchToPad(app, pad);
     if (IsKeyPressed(KEY_Z)) {
@@ -4627,7 +4726,9 @@ static void DrawStars(const App& app) {
         Vector2 p;
         if (!Project(c, st.dir, &p)) continue;
         if (p.x < -4 || p.y < -4 || p.x >= c.W + 4 || p.y >= c.H + 4) continue;
-        if (st.size > 0) DrawCircleV(p, st.size, st.col);
+        // 高解像度の画面では星も画面の倍率に合わせて大きく
+        if (st.size > 0) DrawCircleV(p, st.size * g_dpiScale, st.col);
+        else if (g_dpiScale > 1.4f) DrawCircleV(p, 0.5f * g_dpiScale, st.col);
         else DrawPixelV(p, st.col);
     }
 }
@@ -5298,6 +5399,7 @@ int main(int argc, char** argv) {
     // ブラウザ版: 大きさはページに合わせて毎フレーム自分で変える（raylib の自動の変更は縮小表示に対応しない）
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(WebViewW(), WebViewH(), "Solar System Voyager");
+    g_dpiScale = (float)WebDpiScale();
 #else
     // アンチエイリアス (MSAA) 付きの OpenGL を作れない環境（仮想マシンなど）では、GLFW がウィンドウを作れないまま
     // raylib が落ちる。初期化の前に印を保存しておき、前回の起動が初期化中に終わっていたら MSAA なしで始める
@@ -5581,7 +5683,7 @@ int main(int argc, char** argv) {
                 if (app.toastTime <= 0) Toast(app, T(UI_PHYS_SLOW));
             }
         }
-        app.tDays += simDt / 86400.0;
+        app.tDays += (app.timeReverse ? -simDt : simDt) / 86400.0;   // 逆再生は天体の時刻だけ（自機はそのまま進む）
         UpdateBodies(app.B, app.tDays);
         UpdateShip(app, simDt);
         sfx::Update(app.ship.engine, app.ship.thrusting && app.warpT < 0,
@@ -5603,12 +5705,16 @@ int main(int argc, char** argv) {
         {   // ページの大きさが変わったら描画の大きさも合わせる
             int w = WebViewW(), h = WebViewH();
             if (w != GetScreenWidth() || h != GetScreenHeight()) SetWindowSize(w, h);
+            g_dpiScale = (float)WebDpiScale();
         }
 #endif
         BeginDrawing();
         // 画質「低」: 星空と 3D を縮小バッファに描いて拡大する（HUD は等倍）
         bool lowRes = QUALITY_SCALE[app.quality] < 1.0f;
         float rk = QUALITY_SCALE[app.quality] * GetRenderWidth() / std::max(1, GetScreenWidth());
+#if defined(__EMSCRIPTEN__)
+        if (lowRes) rk /= g_dpiScale;   // ブラウザ版の画質「低」: 3D は画面の倍率を掛けない画素数で（2D の表示だけ細かく）
+#endif
         if (lowRes) {
             int w = std::max(1, (int)(GetScreenWidth() * rk)), h = std::max(1, (int)(GetScreenHeight() * rk));
             if (app.lowRes.texture.width != w || app.lowRes.texture.height != h) {

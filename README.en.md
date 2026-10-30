@@ -1,6 +1,6 @@
 # Solar System Voyager
 
-[日本語](README.md) | **English**
+[日本語](README.md) | **English** | [Changelog](CHANGELOG.en.md)
 
 A 3D space flight simulator with the Sun, planets, major moons, dwarf planets, asteroids, comets and spacecraft placed at **true size and true distance**.
 Body positions are computed from the PC clock (UTC); at 1x time scale they orbit and rotate in real time.
@@ -47,6 +47,7 @@ Try it in your browser without installing anything: **https://hubstacksea.github
 - Click the view to steer with the mouse (Esc to release). Settings and bookmarks are kept in the browser
 - On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Map / Settings / Help / Share at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down
 - If it runs slowly, lower the quality with F9
+- High-resolution screens (phones, Retina) are drawn at the device pixel ratio (up to 1440 pixels high). At Low quality the 3D view keeps its pixel count and only text and the HUD are drawn sharper
 - **F2 (or "Share" on touch screens) copies a link to the current scene** (date, place, view, target and time scale; the address bar shows the same link). Opening the link starts from that scene. F2 in the PC version copies a link to the browser version
 
 ## macOS version
@@ -164,7 +165,7 @@ After building, run `cpack` in the build directory.
 | B / N | Bookmark the current spot / warp to bookmarks in turn (up to 9; position and orientation are stored relative to the rotating body) |
 | M / Shift+M | Sound effects (engine and warp) / music on/off |
 | F9 | Quality High → Low → Medium (use Low if it runs slowly: 3D at 60% resolution with less detail) |
-| F3 | System map (seen from above, centered on the Sun or a planet, logarithmic distances). Click / tap a body to target it, again (or Enter / G) to warp, with Shift to the surface. Up/Down / wheel / + - to zoom, Space / "Center" to switch between the Sun and the target's planet, Esc / F3 to close |
+| F3 | System map (seen from above, centered on the Sun or a planet, logarithmic distances). Click / tap a body to target it, again (or Enter / G) to warp, with Shift to the surface. Up/Down / wheel / + - to zoom, Space / "Center" to switch between the Sun and the target's planet, Esc / F3 to close. Probe trajectories are drawn too (brighter where they have been). While it is open, Left/Right / << >> change the time speed, P / || pauses and R / <- runs time backwards, so you can watch the planets orbit and the probes travel (reverse ends when the map is closed) |
 | F2 | Copy a share link to this scene (date, place, view, target, time scale; opening it in the browser version starts from the same scene; the PC version opens one with `--share <link>`) |
 | F11 / F12 | Fullscreen / screenshot (saved to `SolarSystemVoyager` in your Pictures folder) |
 | Esc | Release / capture the mouse |
@@ -188,6 +189,7 @@ They are detected automatically when connected (hot-plugging works). Button name
 | Y / left stick click | Warp to target / warp to near its surface |
 | Right stick click (hold) | Zoom |
 | View (Back) / Menu (Start) | Switch view / help |
+| LB + RB (together) | System map. While open: D-pad Left/Right: target, D-pad Up/Down: zoom, A / Y: warp, X: switch center, B: close |
 
 ## Autopilot
 

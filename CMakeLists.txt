@@ -139,10 +139,10 @@ endif()   # EMSCRIPTEN
 # raylib 自体のインストール（ライブラリ・ヘッダ）は含めず、app コンポーネントだけを梱包する
 if(WIN32)
   install(TARGETS solar_voyager RUNTIME DESTINATION . COMPONENT app)
-  install(FILES README.md README.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
+  install(FILES README.md README.en.md CHANGELOG.md CHANGELOG.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
 elseif(APPLE)
   install(TARGETS solar_voyager BUNDLE DESTINATION . COMPONENT app)
-  install(FILES README.md README.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
+  install(FILES README.md README.en.md CHANGELOG.md CHANGELOG.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
   # 置いた後に署名し直す（Apple Silicon は署名のない実行ファイルを起動できない）
   install(CODE "execute_process(COMMAND codesign --force --deep -s - \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/SolarSystemVoyager.app\")"
           COMPONENT app)
@@ -152,7 +152,7 @@ else()
   install(FILES packaging/solar_voyager.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications COMPONENT app)
   install(FILES assets/icon.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
           RENAME solar_voyager.png COMPONENT app)
-  install(FILES README.md README.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/solar-voyager COMPONENT app)
+  install(FILES README.md README.en.md CHANGELOG.md CHANGELOG.en.md LICENSE THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/solar-voyager COMPONENT app)
 endif()
 set(CPACK_INSTALL_CMAKE_PROJECTS "${CMAKE_BINARY_DIR};${PROJECT_NAME};app;/")
 
