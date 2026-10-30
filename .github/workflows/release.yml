@@ -47,6 +47,11 @@ jobs:
           shot map --lang ja --map
           shot settings_en --lang en --settings
           ls -la shots
+          # ログの要点を注釈に出す（実行結果のページと API から、ログイン無しで読める）
+          for f in shots/*.log; do
+            msg=$(grep -viE "^INFO:     >|^INFO: (SHADER|TEXTURE|VAO|VBO|IMAGE)" "$f" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::notice title=$(basename "$f")::${msg:-(empty log)}"
+          done
           test -s shots/earth.png
       - uses: actions/upload-artifact@v4
         if: always()
@@ -104,6 +109,17 @@ jobs:
           shot map --lang ja --map
           shot settings_en --lang en --settings
           ls -la shots
+          if [ ! -s shots/earth.png ]; then   # 起動できない時は、デバッガで止まった場所を調べる
+            lldb --batch -o run -k "bt 30" -k "register read pc" -k quit -- "$APP" --shot "$PWD/shots/lldb.png" --frames 5 \
+              > shots/lldb.log 2>&1 || true
+            msg=$(grep -vE "^INFO" shots/lldb.log | tail -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::notice title=lldb backtrace::${msg}"
+          fi
+          # ログの要点を注釈に出す（実行結果のページと API から、ログイン無しで読める）
+          for f in shots/*.log; do
+            msg=$(grep -viE "^INFO:     >|^INFO: (SHADER|TEXTURE|VAO|VBO|IMAGE)" "$f" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::notice title=$(basename "$f")::${msg:-(empty log)}"
+          done
           test -s shots/earth.png
       - uses: actions/upload-artifact@v4
         if: always()

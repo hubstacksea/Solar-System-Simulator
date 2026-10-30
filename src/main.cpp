@@ -5243,6 +5243,7 @@ static std::string GlslForPlatform(const char* src) {
 
 // ---------------------------------------------------------------- main
 int main(int argc, char** argv) {
+    setvbuf(stdout, nullptr, _IOLBF, 0);   // ログを 1 行ごとに書き出す（ファイルへ出している時に異常終了しても残るように）
     Options opt = ParseArgs(argc, argv);
     if (opt.listEvents) {
         App tmp;
@@ -5296,6 +5297,10 @@ int main(int argc, char** argv) {
         }
     }
 #endif
+    if (!IsWindowReady()) {   // OpenGL 3.3 が使えないなど
+        fprintf(stderr, "Solar System Voyager: could not create the window (OpenGL 3.3 is required)\n");
+        return 1;
+    }
     SetExitKey(KEY_NULL);
     {
         EmbeddedFile f = IconPng();
