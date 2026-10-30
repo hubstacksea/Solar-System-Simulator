@@ -201,6 +201,7 @@ struct Options {
     bool resume = false;         // --shot でも前回の続きから始める（確認用）
     const char* search = nullptr;   // 検索を開いてこの文字を入れて始める（確認用）
     int searchTab = 0;              // 検索の分類のタブ（確認用）
+    int city = -1;                  // この番号の都市の地上から始める（確認用）
 };
 static Options ParseArgs(int argc, char** argv) {
     Options o;
@@ -252,6 +253,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--resume") o.resume = true;
         else if (a == "--search") o.search = next();
         else if (a == "--search-tab") o.searchTab = atoi(next());
+        else if (a == "--city") o.city = atoi(next());
         else if (a == "--hours") o.hours = atof(next());
         else if (a == "--at") { o.atLat = atof(next()); o.atLon = atof(next()); o.atAlt = atof(next()); }
     }

@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.12.0 (2026-10-30)
+
+- Search also lists spacecraft no longer (or not yet) in flight; choosing one moves to its highlight and warps there
+- Sky from the ground: the "On Earth" search tab takes you to 20 places such as Tokyo, London or the South Pole. When stopped near a surface you now turn with the body's rotation and are no longer dragged along by satellites passing overhead
+- The 100,000 asteroid particles are computed and projected in a GPU shader instead of on the CPU
+
 ## 2.11.0 (2026-10-30)
 
 - Missions in flight: BepiColombo (into Mercury orbit in November 2026), JUICE, Europa Clipper, Lucy and Psyche, on their planned Horizons trajectories, with models, events and two new tour scenes

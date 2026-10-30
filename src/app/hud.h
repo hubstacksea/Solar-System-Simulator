@@ -28,11 +28,60 @@ static void DrawStars(const App& app) {
 }
 
 // 小惑星帯などの粒: 1 ピクセルの点。種類ごとに色を変える（地表近くでは軌道線と同じく描かない）
+// GPU で描く（シェーダが使える時）。軌道要素は初めて描く時に 1 回だけ送る（ブラウザ版は届いた後）
+static bool DrawAsteroidsGPU(App& app) {
+    Shader& sh = app.beltShader;
+    if (!sh.id || sh.id == rlGetShaderIdDefault()) return false;
+    const AsteroidBelt& ab = app.belt;
+    if (!app.beltVao) {
+        int lo = GetShaderLocationAttrib(sh, "aOrbit"), lp = GetShaderLocationAttrib(sh, "aP"), lq = GetShaderLocationAttrib(sh, "aQ");
+        if (lo < 0 || lp < 0 || lq < 0) return false;
+        std::vector<float> v;
+        v.reserve(ab.a.size() * 11);
+        for (size_t k = 0; k < ab.a.size(); k++) {
+            float add[11] = {(float)(ab.a[k] / AU_KM), ab.e[k], ab.n[k], ab.m0[k], (float)ab.P[k].x, (float)ab.P[k].y, (float)ab.P[k].z,
+                             (float)ab.kind[k], (float)ab.Q[k].x, (float)ab.Q[k].y, (float)ab.Q[k].z};
+            v.insert(v.end(), add, add + 11);
+        }
+        app.beltVao = rlLoadVertexArray();
+        rlEnableVertexArray(app.beltVao);
+        app.beltVbo = rlLoadVertexBuffer(v.data(), (int)(v.size() * sizeof(float)), false);
+        const int stride = 11 * sizeof(float);
+        rlSetVertexAttribute(lo, 4, RL_FLOAT, false, stride, 0);
+        rlEnableVertexAttribute(lo);
+        rlSetVertexAttribute(lp, 4, RL_FLOAT, false, stride, 4 * sizeof(float));
+        rlEnableVertexAttribute(lp);
+        rlSetVertexAttribute(lq, 3, RL_FLOAT, false, stride, 8 * sizeof(float));
+        rlEnableVertexAttribute(lq);
+        rlDisableVertexArray();
+        app.beltCount = (int)ab.a.size();
+    }
+    const Cam& c = app.cam;
+    rlDrawRenderBatchActive();
+    float t = (float)app.tDays;
+    Vector3 cam = ToF(c.pos * (1.0 / AU_KM)), r = ToF(c.right), u = ToF(c.up), f = ToF(c.fwd);
+    Vector3 view = {c.W, c.H, (float)c.focal};
+    SetShaderValue(sh, GetShaderLocation(sh, "t"), &t, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(sh, GetShaderLocation(sh, "camPos"), &cam, SHADER_UNIFORM_VEC3);
+    SetShaderValue(sh, GetShaderLocation(sh, "camRight"), &r, SHADER_UNIFORM_VEC3);
+    SetShaderValue(sh, GetShaderLocation(sh, "camUp"), &u, SHADER_UNIFORM_VEC3);
+    SetShaderValue(sh, GetShaderLocation(sh, "camFwd"), &f, SHADER_UNIFORM_VEC3);
+    SetShaderValue(sh, GetShaderLocation(sh, "view"), &view, SHADER_UNIFORM_VEC3);
+    rlEnableShader(sh.id);
+    rlEnableVertexArray(app.beltVao);
+    glDrawArrays(GL_POINTS_MODE, 0, app.beltCount);
+    rlDisableVertexArray();
+    rlDisableShader();
+    return true;
+}
+
 static void DrawAsteroids(App& app) {
     if (!app.showOrbits || !app.showAsteroids || app.belt.a.empty()) return;
     const Cam& c = app.cam;
     for (const Body& b : app.B)
         if (Len(c.pos - b.pos) < b.d.radius * 1.3) return;
+    if (DrawAsteroidsGPU(app)) return;
+    // シェーダが使えない時は CPU で計算して描く
     UpdateAsteroids(app.belt, app.tDays);
     static const unsigned char COL[4][4] = {{205, 190, 165, 120}, {235, 150, 120, 150}, {160, 215, 150, 130}, {150, 185, 235, 140}};
     rlCheckRenderBatchLimit(4);

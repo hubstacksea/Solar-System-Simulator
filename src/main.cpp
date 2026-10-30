@@ -40,6 +40,8 @@
 #define SIM_GLAPI
 #endif
 extern "C" void SIM_GLAPI glClear(unsigned int mask);  // 深度だけをクリアするため直接呼ぶ
+extern "C" void SIM_GLAPI glDrawArrays(unsigned int mode, int first, int count);   // 点の描画（rlgl には無い）
+static const unsigned int GL_POINTS_MODE = 0x0000;
 static const unsigned int GL_DEPTH_BIT = 0x00000100;
 
 #if defined(__EMSCRIPTEN__)
@@ -222,6 +224,7 @@ int main(int argc, char** argv) {
     for (const Body& b : app.B) allText += b.d.jp;
     for (const Engine& e : ENGINES) allText += e.jp;
     for (const Constellation& c : app.sky.cons) allText += c.jp;
+    for (const City& c : CITIES) allText += c.jp;
     for (const StarName& n : app.sky.names) allText += n.jp;
     for (const TourStop& st : TOUR) allText += st.jp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
@@ -278,6 +281,7 @@ int main(int argc, char** argv) {
     app.locMapInfo = GetShaderLocation(app.shader, "mapInfo");
     app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");
     app.skyShader = LoadShaderFromMemory(GlslForPlatform(SKY_VS).c_str(), GlslForPlatform(SKY_FS).c_str());
+    app.beltShader = LoadShaderFromMemory(GlslForPlatform(BELT_VS).c_str(), GlslForPlatform(BELT_FS).c_str());
     app.locSkyUp = GetShaderLocation(app.skyShader, "up");
     app.locSkySun = GetShaderLocation(app.skyShader, "sunDir");
     app.locSkyBeta = GetShaderLocation(app.skyShader, "beta");
@@ -375,6 +379,7 @@ int main(int argc, char** argv) {
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
     if (opt.map) OpenMap(app);
     app.showInfo = opt.info;
+    if (opt.city >= 0 && opt.city < CITY_COUNT) GoToCity(app, opt.city);
     if (opt.search) {
         OpenSearch(app);
         app.searchText = opt.search;
@@ -439,7 +444,10 @@ int main(int argc, char** argv) {
             }
         }
         app.tDays += (app.timeReverse ? -simDt : simDt) / 86400.0;   // 逆再生は天体の時刻だけ（自機はそのまま進む）
+        int spinRef = app.ship.ref;
+        double spin0 = app.B[spinRef].spin;
         UpdateBodies(app.B, app.tDays);
+        CoRotateWithGround(app, spinRef, spin0);
         UpdateShip(app, simDt);
         sfx::Update(app.ship.engine, app.ship.thrusting && app.warpT < 0,
                     std::fabs(app.ship.speed) * 1000.0 / ENGINES[app.ship.engine].vmax);
@@ -576,6 +584,9 @@ int main(int argc, char** argv) {
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
     UnloadShader(app.skyShader);
+    UnloadShader(app.beltShader);
+    if (app.beltVao) rlUnloadVertexArray(app.beltVao);
+    if (app.beltVbo) rlUnloadVertexBuffer(app.beltVbo);
     if (app.earthTex) { UnloadTexture(app.earthColor); UnloadTexture(app.earthData); }
     if (app.earthMonths.id) UnloadTexture(app.earthMonths);
     if (app.earthClouds.id) UnloadTexture(app.earthClouds);

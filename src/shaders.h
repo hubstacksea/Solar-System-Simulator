@@ -794,3 +794,45 @@ void main() {
     finalColor = vec4(min(col / max(a, 1e-3), vec3(1.0)), a);
 }
 )";
+
+// 小惑星帯などの粒（約 10 万個）: 軌道要素から GPU で位置を求め、画面に投影して 1 画素の点で描く。
+// 位置は AU 単位の float（誤差は数十 km で点の位置には影響しない）。CPU の計算（UpdateAsteroids）と同じ式
+static const char* BELT_VS = R"(
+#version 330
+in vec4 aOrbit;   // 軌道長半径 AU, 離心率, 平均運動 rad/日, J2000 での平均近点角 rad
+in vec4 aP;       // 近日点の向き（描画座標）, 種類
+in vec3 aQ;       // それに直交する向き
+uniform float t;          // J2000 からの日数
+uniform vec3 camPos;      // カメラの位置 AU（太陽中心）
+uniform vec3 camRight;
+uniform vec3 camUp;
+uniform vec3 camFwd;
+uniform vec3 view;        // 画面の幅, 高さ, 焦点距離（画素）
+out vec4 vColor;
+void main() {
+    float e = aOrbit.y;
+    float M = mod(aOrbit.w + aOrbit.z * t, 6.2831853);
+    if (M > 3.1415927) M -= 6.2831853;
+    float E = M + e * sin(M) * (1.0 + e * cos(M));
+    int iters = e < 0.3 ? 2 : 6;
+    for (int i = 0; i < iters; i++) E -= (E - e * sin(E) - M) / (1.0 - e * cos(E));
+    vec3 pos = (aP.xyz * (cos(E) - e) + aQ * (sqrt(1.0 - e * e) * sin(E))) * aOrbit.x;
+    vec3 rel = pos - camPos;
+    float z = dot(rel, camFwd);
+    gl_PointSize = 1.0;
+    if (z <= 1e-9) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vColor = vec4(0.0); return; }   // カメラの後ろ
+    float sx = view.x * 0.5 + dot(rel, camRight) / z * view.z;
+    float sy = view.y * 0.5 - dot(rel, camUp) / z * view.z;
+    gl_Position = vec4(sx / view.x * 2.0 - 1.0, 1.0 - sy / view.y * 2.0, 0.0, 1.0);
+    int k = int(aP.w + 0.5);
+    vColor = k == 1 ? vec4(235.0, 150.0, 120.0, 150.0) / 255.0 : k == 2 ? vec4(160.0, 215.0, 150.0, 130.0) / 255.0
+           : k == 3 ? vec4(150.0, 185.0, 235.0, 140.0) / 255.0 : vec4(205.0, 190.0, 165.0, 120.0) / 255.0;
+}
+)";
+
+static const char* BELT_FS = R"(
+#version 330
+in vec4 vColor;
+out vec4 finalColor;
+void main() { finalColor = vColor; }
+)";

@@ -271,10 +271,63 @@ static int BodyClass(const App& app, int i) {
     return BC_ASTEROID;
 }
 
-// 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星
-static const int SEARCH_TABS = 5;
+// 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星, 5 地上の都市
+static const int SEARCH_TABS = 6;
+
+// 地上から空を見る場所（緯度・経度 deg）。選ぶと地表に降り、南（南半球では北）の空を見上げる
+struct City { const char* jp; const char* en; double lat, lon; };
+static const City CITIES[] = {
+    {"東京", "Tokyo", 35.68, 139.69},         {"札幌", "Sapporo", 43.06, 141.35},
+    {"那覇", "Naha", 26.21, 127.68},          {"北京", "Beijing", 39.90, 116.41},
+    {"シンガポール", "Singapore", 1.35, 103.82}, {"ムンバイ", "Mumbai", 19.08, 72.88},
+    {"カイロ", "Cairo", 30.04, 31.24},        {"モスクワ", "Moscow", 55.76, 37.62},
+    {"ロンドン", "London", 51.51, -0.13},      {"パリ", "Paris", 48.86, 2.35},
+    {"レイキャビク", "Reykjavik", 64.15, -21.94}, {"ニューヨーク", "New York", 40.71, -74.01},
+    {"ロサンゼルス", "Los Angeles", 34.05, -118.24}, {"マウナケア山頂（ハワイ）", "Mauna Kea (Hawaii)", 19.82, -155.47},
+    {"アタカマ砂漠（チリ）", "Atacama Desert (Chile)", -24.63, -70.40}, {"リオデジャネイロ", "Rio de Janeiro", -22.91, -43.17},
+    {"ケープタウン", "Cape Town", -33.92, 18.42}, {"シドニー", "Sydney", -33.87, 151.21},
+    {"南極点", "South Pole", -89.99, 0.0},     {"北極点", "North Pole", 89.99, 0.0},
+};
+static const int CITY_COUNT = sizeof CITIES / sizeof CITIES[0];
+// 検索の候補の番号: 0 以上は天体、負は都市（-1 - 都市の番号）
+static bool IsCityResult(int r) { return r < 0; }
+
+static void GoToCity(App& app, int k) {
+    const City& c = CITIES[k];
+    app.autopilot = false;
+    app.warpT = -1;
+    app.physics = false;
+    int keep = app.target;
+    PlaceAt(app, B_EARTH, c.lat, c.lon, 0);
+    app.target = keep;
+    // 赤道側（北半球なら南、南半球なら北）の空を仰角 35° で見る
+    const Body& e = app.B[B_EARTH];
+    V3 up = Norm(app.ship.local);
+    V3 north = e.pole - up * Dot(e.pole, up);
+    north = Len(north) < 1e-9 ? Norm(e.ex - up * Dot(e.ex, up)) : Norm(north);
+    V3 h = c.lat >= 0 ? north * -1.0 : north;
+    double el = 35 * DEG;
+    app.ship.q = QuatFromBasis(h * std::cos(el) + up * std::sin(el), up);
+    app.cockpit = true;
+    char b[160];
+    snprintf(b, sizeof b, T(UI_CITY_AT), TR(c.jp, c.en), c.lat >= 0 ? "N" : "S", std::fabs(c.lat), c.lon >= 0 ? "E" : "W", std::fabs(c.lon));
+    Toast(app, b);
+}
+
+// 今は飛んでいない探査機（運用終了・打ち上げ前）を選んだ時に移る日時: 到着 → 衝突・運用終了 → 最初のフライバイ → データの中ほど
+static double ProbeVisitTime(const App& app, int i) {
+    const BodyDef& d = app.B[i].d;
+    for (int kind : {EV_ARRIVE, EV_IMPACT, EV_END, EV_FLYBY})
+        for (const AstroEvent& ev : app.probeEvents)
+            if (ev.probe == i && ev.kind == kind) return ev.t;
+    if (d.tleN > 0) return d.launch + 30;
+    if (d.probe >= 0 && d.probe < (int)g_probes.size() && !g_probes[d.probe].segs.empty())
+        return (g_probes[d.probe].segs.front().t.front() + g_probes[d.probe].segs.back().t.back()) / 2;
+    return app.tDays;
+}
 static bool InSearchTab(int cls, int tab) {
     switch (tab) {
+        case 5: return false;
         case 1: return cls == BC_STAR || cls == BC_PLANET || cls == BC_DWARF;
         case 2: return cls == BC_MOON;
         case 3: return cls == BC_ASTEROID || cls == BC_COMET;
@@ -307,14 +360,21 @@ static std::string ToKatakana(const std::string& s) {
 static std::vector<int> SearchResults(const App& app) {
     std::string q = ToKatakana(app.searchText);
     std::vector<int> head, mid;
-    for (size_t i = 0; i < app.B.size(); i++) {
-        if (!app.B[i].active || !InSearchTab(BodyClass(app, (int)i), app.searchTab)) continue;
-        if (q.empty()) { head.push_back((int)i); continue; }
-        std::string jp = ToKatakana(app.B[i].d.jp), en = ToKatakana(app.B[i].d.en);
+    auto match = [&](const char* jpName, const char* enName, int code) {
+        if (q.empty()) { head.push_back(code); return; }
+        std::string jp = ToKatakana(jpName), en = ToKatakana(enName);
         size_t a = jp.find(q), b = en.find(q);
-        if (a == 0 || b == 0) head.push_back((int)i);
-        else if (a != std::string::npos || b != std::string::npos) mid.push_back((int)i);
+        if (a == 0 || b == 0) head.push_back(code);
+        else if (a != std::string::npos || b != std::string::npos) mid.push_back(code);
+    };
+    for (size_t i = 0; i < app.B.size(); i++) {
+        int cls = BodyClass(app, (int)i);
+        // 今は飛んでいない探査機も出す（選ぶとその名場面の日時へ移る）。衛星などで非表示のものは出さない
+        if (!app.B[i].active && cls != BC_PROBE && cls != BC_SAT) continue;
+        if (InSearchTab(cls, app.searchTab)) match(app.B[i].d.jp, app.B[i].d.en, (int)i);
     }
+    if (app.searchTab == 5 || (app.searchTab == 0 && !q.empty()))   // 都市は「地上」のタブか、名前で探した時
+        for (int k = 0; k < CITY_COUNT; k++) match(CITIES[k].jp, CITIES[k].en, -1 - k);
     head.insert(head.end(), mid.begin(), mid.end());
     return head;
 }
@@ -326,12 +386,30 @@ static void OpenSearch(App& app) {
     while (GetCharPressed() > 0) {}   // 開いたキー（/）が入力欄に入らないように捨てる
 }
 
-// 選んだ天体をターゲットに（warp ならワープも）して閉じる
-static void SearchPick(App& app, int body, bool warp, bool land) {
-    app.target = body;
+// 選んだものへ: 都市はその地上へ、今は飛んでいない探査機はその名場面の日時へ移ってワープ、
+// ほかはターゲットに（warp ならワープも）して閉じる
+static void SearchPick(App& app, int code, bool warp, bool land) {
     app.searchOpen = false;
-    if (warp && app.warpT < 0) StartWarp(app, body, land);
+    if (IsCityResult(code)) {
+        GoToCity(app, -1 - code);
+        return;
+    }
+    app.target = code;
+    if (!app.B[code].active) {
+        app.tDays = ProbeVisitTime(app, code);
+        UpdateBodies(app.B, app.tDays);
+        UpdateReferenceFrame(app);
+        if (!app.B[code].active) return;
+        StartWarp(app, code, false);
+        char b[160];
+        snprintf(b, sizeof b, T(UI_SEARCH_JUMPED), FmtDate(app.tDays).substr(0, 10).c_str(), TR(app.B[code].d.jp, app.B[code].d.en));
+        Toast(app, b);
+        return;
+    }
+    if (warp && app.warpT < 0) StartWarp(app, code, land);
 }
+// その候補は 1 回で決まる（ターゲットにするだけ、という段階がない）か
+static bool PickDirectly(const App& app, int code) { return IsCityResult(code) || !app.B[code].active; }
 
 static const int SEARCH_ROWS = 12;
 struct SearchLayout {
@@ -351,7 +429,8 @@ static int SearchFirstRow(const App& app, int n) { return std::max(0, std::min(a
 static void DrawSearch(const App& app) {
     const Cam& c = app.cam;
     SearchLayout L = GetSearchLayout(c);
-    static const UiId TAB[SEARCH_TABS] = {UI_SEARCH_ALL, UI_SEARCH_PLANETS, UI_SEARCH_MOONS, UI_SEARCH_SMALL, UI_SEARCH_PROBES};
+    static const UiId TAB[SEARCH_TABS] = {UI_SEARCH_ALL, UI_SEARCH_PLANETS, UI_SEARCH_MOONS, UI_SEARCH_SMALL, UI_SEARCH_PROBES,
+                                          UI_SEARCH_CITIES};
     static const UiId CLS[] = {UI_INFO_STAR, UI_INFO_PLANET, UI_INFO_DWARF, UI_SEARCH_MOON, UI_INFO_ASTEROID, UI_INFO_COMET,
                                UI_INFO_PROBE, UI_INFO_SAT};
     DrawRectangleRounded({L.x, L.y, L.w, L.h}, 0.04f, 6, {0, 8, 20, 235});
@@ -377,13 +456,24 @@ static void DrawSearch(const App& app) {
         float ry = L.rowY + r * 26.0f;
         bool sel = first + r == app.searchSel;
         if (sel) DrawRectangle((int)L.x + 12, (int)ry - 3, (int)L.w - 24, 25, {60, 90, 140, 200});
-        const BodyDef& d = app.B[i].d;
-        Color col = i == app.target ? Color{255, 220, 80, 255} : sel ? Color{255, 240, 200, 255} : Color{215, 228, 245, 255};
-        Txt(TR(d.jp, d.en), L.x + 28, ry, 17, col);
-        std::string kind = T(CLS[BodyClass(app, i)]);
-        if (BodyClass(app, i) == BC_MOON) kind = TR(app.B[d.parent].d.jp, app.B[d.parent].d.en) + std::string(" ") + kind;
-        std::string right = kind + "   " + FmtDist(std::max(0.0, SurfaceDist(app.B[i], ShipWorld(app))));
-        Txt(right.c_str(), L.x + L.w - 28 - TxtW(right.c_str(), 14), ry + 2, 14, {150, 175, 210, 255});
+        char right[200];
+        if (IsCityResult(i)) {   // 都市
+            const City& cc = CITIES[-1 - i];
+            Txt(TR(cc.jp, cc.en), L.x + 28, ry, 17, sel ? Color{255, 240, 200, 255} : Color{200, 235, 210, 255});
+            snprintf(right, sizeof right, "%s   %s %.1f°  %s %.1f°", T(UI_SEARCH_GROUND), cc.lat >= 0 ? "N" : "S", std::fabs(cc.lat),
+                     cc.lon >= 0 ? "E" : "W", std::fabs(cc.lon));
+        } else {
+            const BodyDef& d = app.B[i].d;
+            bool active = app.B[i].active;
+            Color col = i == app.target ? Color{255, 220, 80, 255} : sel ? Color{255, 240, 200, 255}
+                      : active ? Color{215, 228, 245, 255} : Color{140, 150, 170, 255};
+            Txt(TR(d.jp, d.en), L.x + 28, ry, 17, col);
+            std::string kind = T(CLS[BodyClass(app, i)]);
+            if (BodyClass(app, i) == BC_MOON) kind = TR(app.B[d.parent].d.jp, app.B[d.parent].d.en) + std::string(" ") + kind;
+            if (active) snprintf(right, sizeof right, "%s   %s", kind.c_str(), FmtDist(std::max(0.0, SurfaceDist(app.B[i], ShipWorld(app)))).c_str());
+            else snprintf(right, sizeof right, T(UI_SEARCH_GOTO), FmtDate(ProbeVisitTime(app, i)).substr(0, 10).c_str());
+        }
+        Txt(right, L.x + L.w - 28 - TxtW(right, 14), ry + 2, 14, {150, 175, 210, 255});
     }
     if (n > SEARCH_ROWS) {
         char b[32];
@@ -440,10 +530,10 @@ static bool HandleSearchInput(App& app) {
         } else if (p.y >= L.rowY - 3) {
             int row = SearchFirstRow(app, n) + (int)std::floor((p.y - (L.rowY - 3)) / 26.0f);
             if (row >= 0 && row < n) {
-                if (row == app.searchSel && app.target == res[row]) SearchPick(app, res[row], true, false);
+                if (row == app.searchSel && (PickDirectly(app, res[row]) || app.target == res[row])) SearchPick(app, res[row], true, false);
                 else {
                     app.searchSel = row;
-                    app.target = res[row];
+                    if (!PickDirectly(app, res[row])) app.target = res[row];
                 }
             }
         }

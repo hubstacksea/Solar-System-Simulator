@@ -699,6 +699,20 @@ static void UpdateShip(App& app, double dt) {
     UpdateReferenceFrame(app);
 }
 
+// 地表近く（高度 100 km 以下）で止まっている時は、天体の自転と一緒に回る（地上から空を見る・着陸した時に地面が流れない）。
+// spin0 は時刻を進める前の自転角
+static void CoRotateWithGround(App& app, int ref, double spin0) {
+    Ship& s = app.ship;
+    if (app.physics || app.autopilot || app.warpT >= 0 || s.speed != 0 || s.thrusting || s.ref != ref) return;
+    const Body& b = app.B[ref];
+    if (b.d.kind == KIND_PROBE || SurfaceDist(b, ShipWorld(app)) > 100) return;
+    double a = b.spin - spin0;
+    if (a == 0) return;
+    double x = Dot(s.local, b.ex), y = Dot(s.local, b.pole), z = Dot(s.local, b.ez), c = std::cos(a), sn = std::sin(a);
+    s.local = b.ex * (x * c + z * sn) + b.pole * y + b.ez * (-x * sn + z * c);   // 自転軸のまわりに a だけ回す
+    s.q = QuaternionNormalize(QuaternionMultiply(QuaternionFromAxisAngle(ToF(b.pole), (float)a), s.q));
+}
+
 static void UpdateCamera(App& app) {
     Cam& c = app.cam;
     const Ship& s = app.ship;

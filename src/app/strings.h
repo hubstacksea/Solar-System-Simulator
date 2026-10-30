@@ -202,6 +202,11 @@
     X(SEARCH_MOONS, "衛星", "Moons") \
     X(SEARCH_SMALL, "小天体", "Small bodies") \
     X(SEARCH_PROBES, "探査機", "Spacecraft") \
+    X(SEARCH_CITIES, "地上", "On Earth") \
+    X(SEARCH_GROUND, "地上から空を見る", "sky from the ground") \
+    X(SEARCH_GOTO, "%s の名場面へ移る", "go to %s") \
+    X(SEARCH_JUMPED, "日時を %s に移して %s へ", "Moved to %s for %s") \
+    X(CITY_AT, "%s の地上（%s %.1f°  %s %.1f°）から空を見る", "Sky from %s (%s %.1f°  %s %.1f°)") \
     X(SEARCH_MOON, "の衛星", "moon") \
     X(SEARCH_NONE, "見つかりません", "No match") \
     X(SEARCH_KEYS, "↑↓: 選ぶ   Enter: ターゲット   Shift+Enter: ワープ   Tab: 分類   Esc: 閉じる", "Up/Down: select   Enter: target   Shift+Enter: warp   Tab: category   Esc: close") \

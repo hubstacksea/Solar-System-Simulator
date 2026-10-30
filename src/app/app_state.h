@@ -106,6 +106,9 @@ struct App {
     Texture2D milkyWay{};                 // 天の川の光（赤道座標の全天画像）
     std::vector<Texture2D> ringTex;       // 環の半径方向の不透明度（RingSets() と同じ並び）
     int locRingInfo = -1;
+    Shader beltShader{};                  // 小惑星などの粒を GPU で計算して描く
+    unsigned int beltVao = 0, beltVbo = 0;
+    int beltCount = 0;
     struct BodyMap { std::string name; int kind = 0; bool height = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
     std::vector<BodyMap> maps;            // 探査機の画像による地図（assets/maps.bin）
     int locMapInfo = -1, locMapInfo2 = -1;
@@ -135,9 +138,12 @@ static void UpdateReferenceFrame(App& app) {
     V3 w = ShipWorld(app);
     int best = B_SUN;
     double bestSoi = 1e301;
+    // 地表近く（高度 100 km 以下）にいる時は、上空を通る人工衛星や探査機に乗り移らない（地上で時間を進めた時など）
+    const Body& cur = app.B[app.ship.ref];
+    bool onGround = cur.d.kind != KIND_PROBE && SurfaceDist(cur, w) < 100;
     for (size_t i = 1; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        if (!b.active) continue;
+        if (!b.active || (onGround && b.d.kind == KIND_PROBE)) continue;
         if (Len(w - b.pos) < b.soi && b.soi < bestSoi) { best = (int)i; bestSoi = b.soi; }
     }
     if (best != app.ship.ref) {
