@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.10.0 (2026-10-30)
+
+- Rings of Uranus, Neptune and Jupiter from the radii, widths and optical depths in NASA fact sheets (Uranus's narrow rings turn with its tipped-over axis; Neptune's Adams ring has its arcs; opacity exaggerated because they are faint and dark)
+- Source split: the parts of `src/main.cpp` now live in `src/app/` (no change in behavior)
+
 ## 2.9.0 (2026-10-30)
 
 - Body info card (I key / touch "Info"): type, radius, mass, surface gravity, escape velocity, rotation and orbital periods, orbit, moons, current distances and spacecraft that flew by. Mouse inversion is now only in the settings

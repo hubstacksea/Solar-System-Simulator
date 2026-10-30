@@ -38,7 +38,7 @@ def main():
     work = sys.argv[1]
     os.makedirs(work, exist_ok=True)
     chars = set(chr(c) for c in range(32, 127)) | set("°²·×〜…（）「」、。・")
-    for f in glob.glob("src/*.cpp") + glob.glob("src/*.h") + ["assets/sky.txt"]:
+    for f in glob.glob("src/**/*.cpp", recursive=True) + glob.glob("src/**/*.h", recursive=True) + ["assets/sky.txt"]:
         chars |= set(open(f, encoding="utf-8").read())
     chars = {c for c in chars if c.isprintable()}
     font = TTFont(fetch(work, URL, "NotoSansJP-wght.ttf"))

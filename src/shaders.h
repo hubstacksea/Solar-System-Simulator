@@ -38,6 +38,8 @@ uniform vec3 color1;
 uniform vec3 color2;
 uniform vec3 atmColor;
 uniform vec4 params;       // x: 種別, y: 縞の数 / 環の基準半径km, z: シード, w: 大気の強さ
+uniform vec4 ringInfo;     // 環: x 不透明度の表の内側 km, y 表の幅 km, z 海王星のアダムズ環の弧の位置 rad（無ければ -1）,
+                           //     w 1 なら画素より細い環を濃くする（天王星・海王星）
 uniform vec4 detail;       // x: 表面模様の種類, y: 1 画素の大きさの係数, z: 時刻（日）, w: 雲の濃さ
 uniform mat4 matNormal;
 uniform sampler2D texture0;  // 地球・月: 地表の色 (Blue Marble / LROC)
@@ -409,12 +411,25 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     return h;
 }
 
-// 土星の環の密度（中心からの距離 km）
-// 土星の環を垂直に見た時の不透明度 1 - exp(-τ)（Voyager 2 PPS の掩蔽観測、assets/saturn_rings.png）
+// 環を垂直に見た時の不透明度 1 - exp(-τ)（中心からの距離 km）。土星は Voyager 2 PPS の掩蔽観測
+// （assets/saturn_rings.png）、ほかの惑星は起動時に作った表
 float ringDensity(float rkm) {
-    float u = (rkm - 72000.0) / 70500.0;
-    if (u <= 0.0 || u >= 1.0) return 0.0;
-    return texture(texture3, vec2(u, 0.5)).r;
+    // 範囲の判定より先に読む（分岐の中で読むと縮小画像の段階が決まらないことがある）
+    float u = (rkm - ringInfo.x) / ringInfo.y;
+    float v = texture(texture3, vec2(clamp(u, 0.0, 1.0), 0.5)).r;
+    return (u <= 0.0 || u >= 1.0) ? 0.0 : v;
+}
+
+// 海王星のアダムズ環の弧（勇気・自由・平等・友愛。弧の並びと長さは目安）。弧のある所で τ を何倍にするか
+float adamsArcs(vec3 q) {
+    float a = degrees(mod(atan(q.z, q.x) - ringInfo.z + 6.2831853, 6.2831853));
+    float k = 0.0;
+    k += 1.0 - smoothstep(1.0, 2.0, abs(a - 2.0));     // 勇気
+    k += 1.0 - smoothstep(2.0, 3.0, abs(a - 11.0));    // 自由
+    k += 1.0 - smoothstep(1.0, 2.0, abs(a - 19.0));    // 平等
+    k += 1.0 - smoothstep(0.5, 1.5, abs(a - 23.0));
+    k += 1.0 - smoothstep(4.0, 6.0, abs(a - 33.0));    // 友愛
+    return 1.0 + 30.0 * k;
 }
 
 // 他の天体の影（日食・月食・衛星の影）。太陽の視半径を考えて本影と半影を分ける
@@ -607,6 +622,12 @@ void main() {
             a *= 0.6; f *= 2.7;
         }
         d *= 0.85 + 0.3 * ringlets;
+        if (ringInfo.z > -0.5 && abs(rkm - 62932.0) < 60.0) d = 1.0 - exp(log(1.0 - min(d, 0.99)) * adamsArcs(fragObj));
+        if (ringInfo.w > 0.5) {
+            // 細い環は遠くで画素の中に薄まって消えるので、表の 1 目盛りより画素が大きいほど濃くする（写真で細い線に見えるように）
+            float spread = clamp(fwidth(rkm) / (ringInfo.y / 4096.0), 1.0, 64.0);
+            d = 1.0 - exp(log(1.0 - min(d, 0.99)) * pow(spread, 0.75));
+        }
         if (d <= 0.002) discard;
         // 斜めに見るほど光が環を通る距離が長くなり、不透明になる
         vec3 Nr = normalize(mat3(matNormal) * vec3(0.0, 1.0, 0.0));

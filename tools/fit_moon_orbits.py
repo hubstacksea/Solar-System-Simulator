@@ -76,7 +76,7 @@ def dot(a, b):
 
 
 def basis(m):
-    """solar_data.h / main.cpp と同じ軌道面の基底 (oN, oQ)。ICRF 赤道座標"""
+    """solar_data.h / src/app/bodies.h と同じ軌道面の基底 (oN, oQ)。ICRF 赤道座標"""
     _, _, parent, inc, node, pole, _ = m
     ref = equ(*(pole if pole else PLANET_POLE[parent]))
     e1 = norm(cross((0, 0, 1), ref))

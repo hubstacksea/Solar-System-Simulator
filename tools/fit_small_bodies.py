@@ -3,7 +3,7 @@
 # MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
 """準惑星・小惑星・彗星の軌道要素を JPL Horizons に合わせる（src/solar_data.h の SMALL_BODIES を出力する）。
 
-惑星と同じ形（J2000 の軌道要素と 1 世紀あたりの変化率、src/main.cpp の PlanetPos）で、
+惑星と同じ形（J2000 の軌道要素と 1 世紀あたりの変化率、src/app/bodies.h の PlanetPos）で、
 1980〜2070 年の Horizons の太陽中心の位置（黄道座標 J2000）に最小二乗で合わせる。
 誤差は太陽から見た方向の角度で測る（遠日点付近の大きな距離に引きずられないように）。
 惑星の摂動でずれる分を変化率が吸収するので、Horizons の J2000 の接触軌道要素をそのまま使うより正確になる。
