@@ -374,10 +374,19 @@ static void DrawCompass(const App& app) {
         east = V3(0, 0, -1);   // 黄経 90°
     }
     auto headingOf = [&](V3 v) { return std::atan2(Dot(v, east), Dot(v, north)) / DEG; };
-    double heading = headingOf(c.fwd);
+    // 真下・真上を向くと機首の水平成分がほぼ 0 になり、方位とロールが向きの小さな誤差で飛び回る（ワープ直後は天体の中心を
+    // 真下に見る）。機体の上の向きの水平成分をごくわずか（1e-4）足して、その向きでも方位が画面の上の向きに決まるようにする
+    double sp = std::max(-1.0, std::min(1.0, Dot(c.fwd, upRef)));
+    V3 hv = c.fwd - upRef * sp, hu = c.up - upRef * Dot(c.up, upRef);
+    hv = hv + hu * (sp < 0 ? 1e-4 : -1e-4);
+    double hl = Len(hv);
+    V3 hn = hl > 1e-12 ? hv * (1 / hl) : north;
+    double heading = headingOf(hn);
     if (heading < 0) heading += 360;
-    double pitch = std::asin(std::max(-1.0, std::min(1.0, Dot(c.fwd, upRef)))) / DEG;
-    double roll = std::atan2(-Dot(c.right, upRef), Dot(c.up, upRef)) / DEG;
+    double pitch = std::asin(sp) / DEG;
+    // ロール: 方位 hn・ピッチのまま横に傾けない時の上の向き U0 との角度
+    V3 U0 = upRef * std::sqrt(1 - sp * sp) - hn * sp;
+    double roll = std::atan2(-Dot(c.right, U0), Dot(c.up, U0)) / DEG;
 
     // 左右の情報パネル（幅 420 / 380）と重ならない幅にする
     float W = std::max(240.0f, std::min(560.0f, c.W - 2 * 432)), cx = c.W * 0.5f, y0 = 10, h = 34;

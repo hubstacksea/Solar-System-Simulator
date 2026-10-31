@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.19.1 (2026-11-01)
+
+- Fixed the heading and roll of the compass jumping around when looking straight down or up, as right after a warp
+
 ## 2.19.0 (2026-10-31)
 
 - Star epoch (settings): moves only the stars and the background sky up to 100,000 years into the past or future. The background stars move with the proper motions of the Hipparcos new reduction, so the Big Dipper and other constellations fall apart; the nearby stars move to that epoch too
