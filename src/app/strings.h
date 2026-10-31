@@ -53,7 +53,7 @@
     X(HELP1, "マウス / 矢印キー : 機首の上下・左右", "Mouse / Arrows : pitch & yaw")         \
     X(HELP2, "A / D : ヨー      Q / E : ロール", "A / D : yaw      Q / E : roll")            \
     X(HELP3, "W : 加速      S : 減速・後退      X : 停止", "W : accelerate   S : brake/reverse   X : stop") \
-    X(HELP4, "1〜7 / マウスホイール : エンジン切替", "1-7 / Mouse wheel : select engine")    \
+    X(HELP4, "1〜8 / マウスホイール : エンジン切替", "1-8 / Mouse wheel : select engine")    \
     X(HELP5, "Tab / Shift+Tab : ターゲット切替", "Tab / Shift+Tab : cycle target")           \
     X(HELP6, "F : 機首を向ける    T : 自動操縦    Shift+T : 自動操縦(エンジン自動選択)", "F : face target    T : autopilot    Shift+T : autopilot (auto engine)") \
     X(HELP7, "G : ターゲットへワープ    Shift+G : 地表付近へワープ    Shift+F : 基準系を自機に固定", "G : warp to target    Shift+G : warp to surface    Shift+F : fix the frame to the ship") \
@@ -151,6 +151,11 @@
     X(SET_FULLSCREEN, "フルスクリーン", "Fullscreen") \
     X(SET_TEXTSIZE, "文字の大きさ（計器・マーカーも）", "Text size (HUD and markers too)") \
     X(SET_MILKYWAY, "天の川", "Milky Way") \
+    X(SET_SKYEPOCH, "星空の年代（恒星だけ動かす）", "Star epoch (moves the stars only)") \
+    X(SKY_EPOCH_SHORT, "星空", "Stars") \
+    X(SET_EPOCH_NOW, "今の日時どおり", "As the date") \
+    X(SET_EPOCH_LATER, "%s 年後", "%s years later") \
+    X(SET_EPOCH_EARLIER, "%s 年前", "%s years earlier") \
     X(SET_TS0, "標準", "Normal") \
     X(SET_TS1, "大", "Large") \
     X(SET_TS2, "特大", "Extra large") \
@@ -213,8 +218,10 @@
     X(INFO_EXOPLANET, "系外惑星", "Exoplanet") \
     X(INFO_TEQ, "平衡温度（推定）", "Equilibrium temp. (est.)") \
     X(INFO_EST_ORBIT, "軌道の傾き・質量・半径・表面", "orbit tilt, mass, radius, surface") \
+    X(INFO_EST_PHASE, "公転の位置・軌道の傾き・質量・半径・表面", "orbital position, orbit tilt, mass, radius, surface") \
     X(INFO_EST_SURFACE, "半径・自転・表面", "radius, rotation, surface") \
     X(WARP_STAR, "恒星間ワープ", "Interstellar warp") \
+    X(LY_PER_S, "光年/秒", "ly/s") \
     X(WARP_REMAIN, "残り", "Remaining") \
     X(WARP_LIGHT_TIME, "光の速さなら", "at light speed") \
     X(TB_INFO, "情報", "Info") \
@@ -302,6 +309,7 @@
     X(MAP_TITLE, "全体図", "System map") \
     X(MAP_SUN, "太陽中心", "centered on the Sun") \
     X(MAP_NOTE, "真上（黄道の北）から見た図。距離は中心ほど広げた対数目盛り。半径 %s", "Seen from above (ecliptic north), logarithmic distances, radius %s") \
+    X(MAP_HZ, "ハビタブルゾーン", "Habitable zone") \
     X(MAP_STARS, "太陽のまわりの恒星", "stars around the Sun") \
     X(MAP_STARS_NOTE, "黄道の北から斜めに見た図。縦の線は黄道面からの高さ。半径 %s（拡大で太陽中心の図へ）", "Seen obliquely from ecliptic north; the stems show the height above the ecliptic. Radius %s (zoom in for the Solar System)") \
     X(MAP_KEYS, "クリック/タップ: ターゲット（もう一度でワープ）   Enter/G: ワープ   Shift: 地表へ   Tab: 次のターゲット   ↑↓/ホイール: 拡大縮小（縮小し切ると近くの恒星）   Space: 中心の切替   ←→: 時間の速さ   P: 停止   R: 逆再生   Esc/F3: 閉じる", "Click/tap: target (again: warp)   Enter/G: warp   Shift: to surface   Tab: next target   Up/Down/wheel: zoom (all the way out: nearby stars)   Space: switch center   Left/Right: time speed   P: pause   R: reverse   Esc/F3: close") \
@@ -319,7 +327,7 @@
     X(INTRO_A1, "太陽・惑星・衛星・小天体・探査機を実寸・実距離で配置した宇宙を、自由に飛び回れます。", "Fly freely through the Solar System with the Sun, planets, moons, small bodies and spacecraft at true size and distance.") \
     X(INTRO_B1, "天体の位置は PC の時刻で計算され、等倍ではいまこの瞬間の配置です。", "Positions are computed from your clock: at x1 you see the Solar System as it is right now.") \
     X(INTRO_T2, "機体を動かす", "Flying") \
-    X(INTRO_A2, "マウス・矢印キーで機首の向き、W で加速・S で減速、1〜7 でエンジン（自動車〜光速）を切り替えます。", "Mouse or arrow keys steer, W accelerates and S brakes, 1-7 switch engines (from a car up to the speed of light).") \
+    X(INTRO_A2, "マウス・矢印キーで機首の向き、W で加速・S で減速、1〜8 でエンジン（自動車〜光速、超光速）を切り替えます。", "Mouse or arrow keys steer, W accelerates and S brakes, 1-8 switch engines (from a car up to the speed of light, and a hyperdrive).") \
     X(INTRO_A2T, "画面をドラッグして機首の向き、右の「加速」「減速」で速度、下のエンジン欄をタップして切り替えます。", "Drag the view to steer, use Thrust and Brake on the right, and tap the engine bar at the bottom to switch engines.") \
     X(INTRO_B2, "宇宙はとても広いので、遠くへは光速でも何時間もかかります。そんな時はワープを使いましょう。", "Space is vast: even at light speed distant worlds take hours. That is what warp is for.") \
     X(INTRO_T3, "目的地へワープ", "Warping to a destination") \

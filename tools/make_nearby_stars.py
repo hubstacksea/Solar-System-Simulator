@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Solar System Voyager — Copyright (c) 2026 hubstacksea
 # MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
-"""太陽から 10 光年ほどまでの恒星 (src/nearby_stars.h) を作る。
+"""太陽から 10 光年ほどまでの恒星と、17 光年ほどまでの主な恒星 (src/nearby_stars.h) を作る。
 
 それぞれの系の重心について、元期の赤経・赤緯・年周視差・固有運動・視線速度を出力する（シミュレータはここから
 等速直線運動で位置を求める）。連星の各星は、重心に「相手を回る軌道（実視連星の軌道要素）× 質量の比」を足した所に置く。
@@ -19,12 +19,23 @@
   - WISE 0855−0714: Kirkpatrick et al. 2021 の年周視差・固有運動、位置は WISE の名前 (元期 約 2010.5)。
     質量・半径・自転周期は推定
   - 半径・表面温度・自転周期は各星の文献値（Kervella et al. 2017、Ribas et al. 2018 など）。分からない値は推定
+  - プロキオン A・B: Bond et al. 2015 (ApJ 813, 106) の軌道・質量。重心は Hipparcos 新整約の A（ほぼ A の光の中心）から求める
+  - くじら座タウ星、アルタイル、はくちょう座 61 番星 A・B: Hipparcos 新整約（明るすぎて Gaia DR3 の値がないか不確か）。
+    アルタイルは速い自転でつぶれた形（赤道半径 2.03、極半径 1.63 太陽半径。Monnier et al. 2007）
+  - インディアン座イプシロン星 A、エリダヌス座 40 番星 A・B・C、ティーガーデン星、ロス 128: Gaia DR3
+  - はくちょう座 61 番星 A・B（周期 約 700 年）とエリダヌス座 40 番星 B・C（約 230 年）は軌道運動を入れず、
+    それぞれの星の観測された位置・固有運動で別々に動かす
 
 惑星（NASA Exoplanet Archive の標準の値、2026 年 10 月に取得）:
   - プロキシマ b・d: Suárez Mascareño et al. 2025 (A&A 700, A11)
   - バーナード星 b〜e: Basant et al. 2025 (ApJL 982, L1)
   - ラランド 21185 b・c: Hurt et al. 2022 (AJ 163, 218)
   - エリダヌス座イプシロン星 b: Thompson et al. 2025 (AJ 170, 301)。視線速度と位置天文で傾斜角 40°・昇交点 186° が分かっている
+  - くじら座タウ星 g・h・f: Feng et al. 2017 (AJ 154, 135)
+  - ティーガーデン星 b・c・d: Dreizler et al. 2024 (A&A 684, A117)
+  - ロス 128 b: Bonfils et al. 2018 (A&A 613, A25)
+  - インディアン座イプシロン星 A b: Sanghi et al. 2026 (AJ 172, 115)。JWST の直接撮像で傾斜角と真の質量が分かっている（昇交点は入れていない）
+  アーカイブに近点通過の時刻がない惑星は、公転の位置（位相）が分からないので推定とする（基準の時刻を 2023 年 2 月 24 日に置く）
   視線速度だけで見つかった惑星は、軌道の傾き（下限の質量 m sin i しか分からない）と昇交点が分からないので、傾斜角 60°・
   昇交点 0° とし（同じ星の惑星は同じ面）、質量は m sin i / sin 60°、半径は質量から Chen & Kipping 2017 の関係で推定する。
   視線速度の近点引数は星のものなので、惑星の近点引数は 180° 足す。円軌道で近点引数のないものは、基準の時刻を合
@@ -48,6 +59,7 @@ ORBITS = {
     "sirius": (50.1284, 1994.5715, 0.59142, 7.4957, 136.336, 45.400, 149.161),
     "gj65": (26.284, 1972.115, 0.6185, 2.0584, 127.82, 145.79, 283.27),
     "luh16": (27.54, 2017.78, 0.343, 1.784, 100.26, 139.67, 308.1),
+    "procyon": (40.840, 1967.7807, 0.39785, 4.3075, 31.408, 97.130, 92.672),
 }
 
 
@@ -137,6 +149,18 @@ report("GJ 65 2016.0: model sep %.2f\" PA %.1f / Gaia sep %.2f\" PA %.1f" % (*se
 # ルーマン 16: Gaia DR3 の 2 パラメータ解（片方の星、J2016.0。2016 年の 2 つの星の間は 0.3 秒角ほど）を重心とみなす
 SYSTEMS["luh16"] = dict(ra=162.3084022291181, dec=-53.3180447534979, epoch=2016.0, plx=501.557, pmra=-2760.884, pmdec=354.753, rv=19.0)
 
+# プロキオン: Hipparcos 新整約の A（J1991.25。B は 11 等で A の光の中心はほぼ A）に軌道の分を足して重心に
+mPA, mPB = 1.478, 0.592
+fPB = mPB / (mPA + mPB)
+hipPA = dict(ra=114.82724201808722, dec=5.227507577481227, plx=284.56, pmra=-714.59, pmdec=-1036.8)
+n, e, _ = rel_orbit(ORBITS["procyon"], 1991.25)
+pra, pdec = offset(hipPA["ra"], hipPA["dec"], fPB * n, fPB * e)
+dn, de, _ = rel_rate(ORBITS["procyon"], 1991.25)
+SYSTEMS["procyon"] = dict(ra=pra, dec=pdec, epoch=1991.25, plx=hipPA["plx"], pmra=hipPA["pmra"] + fPB * de * 1000,
+                          pmdec=hipPA["pmdec"] + fPB * dn * 1000, rv=-3.2)
+for y in (1995.0, 2015.0):
+    report("Procyon AB %.1f: model sep %.2f\" PA %.1f" % (y, *sep_pa(*rel_orbit(ORBITS["procyon"], y)[:2])))
+
 # ---------------------------------------------------------------- 1 つの星
 GAIA = {  # Gaia DR3: ra, dec, 年周視差, μα*, μδ, 視線速度（なければ文献値）
     "proxima": (217.39232147200883, -62.67607511676666, 768.0665391873573, -3781.741008265163, 769.4650146478623, -22.20),
@@ -146,14 +170,31 @@ GAIA = {  # Gaia DR3: ra, dec, 年周視差, μα*, μδ, 視線速度（なけ�
     "ross154": (282.4587890175222, -23.83709744872712, 336.0266016683708, 639.367850335873, -193.95792507116096, -11.12),
     "epseri": (53.22829341517546, -9.458168216292322, 310.5772928005821, -974.758145249517, 20.875840089774208, 16.38),
 }
+GAIA.update({
+    "epsind": (330.8724078795965, -56.79725466122902, 274.8431415216296, 3966.6605387484133, -2536.1919868044724, -40.43),
+    "eri40a": (63.80795300602079, -7.6680778150199815, 199.6080124181338, -2240.0849838923477, -3421.8086201704023, -42.47),
+    "eri40b": (63.830787524383176, -7.672952135407352, 199.6910732720413, -2236.168749069785, -3338.9552892508973, -21.4),
+    "eri40c": (63.82965602087436, -7.670903382610344, 199.45161859738874, -2247.1829426127065, -3409.8237087898747, -44.06),
+    "teegarden": (43.26964247679057, 16.86437381897744, 260.98844068047276, 3429.0828268077694, -3805.54112273733, 68.4),
+    "ross128": (176.93768799004127, 0.7991199702364985, 296.3053079139394, 607.2990766811824, -1223.0283548879977, -31.0),
+})
 for k, (ra, dec, plx, pmra, pmdec, rv) in GAIA.items():
     SYSTEMS[k] = dict(ra=ra, dec=dec, epoch=2016.0, plx=plx, pmra=pmra, pmdec=pmdec, rv=rv)
+HIP2 = {  # Hipparcos 新整約 (J1991.25): ra, dec, 年周視差, μα*, μδ, 視線速度（文献値）
+    "tauceti": (26.02136458671327, -15.939555724635493, 273.96, -1721.05, 854.16, -16.68),
+    "altair": (297.69450818881256, 8.867384731170645, 194.95, 536.23, 385.29, -26.1),
+    "cyg61a": (316.7118113721937, 38.74149513207132, 286.82, 4168.31, 3269.2, -65.7),
+    "cyg61b": (316.71746848817264, 38.73441382636016, 285.88, 4106.9, 3144.68, -64.6),
+}
+for k, (ra, dec, plx, pmra, pmdec, rv) in HIP2.items():
+    SYSTEMS[k] = dict(ra=ra, dec=dec, epoch=1991.25, plx=plx, pmra=pmra, pmdec=pmdec, rv=rv)
 # WISE 0855−0714（Gaia にはない）: 位置は WISE の名前 J085510.83−071442.5、視線速度は分からないので 0
 SYSTEMS["wise0855"] = dict(ra=133.795125, dec=-7.2451389, epoch=2010.5, plx=439.0, pmra=-8123.7, pmdec=673.2, rv=0.0)
 
 # ---------------------------------------------------------------- 星
 # 系, 連星の何番目 (0: 単独, 1: 主星, 2: 伴星), 日本語名, 英語名, 種類 (0: 恒星, 1: 白色矮星, 2: 褐色矮星), スペクトル型,
-# 質量 [太陽], 半径 [太陽], 表面温度 [K], 実視等級 V（太陽から）, 色指数 B−V, 自転周期 [日], 推定の値があるか
+# 質量 [太陽], 半径 [太陽], 表面温度 [K], 実視等級 V（太陽から）, 色指数 B−V, 自転周期 [日], 推定の値があるか,
+# 扁平率（省略は 0）
 STARS = [
     ("acen", 1, "ケンタウルス座アルファ星 A", "Alpha Centauri A", 0, "G2V", 1.0788, 1.2175, 5790, 0.01, 0.71, 22.0, False),
     ("acen", 2, "ケンタウルス座アルファ星 B", "Alpha Centauri B", 0, "K1V", 0.9092, 0.8591, 5260, 1.33, 0.88, 36.7, False),
@@ -170,6 +211,19 @@ STARS = [
     ("gj65", 2, "くじら座 UV 星", "UV Ceti", 0, "M6V", 0.1195, 0.159, 2650, 12.99, 1.87, 0.2276, False),
     ("ross154", 0, "ロス 154", "Ross 154", 0, "M3.5Ve", 0.17, 0.24, 3250, 10.44, 1.50, 2.85, False),
     ("epseri", 0, "エリダヌス座イプシロン星", "Epsilon Eridani", 0, "K2V", 0.82, 0.735, 5084, 3.73, 0.88, 11.4, False),
+    # 10〜17 光年ほどの主な恒星
+    ("procyon", 1, "プロキオン A", "Procyon A", 0, "F5IV-V", 1.478, 2.048, 6530, 0.37, 0.42, 23.0, False),
+    ("procyon", 2, "プロキオン B", "Procyon B", 1, "DQZ", 0.592, 0.01234, 7740, 10.94, 0.30, 1.0, True),
+    ("cyg61a", 0, "はくちょう座 61 番星 A", "61 Cygni A", 0, "K5V", 0.70, 0.665, 4526, 5.21, 1.07, 35.4, False),
+    ("cyg61b", 0, "はくちょう座 61 番星 B", "61 Cygni B", 0, "K7V", 0.63, 0.595, 4077, 6.03, 1.31, 37.9, False),
+    ("ross128", 0, "ロス 128", "Ross 128", 0, "M4V", 0.168, 0.197, 3192, 11.13, 1.76, 121.0, False),
+    ("tauceti", 0, "くじら座タウ星", "Tau Ceti", 0, "G8V", 0.783, 0.793, 5344, 3.50, 0.72, 34.0, False),
+    ("epsind", 0, "インディアン座イプシロン星 A", "Epsilon Indi A", 0, "K5V", 0.76, 0.711, 4649, 4.69, 1.06, 35.7, False),
+    ("teegarden", 0, "ティーガーデン星", "Teegarden's Star", 0, "M7.0V", 0.097, 0.120, 2904, 15.13, 2.10, 97.0, False),
+    ("eri40a", 0, "エリダヌス座 40 番星 A", "40 Eridani A", 0, "K0.5V", 0.78, 0.81, 5126, 4.43, 0.82, 43.0, False),
+    ("eri40b", 0, "エリダヌス座 40 番星 B", "40 Eridani B", 1, "DA2.9", 0.573, 0.0136, 17200, 9.52, 0.04, 1.0, True),
+    ("eri40c", 0, "エリダヌス座 40 番星 C", "40 Eridani C", 0, "M4.5Ve", 0.204, 0.31, 3100, 11.24, 1.67, 1.0, True),
+    ("altair", 0, "アルタイル", "Altair", 0, "A7V", 1.86, 1.84, 7550, 0.76, 0.22, 0.3237, False, 0.197),
 ]
 
 
@@ -187,7 +241,16 @@ PLANETS = [
     ("Lalande 21185", "ラランド 21185 b", "Lalande 21185 b", 12.9394, 0.07879, 0.063, -30.0, 2456307.8, 2.69, False, None, None, False),
     ("Lalande 21185", "ラランド 21185 c", "Lalande 21185 c", 2946.0, 2.94, 0.132, 63.0, 2457250.0, 13.6, False, None, None, False),
     ("Epsilon Eridani", "エリダヌス座イプシロン星 b", "Epsilon Eridani b", 2680.0, 3.53, 0.06, 268.0, 2458017.5, 317.83, True, 40.0, 186.0, True),
+    ("Ross 128", "ロス 128 b", "Ross 128 b", 9.8658, 0.0496, 0.116, None, None, 1.40, False, None, None, False),
+    ("Tau Ceti", "くじら座タウ星 g", "Tau Ceti g", 20.0, 0.133, 0.06, 35.341, None, 1.75, False, None, None, False),
+    ("Tau Ceti", "くじら座タウ星 h", "Tau Ceti h", 49.41, 0.243, 0.23, 7.45, None, 1.83, False, None, None, False),
+    ("Tau Ceti", "くじら座タウ星 f", "Tau Ceti f", 636.13, 1.334, 0.16, 119.75, None, 3.93, False, None, None, False),
+    ("Epsilon Indi A", "インディアン座イプシロン星 A b", "Epsilon Indi A b", 25450.0, 15.76, 0.25, -28.13, 2441420.76, 2065.9, True, 102.18, None, True),
+    ("Teegarden's Star", "ティーガーデン星 b", "Teegarden's Star b", 4.90634, 0.0259, 0.03, 338.0, None, 1.16, False, None, None, False),
+    ("Teegarden's Star", "ティーガーデン星 c", "Teegarden's Star c", 11.416, 0.0455, 0.04, 301.0, None, 1.05, False, None, None, False),
+    ("Teegarden's Star", "ティーガーデン星 d", "Teegarden's Star d", 26.13, 0.0791, 0.07, 345.0, None, 0.82, False, None, None, False),
 ]
+PHASE_UNKNOWN_JD = 2460000.0   # 近点通過の時刻が分からない惑星の基準の時刻
 ASSUMED_I = 60.0
 
 
@@ -205,16 +268,18 @@ def planet_rows():
     for host, jp, en, P, a, e, w, tp, m, true_mass, inc, node, wplanet in PLANETS:
         star = [x for x in STARS if x[3] == host][0]
         teff, rstar = star[8], star[7]
-        known = inc is not None
-        i = inc if known else ASSUMED_I
+        known = inc is not None and node is not None
+        i = inc if inc is not None else ASSUMED_I
+        phase = tp is not None
+        tp = tp if phase else PHASE_UNKNOWN_JD
         mass = m if true_mass else m / math.sin(i * D)
         wp = (w if wplanet else (90.0 if w is None else w) + 180.0) % 360.0
         rad = planet_radius(mass) * 6371.0
         teq = teff * math.sqrt(rstar * 695700.0 / (2 * a * 1.495978707e8)) * 0.7 ** 0.25
         kind = 0 if mass < 5 else 2 if mass > 100 else 1
-        rows.append('    {"%s", "%s", "%s", %d, %.6f, %.6f, %.4f, %.2f, %.2f, %.2f, %.4f, %.5g, %.0f, %.0f, %s},'
+        rows.append('    {"%s", "%s", "%s", %d, %.6f, %.6f, %.4f, %.2f, %.2f, %.2f, %.4f, %.5g, %.0f, %.0f, %s, %s},'
                     % (jp, en, host, kind, P, a, e, i, node if node is not None else 0.0, wp, tp - JD2000, mass, rad, teq,
-                       "true" if known else "false"))
+                       "true" if known else "false", "true" if phase else "false"))
         report("%-26s %6.2f d  %.4f AU  %.3g Earth masses  R %.0f km  Teq %.0f K" % (en, P, a, mass, rad, teq))
     return rows
 
@@ -222,7 +287,8 @@ def planet_rows():
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "src/nearby_stars.h"
     rows = []
-    for sysk, comp, jp, en, kind, sp, m, r, teff, V, bv, rot, est in STARS:
+    for sysk, comp, jp, en, kind, sp, m, r, teff, V, bv, rot, est, *rest in STARS:
+        flat = rest[0] if rest else 0.0
         s = SYSTEMS[sysk]
         el, k = ORBITS.get(sysk), 0.0
         if comp:
@@ -230,13 +296,13 @@ def main():
             k = -other / (m + other) if comp == 1 else other / (m + other)
         absV = V + 5 + 5 * math.log10(s["plx"] / 1000) if V < 90 else 99.0
         orbit = "%.4f, %.4f, %.5f, %.4f, %.3f, %.3f, %.3f, %.5f" % (*el, k) if el else "0, 0, 0, 0, 0, 0, 0, 0"
-        rows.append('    {"%s", "%s", %d, "%s", %d, %.9f, %.9f, %.3f, %.4f, %.4f, %.4f, %.3f,\n     %s,\n     %.5g, %.5g, %.0f, %.2f, %.2f, %.4g, %s},'
+        rows.append('    {"%s", "%s", %d, "%s", %d, %.9f, %.9f, %.3f, %.4f, %.4f, %.4f, %.3f,\n     %s,\n     %.5g, %.5g, %.0f, %.2f, %.2f, %.4g, %s, %.3f},'
                     % (jp, en, kind, sp, list(SYSTEMS).index(sysk), s["ra"], s["dec"], s["epoch"], s["plx"], s["pmra"], s["pmdec"], s["rv"],
-                       orbit, m, r, teff, absV, bv, rot, "true" if est else "false"))
+                       orbit, m, r, teff, absV, bv, rot, "true" if est else "false", flat))
         report("%-28s %6.3f ly" % (en, 3.26156 / (s["plx"] / 1000)))
     text = """// Solar System Voyager — Copyright (c) 2026 hubstacksea
 // MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
-// 太陽から 10 光年ほどまでの恒星（tools/make_nearby_stars.py で作った。データの出典はそちらを参照）
+// 太陽から 10 光年ほどまでの恒星と、17 光年ほどまでの主な恒星（tools/make_nearby_stars.py で作った。データの出典はそちらを参照）
 #pragma once
 
 struct NearbyStar {
@@ -254,6 +320,7 @@ struct NearbyStar {
     double absMag, bv;          // 絶対等級 V（99: 可視光ではほぼ見えない）, 色指数 B−V
     double rotPeriod;           // 自転周期 [日]
     bool estimated;             // 質量・半径・自転周期などに推定の値を含む
+    double flattening;          // 扁平率（速く自転してつぶれた星）
 };
 
 static const NearbyStar NEARBY_STARS[] = {
@@ -261,7 +328,7 @@ static const NearbyStar NEARBY_STARS[] = {
 };
 
 // 惑星。軌道は恒星から見た相対位置で、恒星の連星の軌道と同じ形の要素（天球の北・東・奥の向き）。
-// orbitKnown が false の惑星は、傾斜角・昇交点（と質量・半径）が推定
+// orbitKnown が false の惑星は、傾斜角・昇交点（と質量・半径）が推定。phaseKnown が false の惑星は公転の位置（位相）も推定
 struct NearbyPlanet {
     const char* jp;
     const char* en;
@@ -271,7 +338,7 @@ struct NearbyPlanet {
     double i, node, peri;  // 傾斜角・昇交点・惑星の近点引数 [deg]
     double tp;           // 近点通過の時刻 [J2000 からの日数]
     double mass, radius, teq;  // [地球], [km], 平衡温度 [K]
-    bool orbitKnown;
+    bool orbitKnown, phaseKnown;
 };
 
 static const NearbyPlanet NEARBY_PLANETS[] = {

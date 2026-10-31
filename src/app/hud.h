@@ -444,7 +444,8 @@ static void DrawSpeedometer(const App& app) {
     const char* unit;
     if (e.dialUnit == 0) { unitScale = 3600; unit = "km/h"; }
     else if (e.dialUnit == 1) { unitScale = 1; unit = "km/s"; }
-    else { unitScale = 1.0 / C_KMS; unit = "c"; }
+    else if (e.dialUnit == 2) { unitScale = 1.0 / C_KMS; unit = "c"; }
+    else { unitScale = 1.0 / LY_KM; unit = T(UI_LY_PER_S); }
     double vmax = e.vmax / 1000.0;
     double vmaxU = vmax * unitScale;
 
@@ -457,7 +458,7 @@ static void DrawSpeedometer(const App& app) {
         if (i % 2 == 0) {
             char b[32];
             double v = vmaxU * u;
-            if (e.dialUnit == 2) snprintf(b, sizeof b, "%.1f", v);
+            if (e.dialUnit >= 2) snprintf(b, sizeof b, "%.1f", v);
             else if (v >= 10000) snprintf(b, sizeof b, "%.0fk", v / 1000);
             else snprintf(b, sizeof b, "%.0f", v);
             float fs = 13;
@@ -478,6 +479,7 @@ static void DrawSpeedometer(const App& app) {
     char b[64];
     double v = s.speed * unitScale;
     if (e.dialUnit == 2) snprintf(b, sizeof b, "%.5f", v);
+    else if (e.dialUnit == 3) snprintf(b, sizeof b, "%.4f", v);
     else snprintf(b, sizeof b, "%s", Grouped(v, std::fabs(v) < 100 ? 1 : 0).c_str());
     TxtC(b, ctr.x, ctr.y + R * 0.28f, 24, WHITE);
     TxtC(unit, ctr.x, ctr.y + R * 0.28f + 24, 14, {170, 190, 215, 255});
@@ -778,7 +780,7 @@ static std::vector<InfoLine> InfoLines(const App& app) {
             L.push_back({T(UI_INFO_ECC), v});
             snprintf(v, sizeof v, "%.0f K", np.teq);
             L.push_back({T(UI_INFO_TEQ), v});
-            L.push_back({T(UI_INFO_ESTIMATED), T(np.orbitKnown ? UI_INFO_EST_SURFACE : UI_INFO_EST_ORBIT)});
+            L.push_back({T(UI_INFO_ESTIMATED), T(!np.phaseKnown ? UI_INFO_EST_PHASE : np.orbitKnown ? UI_INFO_EST_SURFACE : UI_INFO_EST_ORBIT)});
         } else if (d.parent > 0 && d.moonPeriod > 0) {
             L.push_back({T(UI_INFO_YEAR), FmtDuration(std::fabs(d.moonPeriod) * 86400)});
             snprintf(v, sizeof v, "%s km", Grouped(d.moonA, 0).c_str());
@@ -1202,7 +1204,11 @@ static void DrawHUD(App& app) {
              TR(app.B[nearest].d.jp, app.B[nearest].d.en), T(UI_ALT), FmtDist(std::max(0.0, nearestAlt)).c_str());
     Txt(b, x, y, fs, {200, 220, 240, 255}); y += lh;
     snprintf(b, sizeof b, "%s %s", T(UI_DATE), FmtDate(app.tDays).c_str());
-    Txt(b, x, y, fs, {200, 220, 240, 255}); y += lh;
+    if (g_skyEpochYears != 0) {   // 星空の年代を変えている時は、日時の横に出す
+        size_t n = strlen(b);
+        snprintf(b + n, sizeof b - n, "   (%s: %s)", T(UI_SKY_EPOCH_SHORT), SkyEpochText().c_str());
+    }
+    Txt(b, x, y, fs, g_skyEpochYears != 0 ? Color{255, 210, 140, 255} : Color{200, 220, 240, 255}); y += lh;
     std::string ts = app.paused ? T(UI_PAUSED) : (app.timeIdx == 0 ? std::string("x1 (") + T(UI_REALTIME) + ")" : TIME_SCALE_NAMES[app.timeIdx]);
     snprintf(b, sizeof b, "%s %s", T(UI_TSCALE), ts.c_str());
     Txt(b, x, y, fs, app.paused ? Color{255, 160, 80, 255} : (app.timeIdx == 0 ? Color{140, 230, 160, 255} : Color{255, 210, 120, 255}));

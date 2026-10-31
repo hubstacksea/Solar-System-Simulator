@@ -196,6 +196,8 @@ struct Options {
     float dpi = 0;               // 画面の表示倍率を指定（確認用）
     bool map = false;            // 全体図を開いた状態で始める（確認用）
     bool mapStars = false;
+    double skyEpoch = 0;                // 星空の年代（年。確認用）
+    double lookRa = NAN, lookDec = NAN; // 機首を赤経・赤緯 deg の方へ向ける（確認用）
     bool noMsaa = false;         // アンチエイリアス (MSAA) なしで始める（MSAA を使えない環境の確認用）
     bool checkAssets = false;    // データが読めるかを確かめて終了（ウィンドウを作れない CI の確認用）
     bool info = false;           // 天体の情報を開いて始める（確認用）
@@ -251,6 +253,8 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--dpi") o.dpi = (float)atof(next());
         else if (a == "--map") o.map = true;
         else if (a == "--map-stars") o.map = o.mapStars = true;
+        else if (a == "--sky-epoch") o.skyEpoch = atof(next());
+        else if (a == "--look") { o.lookRa = atof(next()); o.lookDec = atof(next()); }
         else if (a == "--no-msaa") o.noMsaa = true;
         else if (a == "--check-assets") o.checkAssets = true;
         else if (a == "--info") o.info = true;

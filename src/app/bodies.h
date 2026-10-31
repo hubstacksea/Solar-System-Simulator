@@ -9,7 +9,7 @@ struct Engine {
     const char* en;
     double accel;  // m/s^2
     double vmax;   // m/s
-    int dialUnit;  // 0: km/h, 1: km/s, 2: c
+    int dialUnit;  // 0: km/h, 1: km/s, 2: c, 3: 光年/秒
     Color flame;
 };
 static const Engine ENGINES[] = {
@@ -20,6 +20,8 @@ static const Engine ENGINES[] = {
     {"ジェット機", "Jet", 15.0, 850.0, 0, {120, 180, 255, 255}},
     {"ロケットエンジン", "Rocket", 30.0, 50000.0, 1, {255, 120, 40, 255}},
     {"光速", "Light speed", 3.0e7, 299792458.0, 2, {180, 120, 255, 255}},
+    // 遊び用の架空のエンジン: 1 秒に 1 光年（光の約 3,000 万倍）。約 2 秒で最高速度に
+    {"超光速", "Hyperdrive", 9460730472580800.0 / 2, 9460730472580800.0, 3, {120, 220, 255, 255}},
 };
 static const int ENGINE_COUNT = sizeof(ENGINES) / sizeof(ENGINES[0]);
 
@@ -183,7 +185,13 @@ static void StarBasis(const NearbyStar& s, V3* u, V3* n, V3* e) {
 }
 static double StarDistance(const NearbyStar& s) { return PC_KM * 1000.0 / s.plx; }
 
+// 星空の年代（設定）: 恒星と背景の星だけをこの年数だけ先（負なら前）の位置に動かす。惑星などの日時は変えない
+static double g_skyEpochYears = 0;
+static const double SKY_EPOCHS[] = {-100000, -50000, -20000, -10000, -5000, -1000, 0, 1000, 5000, 10000, 20000, 50000, 100000};
+static const int SKY_EPOCH_COUNT = sizeof SKY_EPOCHS / sizeof SKY_EPOCHS[0];
+
 static V3 StarBarycenter(const NearbyStar& s, double tDays) {
+    tDays += g_skyEpochYears * 365.25;
     V3 u, n, e;
     StarBasis(s, &u, &n, &e);
     double dist = StarDistance(s);
@@ -235,17 +243,27 @@ static double StarApparentMag(const BodyDef& d, double distKm) {
 }
 
 // 表面の描き方: 0 太陽型（粒状斑と低緯度の黒点）, 1 赤色矮星（大きな黒点が高緯度まで）, 2 高温の星（模様が淡い）,
-// 3 白色矮星（なめらかで青白い）
+// 3 白色矮星（なめらかで青白い）, 4 褐色矮星（雲の帯とまだらな雲）
 static int StarSurface(const BodyDef& d) {
     if (d.star < 0) return 0;
     const NearbyStar& ns = NEARBY_STARS[d.star];
-    return ns.kind == 1 ? 3 : ns.teff > 7500 ? 2 : ns.kind == 0 && ns.teff < 4000 ? 1 : 0;
+    return ns.kind == 1 ? 3 : ns.kind == 2 ? 4 : ns.teff > 7500 ? 2 : ns.kind == 0 && ns.teff < 4000 ? 1 : 0;
 }
+
+// 恒星の明るさ（太陽 = 1）: 半径² × (表面温度 / 5772 K)⁴
+static double StarLuminosity(const BodyDef& d) {
+    if (d.star < 0) return 1;
+    const NearbyStar& ns = NEARBY_STARS[d.star];
+    return ns.radius * ns.radius * std::pow(ns.teff / 5772.0, 4);
+}
+// ハビタブルゾーン（水が液体でいられる範囲）の内側・外側の半径 km。Kopparapu et al. (2013) の保守的な範囲の目安
+static double HabitableInner(const BodyDef& d) { return std::sqrt(StarLuminosity(d) / 1.1) * AU_KM; }
+static double HabitableOuter(const BodyDef& d) { return std::sqrt(StarLuminosity(d) / 0.36) * AU_KM; }
 
 // フレア星（ときどき数分だけ明るくなる赤色矮星）。くじら座 UV 星は 1 分たらずで何倍にも明るくなる
 static bool IsFlareStar(const BodyDef& d) {
     if (d.star < 0) return false;
-    for (const char* n : {"Proxima Centauri", "UV Ceti", "BL Ceti", "Wolf 359", "Ross 154"})
+    for (const char* n : {"Proxima Centauri", "UV Ceti", "BL Ceti", "Wolf 359", "Ross 154", "40 Eridani C"})
         if (std::strcmp(NEARBY_STARS[d.star].en, n) == 0) return true;
     return false;
 }

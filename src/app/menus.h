@@ -4,13 +4,22 @@
 // main.cpp の一部で、main.cpp が決まった順に読み込む（単体ではコンパイルしない）
 
 // ---------------------------------------------------------------- 設定（F10 キー。それぞれのキー操作も同じ関数を使う）
-enum SettingItem { SET_LANG, SET_TEXTSIZE, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_MILKYWAY, SET_ORBITS, SET_ASTEROIDS,
+enum SettingItem { SET_LANG, SET_TEXTSIZE, SET_QUALITY, SET_SOUND, SET_MUSIC, SET_SKY, SET_MILKYWAY, SET_SKYEPOCH, SET_ORBITS, SET_ASTEROIDS,
                    SET_MARKERS, SET_INVERT, SET_PHYSICS, SET_FRAME, SET_RESUME, SET_FULLSCREEN, SET_COUNT };
 static const float SET_ROW_H = 26;   // 設定画面の 1 行の高さ
 
 static void SetFrameLock(App& app, bool on, bool toast);
 
 // 項目を dir（+1 / -1）の向きに変える。変えたらすぐ保存し、知らせを出すかは toast で選ぶ
+static std::string SettingValue(const App& app, int item);
+// 星空の年代の表示（「今の日時どおり」「10,000 年後」など）
+static std::string SkyEpochText() {
+    if (g_skyEpochYears == 0) return T(UI_SET_EPOCH_NOW);
+    char b[96];
+    snprintf(b, sizeof b, T(g_skyEpochYears > 0 ? UI_SET_EPOCH_LATER : UI_SET_EPOCH_EARLIER), Grouped(std::fabs(g_skyEpochYears), 0).c_str());
+    return b;
+}
+
 static void ChangeSetting(App& app, int item, int dir, bool toast) {
     auto onoff = [](bool v) { return v ? "1" : "0"; };
     switch (item) {
@@ -76,6 +85,14 @@ static void ChangeSetting(App& app, int item, int dir, bool toast) {
             SetSetting("physics", onoff(app.physics));
             if (toast) Toast(app, T(app.physics ? UI_PHYS_ON : UI_PHYS_OFF));
             break;
+        case SET_SKYEPOCH: {   // その時だけの切り替えなので保存しない
+            int k = 0;
+            while (k < SKY_EPOCH_COUNT - 1 && SKY_EPOCHS[k] < g_skyEpochYears) k++;
+            k = std::max(0, std::min(SKY_EPOCH_COUNT - 1, k + dir));
+            g_skyEpochYears = SKY_EPOCHS[k];
+            if (toast) Toast(app, std::string(T(UI_SET_SKYEPOCH)) + ": " + SettingValue(app, SET_SKYEPOCH));
+            break;
+        }
         case SET_FRAME:   // その時だけの切り替えなので保存しない
             SetFrameLock(app, !app.frameLock, toast);
             break;
@@ -106,6 +123,7 @@ static std::string SettingValue(const App& app, int item) {
         case SET_INVERT: return onoff(app.invertY);
         case SET_PHYSICS: return T(app.physics ? UI_SET_GRAVITY : UI_SET_ARCADE);
         case SET_FRAME: return T(app.frameLock ? UI_FRAME_SHIP : UI_SET_FRAME_AUTO);
+        case SET_SKYEPOCH: return SkyEpochText();
         case SET_RESUME: return T((UiId)(UI_SET_RES0 + app.resumeMode));
         default: return onoff(IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE));
     }
@@ -573,8 +591,9 @@ static bool IsProbeLike(const Body& b) { return b.d.kind == KIND_PROBE; }
 static double MapDefaultRange(const App& app, int center) {
     if (center == 0) return 40 * AU_KM;
     double r = app.B[center].d.radius * 40;
-    if (app.B[center].d.star >= 0) {   // 連星は相手の遠点まで
+    if (app.B[center].d.star >= 0) {   // 連星は相手の遠点まで。ハビタブルゾーンも入れる
         const NearbyStar& ns = NEARBY_STARS[app.B[center].d.star];
+        if (ns.kind != 2) r = std::max(r, HabitableOuter(app.B[center].d) * 1.3);
         if (ns.P > 0) r = std::max(r, ns.a * 1000.0 / ns.plx * (1 + ns.e) * AU_KM * 1.4);
     }
     for (const Body& b : app.B)
@@ -582,14 +601,15 @@ static double MapDefaultRange(const App& app, int center) {
     return r;
 }
 
-// 太陽のまわりの恒星の図: 半径 12 光年、等倍の目盛りで、黄道面から 50° の高さから見下ろす（縦の線で黄道面からの高さを示す）
-static const double MAP_STARS_RANGE = 12 * LY_KM, MAP_STARS_TILT = 50 * DEG;
+// 太陽のまわりの恒星の図: 半径 18 光年、等倍の目盛りで、黄道面から 50° の高さから見下ろす（縦の線で黄道面からの高さを示す）
+static const double MAP_STARS_RANGE = 18 * LY_KM, MAP_STARS_TILT = 50 * DEG;
 
 struct MapView {
     float cx, cy, R;   // 画面上の中心と半径
     double range;      // 半径に当たる距離 km
     V3 origin;         // 中心の天体の位置
     bool stars = false;   // 太陽のまわりの恒星の図
+    bool trueDist = false;   // 近くの恒星が中心: 中心からの距離は投影で縮めず実際の距離に（傾いた軌道の惑星もハビタブルゾーンと比べられる）
     // 太陽中心の位置 → 画面。黄道面に投影して、距離を対数目盛りに（恒星の図は等倍で、斜めから見る）
     Vector2 Project(V3 w, bool* inside = nullptr) const {
         V3 r = w - origin;
@@ -598,9 +618,9 @@ struct MapView {
             if (inside) *inside = std::sqrt(r.x * r.x + r.z * r.z) <= range;
             return {(float)(cx + r.x * k), (float)(cy + (r.z * std::sin(MAP_STARS_TILT) - r.y * std::cos(MAP_STARS_TILT)) * k)};
         }
-        double d = std::sqrt(r.x * r.x + r.z * r.z);
+        double d = std::sqrt(r.x * r.x + r.z * r.z), dt = trueDist ? Len(r) : d;
         double r0 = range / 40;
-        double f = std::log1p(d / r0) / std::log1p(range / r0);
+        double f = std::log1p(dt / r0) / std::log1p(range / r0);
         if (inside) *inside = f <= 1.0;
         f = std::min(f, 1.0);
         double k = d > 0 ? f * R / d : 0;
@@ -615,6 +635,7 @@ static MapView GetMapView(const App& app, const Cam& c) {
     v.R = std::min(c.W * 0.5f - 40, c.H * 0.5f - 64);
     v.range = app.mapRange > 0 ? app.mapRange : MapDefaultRange(app, app.mapCenter);
     v.origin = app.B[app.mapCenter].pos;
+    v.trueDist = app.B[app.mapCenter].d.star >= 0;
     if (app.mapStars) {
         v.stars = true;
         v.range = MAP_STARS_RANGE;
@@ -742,13 +763,13 @@ static void MapPick(App& app, Vector2 p, bool land) {
 // 恒星の図の目盛り（黄道面の 2 光年ごとの円と春分点の方向）と、恒星から黄道面へ下ろした縦の線
 static void DrawStarMapGrid(const App& app, const MapView& v) {
     const int N = 96;
-    for (int ly = 2; ly <= 12; ly += 2) {
+    for (int ly = 3; ly <= 18; ly += 3) {
         double r = ly * LY_KM;
         Vector2 prev = v.Project(v.origin + V3{r, 0, 0});
         for (int k = 1; k <= N; k++) {
             double a = 2 * PI * k / N;
             Vector2 p = v.Project(v.origin + V3{r * std::cos(a), 0, r * std::sin(a)});
-            DrawLineEx(prev, p, 1.0f, ly == 12 ? Color{70, 100, 140, 160} : Color{40, 60, 90, 120});
+            DrawLineEx(prev, p, 1.0f, ly == 18 ? Color{70, 100, 140, 160} : Color{40, 60, 90, 120});
             prev = p;
         }
         char rl[32];
@@ -788,6 +809,17 @@ static void DrawMap(const App& app) {
         Txt(rl, v.cx + rp * 0.707f + 4, v.cy - rp * 0.707f - 14, 12, {90, 120, 160, 200});
     }
     DrawCircleLinesV({v.cx, v.cy}, v.R, {70, 100, 140, 160});
+    // ハビタブルゾーン（中心が恒星の時。褐色矮星は除く）
+    const Body& cb = app.B[app.mapCenter];
+    if (cb.d.kind == KIND_STAR && StarSurface(cb.d) != 4) {
+        float r0 = Vector2Distance({v.cx, v.cy}, v.Project(v.origin + V3{HabitableInner(cb.d), 0, 0}));
+        float r1 = Vector2Distance({v.cx, v.cy}, v.Project(v.origin + V3{HabitableOuter(cb.d), 0, 0}));
+        if (r1 > 4 && r0 < v.R) {
+            DrawRing({v.cx, v.cy}, r0, std::min(r1, v.R), 0, 360, 120, {60, 200, 110, 45});
+            const char* hz = T(UI_MAP_HZ);
+            Txt(hz, v.cx - TxtW(hz, 12) * 0.5f, v.cy - (r0 + std::min(r1, v.R)) * 0.5f - 7, 12, {120, 220, 150, 220});
+        }
+    }
     // 軌道
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
@@ -1056,7 +1088,7 @@ static void DrawModalPanels(const App& app) {
     if (app.searchOpen) DrawSearch(app);
     if (app.settingsOpen) {
         static const UiId NAME[SET_COUNT] = {UI_SET_LANG, UI_SET_TEXTSIZE, UI_SET_QUALITY, UI_SET_SOUND, UI_SET_MUSIC, UI_SET_SKY,
-                                             UI_SET_MILKYWAY, UI_SET_ORBITS, UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT,
+                                             UI_SET_MILKYWAY, UI_SET_SKYEPOCH, UI_SET_ORBITS, UI_SET_ASTEROIDS, UI_SET_MARKERS, UI_SET_INVERT,
                                              UI_SET_PHYSICS, UI_SET_FRAME, UI_SET_RESUME, UI_SET_FULLSCREEN};
         float w = std::min(c.W - 20, 760.0f), h = 120 + SET_COUNT * SET_ROW_H, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});

@@ -472,6 +472,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         d.jp = ns.jp; d.en = ns.en; d.parent = -1;
         d.radius = ns.radius * 695700; d.mass = ns.mass * 1.989e30;
         d.rotPeriod = ns.rotPeriod;
+        d.flattening = (float)ns.flattening;   // アルタイルは速い自転でつぶれている
         d.kind = KIND_STAR; d.style = S_SUN; d.star = (int)k;
         // 表面の色: 太陽の色を、温度の色と太陽（5,772 K）の色の比で染める。太陽より熱い星は青白さを強め、模様の暗い色も
         // 明るい色に寄せる（太陽の暗い色は橙なので）。褐色矮星は可視光ではとても暗いので暗く

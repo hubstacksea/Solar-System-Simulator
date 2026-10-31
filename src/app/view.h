@@ -193,7 +193,8 @@ static std::string FmtSpeed(double kms) {
     else snprintf(b, sizeof b, "%s km/s", Grouped(kms, a < 100 ? 3 : 0).c_str());
     std::string s = b;
     if (a > C_KMS * 0.001) {
-        snprintf(b, sizeof b, "  (%.4f c)", kms / C_KMS);
+        if (a > C_KMS * 1000) snprintf(b, sizeof b, "  (%s c)", Grouped(kms / C_KMS, 0).c_str());   // 超光速
+        else snprintf(b, sizeof b, "  (%.4f c)", kms / C_KMS);
         s += b;
     }
     return s;

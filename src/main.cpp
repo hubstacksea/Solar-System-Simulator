@@ -435,6 +435,8 @@ int main(int argc, char** argv) {
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
     if (opt.map) OpenMap(app);
     if (opt.mapStars) app.mapStars = true;
+    g_skyEpochYears = opt.skyEpoch;
+    if (!std::isnan(opt.lookRa)) app.ship.q = QuatFromBasis(EquToRender(opt.lookRa, opt.lookDec), Y_UP);
     app.showInfo = opt.info;
     if (opt.city >= 0 && opt.city < CITY_COUNT) GoToCity(app, opt.city, std::isnan(opt.cityEl) ? 35 : opt.cityEl);
     if (opt.frameLock) SetFrameLock(app, true, true);
@@ -557,7 +559,7 @@ int main(int argc, char** argv) {
             EndMode3D();
             if (lowRes) rlScalef(rk, rk, 1);   // EndMode3D で modelview が単位行列に戻るので、縮小を掛け直す
         }
-        UpdateSkyParallax(app.sky, (app.cam.pos - app.B[0].pos) * (1 / PC_KM));
+        UpdateSkyParallax(app.sky, (app.cam.pos - app.B[0].pos) * (1 / PC_KM), app.tDays / 365.25 + g_skyEpochYears);
         DrawStars(app);
         DrawAsteroids(app);
         {

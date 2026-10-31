@@ -588,8 +588,18 @@ vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out fl
 }
 
 // ---------------------------------------------------------------- 太陽
-// 恒星の表面。surf: 0 太陽型, 1 赤色矮星, 2 高温の星, 3 白色矮星。flare: 整数部がフレアの通し番号、小数部が明るさ
+// 恒星の表面。surf: 0 太陽型, 1 赤色矮星, 2 高温の星, 3 白色矮星, 4 褐色矮星。flare: 整数部がフレアの通し番号、小数部が明るさ
 vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
+    if (surf == 4) {
+        // 褐色矮星: 木星のような雲の帯と、明るさの変化から分かっている濃淡のまだらな雲（自ら弱く光る）
+        float warp = fbmL(p * vec3(1.0, 3.5, 1.0), 2.5, 6, 0.55, o);
+        float y = p.y + warp * 0.05;
+        float band = sin(y * 9.0 * PI) * 0.5 + 0.5;
+        float patchy = fbmL(p * vec3(1.0, 2.2, 1.0), 5.0, 6, 0.5, o + 4.0);
+        float fine = fbmL(p * vec3(1.0, 2.5, 1.0), 24.0, 10, 0.55, o + 9.0);
+        vec3 c = mix(color2 * 0.45, color1 * 1.2, clamp(0.3 + band * 0.45 + patchy * 0.8, 0.0, 1.0)) * (1.0 + fine * 0.1);
+        return c * (0.35 + 0.65 * pow(mu, 0.6));
+    }
     if (surf >= 2) {
         // 高温の星・白色矮星: 対流による粒状斑がほとんどなく、なめらか。白色矮星は周辺減光が弱く、縁まで青白い
         float g = fbmL(p, 20.0, 6, 0.5, o);

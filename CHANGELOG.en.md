@@ -4,6 +4,14 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.19.0 (2026-10-31)
+
+- Star epoch (settings): moves only the stars and the background sky up to 100,000 years into the past or future. The background stars move with the proper motions of the Hipparcos new reduction, so the Big Dipper and other constellations fall apart; the nearby stars move to that epoch too
+- 12 notable stars out to about 17 light-years (Procyon A and B, 61 Cygni A and B, Ross 128, Tau Ceti, Epsilon Indi A, Teegarden's Star, 40 Eridani A, B and C, Altair) and 8 more planets (Ross 128 b, Tau Ceti g, h and f, Epsilon Indi A b, Teegarden's Star b, c and d). Altair is flattened by its fast spin. The "stars around the Sun" map now reaches 18 light-years
+- Cloud bands and patchy clouds on the brown dwarfs (Luhman 16 A and B, WISE 0855−0714)
+- The habitable zone (a green band) on system maps centered on a star, with distances from the center drawn true rather than projected
+- Hyperdrive (8): a fictional engine for fun that covers one light-year per second
+
 ## 2.18.0 (2026-10-31)
 
 - The background stars in 3D: the 41,000 stars have distances from the parallaxes of the Hipparcos new reduction, and away from the Sun they are drawn in the direction and brightness seen from where you are (constellation lines and star names too). From Alpha Centauri the nearer stars shift within their constellations
