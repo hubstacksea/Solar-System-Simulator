@@ -170,6 +170,60 @@ static V3 MoonGeoPos(double tDays) {
 // 地球の中心。軌道要素は地球と月の重心のものなので、月の位置の分だけずらす（月の質量比 0.0121505）
 static V3 EarthPos(const BodyDef& d, double tDays) { return PlanetPos(d, tDays) - MoonGeoPos(tDays) * 0.0121505; }
 
+// ---------------------------------------------------------------- 太陽系の外の恒星（src/nearby_stars.h）
+// 系の重心は、元期の位置から等速直線運動（固有運動と視線速度）で動く。連星の星は、重心から相対軌道 × 係数の所にいる
+static const double ARCSEC = PI / (180.0 * 3600.0);
+
+// 重心の方向の基底（描画座標）: 太陽から見た方向 u・天の北 n・東 e。元期の値のまま使う（数百年で 0.1° も変わらない）
+static void StarBasis(const NearbyStar& s, V3* u, V3* n, V3* e) {
+    double ra = s.ra * DEG, dec = s.dec * DEG;
+    *u = EquVecToRender(std::cos(dec) * std::cos(ra), std::cos(dec) * std::sin(ra), std::sin(dec));
+    *n = EquVecToRender(-std::sin(dec) * std::cos(ra), -std::sin(dec) * std::sin(ra), std::cos(dec));
+    *e = EquVecToRender(-std::sin(ra), std::cos(ra), 0);
+}
+static double StarDistance(const NearbyStar& s) { return PC_KM * 1000.0 / s.plx; }
+
+static V3 StarBarycenter(const NearbyStar& s, double tDays) {
+    V3 u, n, e;
+    StarBasis(s, &u, &n, &e);
+    double dist = StarDistance(s);
+    double k = 1e-3 * ARCSEC * dist / (365.25 * 86400);   // mas/年 → km/s
+    V3 vel = u * s.rv + e * (s.pmra * k) + n * (s.pmdec * k);
+    return u * dist + vel * ((tDays - (s.epoch - 2000.0) * 365.25) * 86400.0);
+}
+
+// 連星: 伴星の主星に対する位置 km（年は J2000 からの日数で）
+static V3 BinaryRelative(const NearbyStar& s, double tDays) {
+    V3 u, n, e;
+    StarBasis(s, &u, &n, &e);
+    double year = 2000.0 + tDays / 365.25;
+    double M = std::remainder(2 * PI * (year - s.T) / s.P, 2 * PI);
+    double E = M + 0.85 * s.e * (M >= 0 ? 1 : -1);
+    for (int it = 0; it < 50; it++) {
+        double dE = (E - s.e * std::sin(E) - M) / (1 - s.e * std::cos(E));
+        E -= dE;
+        if (std::fabs(dE) < 1e-12) break;
+    }
+    double nu = 2 * std::atan2(std::sqrt(1 + s.e) * std::sin(E / 2), std::sqrt(1 - s.e) * std::cos(E / 2));
+    double r = s.a * ARCSEC * StarDistance(s) * (1 - s.e * std::cos(E)), w = s.peri * DEG + nu;
+    double O = s.node * DEG, ci = std::cos(s.i * DEG), si = std::sin(s.i * DEG);
+    double north = r * (std::cos(w) * std::cos(O) - std::sin(w) * std::sin(O) * ci);
+    double east = r * (std::cos(w) * std::sin(O) + std::sin(w) * std::cos(O) * ci);
+    return n * north + e * east + u * (r * std::sin(w) * si);   // 奥行きは太陽から遠ざかる向きが正
+}
+
+static V3 StarPos(const BodyDef& d, double tDays) {
+    const NearbyStar& s = NEARBY_STARS[d.star];
+    V3 p = StarBarycenter(s, tDays);
+    return s.P > 0 ? p + BinaryRelative(s, tDays) * s.k : p;
+}
+
+// 見かけの等級（V）。距離 km から。太陽は絶対等級 4.83
+static double StarAbsMag(const BodyDef& d) { return d.star >= 0 ? NEARBY_STARS[d.star].absMag : 4.83; }
+static double StarApparentMag(const BodyDef& d, double distKm) {
+    return StarAbsMag(d) + 5 * std::log10(std::max(distKm, 1.0) / PC_KM) - 5;
+}
+
 // ---------------------------------------------------------------- 探査機の軌跡
 // assets/probes.bin（tools/make_probe_assets.py、JPL Horizons）。区間ごとに太陽中心か惑星中心の位置・速度の点列を持ち、
 // 点の間は 3 次エルミート補間。惑星中心の区間は「シミュレータの惑星 + 相対位置」なので、惑星の位置の誤差があっても
@@ -399,12 +453,32 @@ static std::vector<Body> InitBodies() {
                 b.orbit.push_back((b.oN * std::cos(th) + b.oQ * std::sin(th)) * d.moonA);
             }
         }
+        if (d.star >= 0) {
+            // 連星の軌道（重心から見た、この星の 1 周分）
+            const NearbyStar& ns = NEARBY_STARS[d.star];
+            if (ns.P > 0)
+                for (int k = 0; k <= 360; k++) b.orbit.push_back(BinaryRelative(ns, ns.P * 365.25 * k / 360.0) * ns.k);
+        }
         if (d.parent >= 0) b.soi = std::max(b.soi, d.radius * 5);
         for (size_t k = 0; k < g_shapes.size(); k++)
             if (g_shapes[k].name == d.en) {
                 b.shape = (int)k;
                 b.outer = g_shapes[k].rmax;
             }
+    }
+    // 恒星の影響圏: 連星の伴星は近点距離の 0.3 倍（そのほかの系の中は主星）、主星と単独の星は、太陽を含む隣の系までの 0.45 倍
+    for (Body& b : B) {
+        if (b.d.star < 0) continue;
+        const NearbyStar& ns = NEARBY_STARS[b.d.star];
+        if (ns.P > 0 && ns.k > 0) {
+            b.soi = 0.3 * ns.a * ARCSEC * StarDistance(ns) * (1 - ns.e);
+            continue;
+        }
+        V3 p = StarBarycenter(ns, 0);
+        double nearest = Len(p);
+        for (const NearbyStar& o : NEARBY_STARS)
+            if (o.system != ns.system) nearest = std::min(nearest, Len(StarBarycenter(o, 0) - p));
+        b.soi = 0.45 * nearest;
     }
     // 探査機: 惑星中心の区間の境目での、シミュレータの惑星と実際の惑星の差
     if (g_probes.empty()) LoadProbeTracks();
@@ -438,7 +512,9 @@ static std::vector<Body> InitBodies() {
 static void UpdateBodies(std::vector<Body>& B, double t) {
     for (Body& b : B) {
         const BodyDef& d = b.d;
-        if (d.parent < 0) {
+        if (d.star >= 0) {
+            b.pos = StarPos(d, t);
+        } else if (d.parent < 0) {
             b.pos = V3();
         } else if (d.tleN > 0) {
             b.pos = B[B_EARTH].pos + SatellitePos(d, t);
@@ -505,6 +581,7 @@ static double SurfaceDist(const Body& b, V3 p) {
 // 時刻 t の天体の位置と自転角（UpdateBodies と同じ式を 1 天体分だけ。出入りの時刻を探すのに何百回も呼ぶ）
 static V3 PosAt(const std::vector<Body>& B, int i, double t) {
     const BodyDef& d = B[i].d;
+    if (d.star >= 0) return StarPos(d, t);
     if (d.parent < 0) return V3();
     if (d.tleN > 0) return PosAt(B, B_EARTH, t) + SatellitePos(d, t);
     if (d.probe >= 0) {

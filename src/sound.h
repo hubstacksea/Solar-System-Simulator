@@ -78,7 +78,7 @@ inline void EngineCallback(void* buffer, unsigned int frames) {
 struct State {
     bool ready = false, muted = false;
     AudioStream engine{};
-    Sound warp{};
+    Sound warp{}, starWarp{};
 };
 inline State g;
 
@@ -111,11 +111,50 @@ inline std::vector<float> WarpSamples() {
     }
     return s;
 }
-inline Sound MakeWarpSound() {
-    std::vector<float> s = WarpSamples();
+// 恒星間ワープの音: 2.6 秒かけて、うなりと澄んだ 2 つの音が高く上がり、風のような音が強まる → 閃光の瞬間の深い衝撃音 →
+// 高い音のきらめきが下がりながら 2 秒かけて消える（恒星間ワープの演出と同じ長さ）
+inline std::vector<float> StarWarpSamples() {
+    const float charge = 2.6f, arrive = 2.0f;
+    int n = (int)((charge + arrive) * RATE);
+    std::vector<float> s(n);
+    uint32_t rng = 4242;
+    float ph1 = 0, ph2 = 0, ph3 = 0, lp = 0, lp2 = 0, hp = 0;
+    for (int i = 0; i < n; i++) {
+        float t = (float)i / RATE;
+        rng = rng * 1664525u + 1013904223u;
+        float w = (float)(rng >> 8) * (2.0f / 16777216.0f) - 1.0f;
+        float v = 0;
+        if (t < charge) {
+            float k = t / charge;
+            float f = 110.0f * std::pow(16.0f, k * k);              // 110 Hz → 1760 Hz
+            ph1 += f / RATE;
+            ph2 += f * 1.5f * 1.004f / RATE;                         // 5 度上でわずかにずらす（うなり）
+            ph3 += (32.0f + 18.0f * k) / RATE;                       // 低いうなり
+            lp += (w - lp) * (0.01f + 0.25f * k * k);                // 風のような音（だんだん明るく）
+            float tone = std::sin(TAU * ph1) * 0.30f + std::sin(TAU * ph2) * 0.18f;
+            v = (tone * std::pow(k, 1.5f) + lp * 1.1f * k * k + std::sin(TAU * ph3) * 0.45f * k) * (0.35f + 0.65f * k);
+        } else {
+            float u = t - charge;
+            float boom = std::exp(-u * 2.6f), crack = std::exp(-u * 14.0f);
+            ph3 += (30.0f + 70.0f * boom) / RATE;                    // 深い衝撃音
+            lp2 += (w - lp2) * 0.05f;
+            hp = w - lp2;
+            float f = 300.0f + 900.0f * std::exp(-u * 1.4f);         // きらめき（下がっていく）
+            ph1 += f / RATE;
+            ph2 += f * 2.003f / RATE;
+            float shimmer = (std::sin(TAU * ph1) * 0.22f + std::sin(TAU * ph2) * 0.10f) * std::exp(-u * 1.6f) * (0.8f + 0.2f * std::sin(TAU * 5.0f * u));
+            v = std::sin(TAU * ph3) * boom * 1.0f + hp * crack * 0.9f + lp2 * 3.0f * std::exp(-u * 1.8f) + shimmer;
+        }
+        s[i] = std::tanh(v * 0.55f);   // 衝撃音の山は柔らかく抑える
+    }
+    return s;
+}
+
+inline Sound SoundFromSamples(std::vector<float> s) {
     Wave wave = {(unsigned int)s.size(), RATE, 32, 1, s.data()};
     return LoadSoundFromWave(wave);
 }
+inline Sound MakeWarpSound() { return SoundFromSamples(WarpSamples()); }
 
 inline void Init(bool muted) {
     g.muted = muted;
@@ -126,6 +165,7 @@ inline void Init(bool muted) {
     SetAudioStreamCallback(g.engine, EngineCallback);
     PlayAudioStream(g.engine);
     g.warp = MakeWarpSound();
+    g.starWarp = SoundFromSamples(StarWarpSamples());
     g.ready = true;
 }
 
@@ -142,13 +182,16 @@ inline void Update(int engine, bool thrust, double speedFrac) {
     g_glass = v.glass;
 }
 
-inline void Warp() {
-    if (g.ready && !g.muted) PlaySound(g.warp);
+inline void Warp(bool interstellar = false) {
+    if (g.ready && !g.muted) PlaySound(interstellar ? g.starWarp : g.warp);
 }
 
 inline void SetMuted(bool m) {
     g.muted = m;
-    if (g.ready && m) StopSound(g.warp);
+    if (g.ready && m) {
+        StopSound(g.warp);
+        StopSound(g.starWarp);
+    }
 }
 
 // ---------------------------------------------------------------- 音楽（ホルスト《惑星》ほか）
@@ -221,6 +264,7 @@ inline void Shutdown() {
     }
     if (!g.ready) return;
     UnloadSound(g.warp);
+    UnloadSound(g.starWarp);
     UnloadAudioStream(g.engine);
     CloseAudioDevice();
     g.ready = false;

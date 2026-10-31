@@ -49,6 +49,7 @@ struct App {
     double warpT = -1;      // 演出開始からの実時間 秒（-1: 停止中）
     int warpTarget = 0;
     bool warpLand = false, warpJumped = false;
+    bool warpBig = false;                 // 恒星間ワープ（遠く離れた所へ。演出を長く・大きく）
     int warpBookmark = -1;                // ブックマークへのワープ中はその番号
     int nextBookmark = 0;                 // N キーで次に向かうブックマーク
     bool eventsOpen = false;              // 天文イベント一覧（K キー）
@@ -169,6 +170,7 @@ static void UpdateReferenceFrame(App& app) {
 
 static void WarpTo(App& app, int ti, bool land) {
     const Body& b = app.B[ti];
+    double from = Len(b.pos - ShipWorld(app));
     V3 toSun = ti == B_SUN ? Norm(app.B[B_EARTH].pos) : Norm(-b.pos);
     V3 side = Cross(toSun, Y_UP);
     if (Len(side) < 1e-6) side = V3(1, 0, 0);
@@ -192,7 +194,8 @@ static void WarpTo(App& app, int ti, bool land) {
         app.ship.q = QuatFromBasis(fwd, dir);
     }
     UpdateReferenceFrame(app);
-    Toast(app, std::string(land ? T(UI_LAND) : T(UI_WARP)) + ": " + TR(b.d.jp, b.d.en));
+    if (app.warpBig) Toast(app, std::string(T(UI_WARP_STAR)) + ": " + TR(b.d.jp, b.d.en) + "  (" + FmtDist(from) + ")");
+    else Toast(app, std::string(land ? T(UI_LAND) : T(UI_WARP)) + ": " + TR(b.d.jp, b.d.en));
 }
 
 // 天体の緯度・経度（東経が正）・高度に置き、北の地平線のやや手前を見下ろす

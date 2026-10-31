@@ -2,7 +2,7 @@
 
 [日本語](README.md) | **English** | [Changelog](CHANGELOG.en.md)
 
-A 3D space flight simulator with the Sun, planets, major moons, dwarf planets, asteroids, comets and spacecraft placed at **true size and true distance**.
+A 3D space flight simulator with the Sun, planets, major moons, dwarf planets, asteroids, comets and spacecraft, and the stars within about 10 light-years of the Sun, placed at **true size and true distance**.
 Body positions are computed from the PC clock (UTC); at 1x time scale they orbit and rotate in real time.
 
 - Rendering engine: [raylib 5.5](https://www.raylib.com/) (OpenGL 3.3)
@@ -36,7 +36,8 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Body info](docs/screenshots/body_info.jpg) The info card (I key; Jupiter) | ![Rings of Uranus](docs/screenshots/uranus_rings.jpg) Tipped-over Uranus and its narrow rings |
 | ![Europa Clipper](docs/screenshots/europa_clipper.jpg) Europa Clipper on its way to Jupiter (30 m solar array span) | ![Southern sky from Mauna Kea](docs/screenshots/sky_from_ground.jpg) The night sky to the south from the summit of Mauna Kea (search, "On Earth") |
 | ![From the ground in Tokyo](docs/screenshots/ground_view.jpg) Before dawn in Tokyo: the horizon, compass points and Venus's altitude, azimuth and rise/set times (lower left) | ![Geminids night](docs/screenshots/geminids.jpg) Geminids night in Tokyo (a meteor at the upper left), with Jupiter's magnitude, phase and apparent size on the right |
-| ![Frame fixed to the ship](docs/screenshots/frame_lock.jpg) Reference frame fixed to the ship (Shift+F): Earth leaving at 30 km/s (top right) | |
+| ![Frame fixed to the ship](docs/screenshots/frame_lock.jpg) Reference frame fixed to the ship (Shift+F): Earth leaving at 30 km/s (top right) | ![Sirius A](docs/screenshots/sirius.jpg) Sirius A, 8.7 light-years away (top left: the white dwarf Sirius B, 30 AU away) |
+| ![Interstellar warp](docs/screenshots/interstellar_warp.jpg) Interstellar warp (the sky crowds forward and turns blue as you pass through a swirling tunnel of light) | |
 
 ## Getting started
 
@@ -151,7 +152,7 @@ After building, run `cpack` in the build directory.
 | Tab / Shift+Tab | Cycle target |
 | F | Point the nose at the target |
 | Shift+F | Fix the reference frame to the ship / back to automatic (also in the settings) |
-| G / Shift+G | Warp to target / warp to near its surface (with a ~1.7 s warp animation; controls are locked during it) |
+| G / Shift+G | Warp to target / warp to near its surface (with a ~1.7 s warp animation, ~4.6 s for an interstellar warp to another star; controls are locked during it) |
 | T / Shift+T | Autopilot / autopilot with automatic engine selection |
 | Right mouse button (hold) | Zoom |
 | V | Chase view / cockpit view |
@@ -226,6 +227,7 @@ The values can be changed in the `ENGINES` table in `src/app/bodies.h`. Switchin
 ## On-screen display
 
 - **Sky**: inside the atmospheres of Earth and Mars the sky changes with the Sun's height (blue sky, sunrise and sunset colors and twilight on Earth; a butterscotch day and a bluish sunset on Mars). Stars are hidden in daytime, and the sky darkens into black space as you climb. Seen from inside the atmosphere, distant land and sea fade into haze with the color of the sky, and the ground, clouds and sea are lit by redder light when the Sun is low (also visible from space as a reddish band along the terminator)
+- **Nearby stars**: the 15 stars and brown dwarfs within about 10 light-years (Alpha Centauri A and B, Proxima Centauri, Barnard's Star, Luhman 16 A and B, WISE 0855−0714, Wolf 359, Lalande 21185, Sirius A and B, BL Ceti and UV Ceti, Ross 154, Epsilon Eridani) are placed at their real positions and sizes, colored by their surface temperature. Positions follow straight-line motion from the parallaxes, proper motions and radial velocities of Gaia DR3, Hipparcos and other sources (so the stars move over the centuries), and the binaries (Alpha Centauri, Sirius, BL/UV Ceti, Luhman 16) orbit their barycenters with published orbital elements. From afar they look like the other stars of the sky, as points as bright as their magnitude; from Alpha Centauri the Sun is a magnitude 0.5 star in Cassiopeia. These stars are removed from the background sky. Pick them in the "Stars" tab of the search and warp there; warps farther than about 1,900 AU get a longer, bigger interstellar warp (the sky crowds forward and turns blue, and you pass through a swirling tunnel of light). Masses, radii and some other values of the brown dwarfs are estimates and are marked as such on the info card. The spin axes are unknown, so binaries spin perpendicular to their orbits and the others toward the celestial pole
 - **Starry sky**: the background stars are the real stars of the Hipparcos catalogue (about 41,000, down to magnitude 8), with their real brightness and colors (color index), in front of the faint glow of the Milky Way (an all-sky image from NASA; it fades out when you zoom in). Press C to show the lines of the 88 constellations, and the names of the constellations and of the main stars (about 100 brighter than magnitude 2.6)
 - **Speedometer** (bottom right): analog gauge whose full scale is the current engine's top speed, plus a digital readout
 - **Heading indicator** (top center): near a body (within 30 times its radius), heading, pitch and roll with that body's rotation axis as north. Farther away, ecliptic longitude and latitude. The yellow ▲ marks the target's bearing
@@ -270,6 +272,7 @@ The images in `assets/` are made from NASA / NOAA data by `tools/make_earth_asse
 - Orbital elements of asteroids and other small bodies: JPL Small-Body Database (fetched and converted by `tools/make_asteroid_assets.py`; requires NumPy; downloads about 20 MB)
 - Spacecraft trajectories: NASA/JPL Horizons (fetched and thinned out by `tools/make_probe_assets.py`; Rosetta from ESA and Hayabusa2 from JAXA orbit determination)
 - Starry sky: stars from the Hipparcos catalogue (ESA), and the lines, names and star names of the 88 constellations, from [d3-celestial](https://github.com/ofrohn/d3-celestial) (Olaf Frohn, BSD 3-Clause), converted by `tools/make_sky_assets.py`
+- Nearby stars: astrometry from Gaia DR3 (ESA/Gaia/DPAC) and the Hipparcos new reduction (van Leeuwen 2007), with binary orbits and masses from published papers (Akeson et al. 2021, Bond et al. 2017, Kervella et al. 2016, Lazorenko & Sahlmann 2018) and others. The sources and values are listed in `tools/make_nearby_stars.py` (which writes `src/nearby_stars.h`)
 - Shapes of the comet and asteroid: Ryugu from the shape model of Watanabe et al. (2019) (source ISAS/JAXA, [JAXA DARTS](https://data.darts.isas.jaxa.jp/pub/hayabusa2/paper/Watanabe_2019/)); Comet Churyumov-Gerasimenko from ESA's NAVCAM shape model MTP019, low-resolution version (ESA/Rosetta/NAVCAM – CC BY-SA IGO 3.0, obtained from the NASA PDS Small Bodies Node). Bennu (OSIRIS-REx), Itokawa (Gaskell et al., Hayabusa AMICA), Didymos and Dimorphos (DART) and Phobos (Gaskell) from NASA NAIF SPICE shape kernels (DSK). Converted by `tools/make_shape_assets.py` (coordinates rounded to 16 bits, Phobos thinned out, plus a table of surface radii; requires NumPy and spiceypy)
 - Saturn's rings: NASA PDS Ring-Moon Systems Node, Voyager 2 photopolarimeter occultation of delta Scorpii (VG_2801), converted by `tools/make_ring_assets.py`
 - Rings of Uranus, Neptune and Jupiter: radii, widths and optical depths from the NASA NSSDCA Uranian / Neptunian / Jovian Rings Fact Sheets (`RingSets` in `src/app/bodies.h`)

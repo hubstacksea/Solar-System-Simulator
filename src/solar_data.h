@@ -6,9 +6,12 @@
 //  - 衛星軌道: 月は簡易月位置公式、ほかは JPL の平均軌道要素（J2000）による円軌道近似
 //  - 自転軸: IAU 自転軸の赤経・赤緯
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <vector>
+
+#include "nearby_stars.h"
 
 enum BodyKind { KIND_STAR = 0, KIND_ROCKY = 1, KIND_GAS = 2, KIND_EARTH = 3, KIND_PROBE = 4 };
 
@@ -69,6 +72,7 @@ struct BodyDef {
     double tleEpoch = 0, tleN = 0, tleNdot = 0;   // 元期（J2000 からの日数）, 平均運動 周/日, その変化の半分 周/日²
     double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
     double launch = -1e9;      // 打ち上げ（J2000 からの日数）。これより前は表示しない
+    int star = -1;             // 太陽系の外の恒星: NEARBY_STARS の番号（位置は固有運動と連星の軌道から求める）
     int style = S_GENERIC;
 };
 
@@ -95,6 +99,16 @@ inline BodyDef MakeMoon(const char* jp, const char* en, int parent, double radiu
     d.inheritPole = true; d.rotPeriod = 0;
     d.kind = kind; d.c1 = c1; d.c2 = c2; d.bands = bands; d.atm = atm; d.atmStrength = atmS;
     return d;
+}
+
+// 表面温度 K → 色（黒体の色を RGB にした近似。明るい方の成分を 1 に）
+inline Col3 TempColor(double teff) {
+    double t = teff / 100, r, g, b;
+    r = t <= 66 ? 255 : 329.698727446 * std::pow(t - 60, -0.1332047592);
+    g = t <= 66 ? 99.4708025861 * std::log(t) - 161.1195681661 : 288.1221695283 * std::pow(t - 60, -0.0755148492);
+    b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * std::log(t - 10) - 305.0447927307;
+    auto c = [](double v) { return (float)(std::max(0.0, std::min(255.0, v)) / 255.0); };
+    return {c(r), c(g), c(b)};
 }
 
 enum {
@@ -436,5 +450,42 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     for (BodyDef& d : v)
         for (const auto& st : STYLES)
             if (std::strcmp(d.en, st.en) == 0) d.style = st.style;
+
+    // 太陽系の外の恒星（配列の最後）。自転軸の向きは分からないので、連星は軌道面に垂直、ほかは天の北極に
+    for (size_t k = 0; k < sizeof NEARBY_STARS / sizeof NEARBY_STARS[0]; k++) {
+        const NearbyStar& ns = NEARBY_STARS[k];
+        BodyDef d{};
+        d.jp = ns.jp; d.en = ns.en; d.parent = -1;
+        d.radius = ns.radius * 695700; d.mass = ns.mass * 1.989e30;
+        d.rotPeriod = ns.rotPeriod;
+        d.kind = KIND_STAR; d.style = S_SUN; d.star = (int)k;
+        // 表面の色: 太陽の色を、温度の色と太陽（5,772 K）の色の比で染める。太陽より熱い星は青白さを強め、模様の暗い色も
+        // 明るい色に寄せる（太陽の暗い色は橙なので）。褐色矮星は可視光ではとても暗いので暗く
+        Col3 tc = TempColor(ns.teff), ts = TempColor(5772);
+        float p = ns.teff > 5772 ? 2.0f : 1.0f;
+        float rr = std::pow(tc.r / ts.r, p), rg = std::pow(tc.g / ts.g, p), rb = std::pow(tc.b / ts.b, p);
+        float dim = (ns.teff < 500 ? 0.10f : ns.kind == 2 ? 0.35f : 1.0f);
+        auto paint = [&](Col3 c) {
+            float r = c.r * rr, g = c.g * rg, b = c.b * rb, m = std::max(r, std::max(g, b));
+            return Col3{r / m * dim, g / m * dim, b / m * dim};
+        };
+        Col3 c1 = paint(sun.c1), c2 = paint(sun.c2);
+        float hot = (float)std::max(0.0, std::min(1.0, (ns.teff - 5772) / 3000.0)) * 0.85f;
+        d.c1 = c1;
+        d.c2 = {(c2.r + (c1.r - c2.r) * hot) * 0.9f, (c2.g + (c1.g - c2.g) * hot) * 0.9f, (c2.b + (c1.b - c2.b) * hot) * 0.9f};
+        if (ns.P > 0) {
+            // 軌道の極（天球の北・東・奥の基底で、軌道面の法線）を赤経・赤緯に
+            const double R = 3.14159265358979323846 / 180;
+            double ra = ns.ra * R, dec = ns.dec * R, I = ns.i * R, O = ns.node * R;
+            double nN = std::sin(I) * std::sin(O), nE = -std::sin(I) * std::cos(O), nZ = std::cos(I);
+            // 北 = (-sinδ cosα, -sinδ sinα, cosδ), 東 = (-sinα, cosα, 0), 奥 = (cosδ cosα, cosδ sinα, sinδ)
+            double x = nN * -std::sin(dec) * std::cos(ra) + nE * -std::sin(ra) + nZ * std::cos(dec) * std::cos(ra);
+            double y = nN * -std::sin(dec) * std::sin(ra) + nE * std::cos(ra) + nZ * std::cos(dec) * std::sin(ra);
+            double z = nN * std::cos(dec) + nZ * std::sin(dec);
+            d.poleRA = std::fmod(std::atan2(y, x) / R + 360, 360);
+            d.poleDec = std::asin(std::max(-1.0, std::min(1.0, z))) / R;
+        }
+        v.push_back(d);
+    }
     return v;
 }

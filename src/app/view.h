@@ -71,11 +71,16 @@ static Mesh GenRing(float inner, float outer, int segs) {
 struct Cam {
     V3 pos, fwd, up, right;
     V3 shipRel;   // カメラから見た自機の位置。太陽から遠いと pos が km 単位で丸まり、自機の位置 − pos ではブレるので別に持つ
+    V3 origin, local;   // pos = origin（基準天体の位置）+ local。太陽から何光年も離れると pos は数 m 単位で丸まるので、
+                        // 天体の描画は基準天体からの差で求める（CamRel）
     double fovy = 60 * DEG;
     double fovBase = 60 * DEG;  // ズーム込みの視野角（fovy はこれにワープ演出を加えたもの）
     double focal = 1;  // ピクセル単位の焦点距離
     float W = 1280, H = 720;
 };
+
+// カメラから見た位置（ワールド座標の点 p）。基準天体の近くの点ほど丸めの誤差が小さい
+static V3 CamRel(const Cam& c, V3 p) { return (p - c.origin) - c.local; }
 
 // 画面座標へ投影。カメラ前方なら true
 static bool Project(const Cam& c, V3 rel, Vector2* out) {
@@ -176,7 +181,8 @@ static std::string FmtDist(double km) {
     char b[96];
     if (km < 1) snprintf(b, sizeof b, "%.0f m", km * 1000);
     else if (km < 1e7) snprintf(b, sizeof b, "%s km", Grouped(km, km < 100 ? 2 : 0).c_str());
-    else snprintf(b, sizeof b, "%.3f AU", km / AU_KM);
+    else if (km < 0.1 * LY_KM) snprintf(b, sizeof b, "%.3f AU", km / AU_KM);
+    else snprintf(b, sizeof b, "%.3f %s", km / LY_KM, T(UI_LY));
     return b;
 }
 

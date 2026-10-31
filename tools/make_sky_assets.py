@@ -4,7 +4,8 @@
 """背景の星空 (assets/stars.bin, assets/sky.txt) を作る。
 
 データ: d3-celestial (Olaf Frohn, BSD 3-Clause, https://github.com/ofrohn/d3-celestial)
-  - stars.8.json: ヒッパルコス星表 (ESA, 1997) の 8 等級までの恒星（位置 J2000, 等級 V, 色指数 B-V）
+  - stars.8.json: ヒッパルコス星表 (ESA, 1997) の 8 等級までの恒星（位置 J2000, 等級 V, 色指数 B-V）。
+    太陽から 10 光年ほどまでの恒星（NEARBY_HIP）は除く
   - constellations.json / constellations.lines.json: 88 星座の名前（日本語・英語）・名前の位置・星座線
   - starnames.json: 恒星の固有名（IAU 承認名と日本語表記）
 
@@ -29,6 +30,9 @@ UA = "SolarSystemVoyager-asset-build/1.0 (https://github.com/hubstacksea/Solar-S
 BASE = "https://raw.githubusercontent.com/ofrohn/d3-celestial/master/data/"
 FILES = ["stars.8.json", "constellations.json", "constellations.lines.json", "starnames.json"]
 NAME_MAG = 2.6  # この等級より明るい星に名前を付ける
+# 太陽から 10 光年ほどまでの恒星は、シミュレータが天体として実際の位置に描くので除く（tools/make_nearby_stars.py）
+# シリウス、ケンタウルス座アルファ星 A・B、ラランド 21185、エリダヌス座イプシロン星（ほかの近い星は 8 等級より暗い）
+NEARBY_HIP = {32349, 71683, 71681, 54035, 16537}
 # starnames.json に日本語表記がない星
 JA_FIX = {"Regor": "レゴール", "Avior": "アヴィオール", "Alsephina": "アルセフィナ", "Menkent": "メンケント",
           "Tiaki": "ティアキ", "Ankaa": "アンカー", "Navi": "ナビ", "Muhlifain": "ムリフェイン", "Men": "メン",
@@ -60,6 +64,8 @@ def main():
     rows = []
     mag_of = {}
     for f in stars["features"]:
+        if f["id"] in NEARBY_HIP:
+            continue
         p = f["properties"]
         lon, lat = f["geometry"]["coordinates"]
         bv = float(p["bv"]) if p.get("bv") not in (None, "") else 0.6

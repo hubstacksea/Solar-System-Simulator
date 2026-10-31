@@ -193,6 +193,17 @@
     X(INFO_ALT, "高度 / 周期", "Altitude / period") \
     X(INFO_EARTHX, "地球の %s 倍", "%s x Earth") \
     X(INFO_CLOSE, "I / タップ: 閉じる", "I / tap: close") \
+    X(INFO_WHITE_DWARF, "白色矮星", "White dwarf") \
+    X(INFO_BROWN_DWARF, "褐色矮星", "Brown dwarf") \
+    X(INFO_SUNX, "太陽の %s 倍", "%s x Sun") \
+    X(INFO_JUPX, "木星の %s 倍", "%s x Jupiter") \
+    X(INFO_TEMP, "表面温度", "Surface temperature") \
+    X(INFO_PARTNER, "連星の相手", "Binary companion") \
+    X(INFO_PARTNER_V, "%s（周期 %.1f 年、平均 %.1f AU）", "%s (period %.1f yr, mean %.1f AU)") \
+    X(INFO_ESTIMATED, "推定の値", "Estimated") \
+    X(INFO_ESTIMATED_V, "質量・半径・自転周期などは推定", "mass, radius, rotation period, etc.") \
+    X(LY, "光年", "ly") \
+    X(WARP_STAR, "恒星間ワープ", "Interstellar warp") \
     X(TB_INFO, "情報", "Info") \
     X(TB_SEARCH, "検索", "Search") \
     X(MS_QUA, "しぶんぎ座流星群", "Quadrantids") \
@@ -254,6 +265,7 @@
     X(SEARCH_MOONS, "衛星", "Moons") \
     X(SEARCH_SMALL, "小天体", "Small bodies") \
     X(SEARCH_PROBES, "探査機", "Spacecraft") \
+    X(SEARCH_STARS, "恒星", "Stars") \
     X(SEARCH_CITIES, "地上", "On Earth") \
     X(SEARCH_GOTO, "%s の名場面へ移る", "go to %s") \
     X(SEARCH_JUMPED, "日時を %s に移して %s へ", "Moved to %s for %s") \

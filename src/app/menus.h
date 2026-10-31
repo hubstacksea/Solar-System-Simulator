@@ -268,7 +268,7 @@ enum BodyClassId { BC_STAR, BC_PLANET, BC_DWARF, BC_MOON, BC_ASTEROID, BC_COMET,
 static int BodyClass(const App& app, int i) {
     const BodyDef& d = app.B[i].d;
     std::string en = d.en;
-    if (i == B_SUN) return BC_STAR;
+    if (d.kind == KIND_STAR) return BC_STAR;
     if (d.kind == KIND_PROBE) return d.tleN > 0 ? BC_SAT : BC_PROBE;
     if (d.parent > 0) return BC_MOON;
     if (i <= B_NEPTUNE) return BC_PLANET;
@@ -277,8 +277,8 @@ static int BodyClass(const App& app, int i) {
     return BC_ASTEROID;
 }
 
-// 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星, 5 地上の都市
-static const int SEARCH_TABS = 6;
+// 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星, 5 地上の都市, 6 恒星
+static const int SEARCH_TABS = 7;
 
 // 検索の候補の番号: 0 以上は天体、負は都市（-1 - 都市の番号）
 static bool IsCityResult(int r) { return r < 0; }
@@ -337,10 +337,11 @@ static double ProbeVisitTime(const App& app, int i) {
         return (g_probes[d.probe].segs.front().t.front() + g_probes[d.probe].segs.back().t.back()) / 2;
     return app.tDays;
 }
-static bool InSearchTab(int cls, int tab) {
+static bool InSearchTab(int i, int cls, int tab) {
     switch (tab) {
         case 5: return false;
-        case 1: return cls == BC_STAR || cls == BC_PLANET || cls == BC_DWARF;
+        case 1: return (cls == BC_STAR && i == B_SUN) || cls == BC_PLANET || cls == BC_DWARF;
+        case 6: return cls == BC_STAR;
         case 2: return cls == BC_MOON;
         case 3: return cls == BC_ASTEROID || cls == BC_COMET;
         case 4: return cls == BC_PROBE || cls == BC_SAT;
@@ -383,7 +384,7 @@ static std::vector<int> SearchResults(const App& app) {
         int cls = BodyClass(app, (int)i);
         // 今は飛んでいない探査機も出す（選ぶとその名場面の日時へ移る）。衛星などで非表示のものは出さない
         if (!app.B[i].active && cls != BC_PROBE && cls != BC_SAT) continue;
-        if (InSearchTab(cls, app.searchTab)) match(app.B[i].d.jp, app.B[i].d.en, (int)i);
+        if (InSearchTab((int)i, cls, app.searchTab)) match(app.B[i].d.jp, app.B[i].d.en, (int)i);
     }
     if (app.searchTab == 5 || (app.searchTab == 0 && !q.empty()))   // 都市は「地上」のタブか、名前で探した時
         for (int k = 0; k < CITY_COUNT; k++) match(CITIES[k].jp, CITIES[k].en, -1 - k);
@@ -442,7 +443,7 @@ static void DrawSearch(const App& app) {
     const Cam& c = app.cam;
     SearchLayout L = GetSearchLayout(c);
     static const UiId TAB[SEARCH_TABS] = {UI_SEARCH_ALL, UI_SEARCH_PLANETS, UI_SEARCH_MOONS, UI_SEARCH_SMALL, UI_SEARCH_PROBES,
-                                          UI_SEARCH_CITIES};
+                                          UI_SEARCH_CITIES, UI_SEARCH_STARS};
     static const UiId CLS[] = {UI_INFO_STAR, UI_INFO_PLANET, UI_INFO_DWARF, UI_SEARCH_MOON, UI_INFO_ASTEROID, UI_INFO_COMET,
                                UI_INFO_PROBE, UI_INFO_SAT};
     DrawRectangleRounded({L.x, L.y, L.w, L.h}, 0.04f, 6, {0, 8, 20, 235});
@@ -482,6 +483,7 @@ static void DrawSearch(const App& app) {
             Txt(TR(d.jp, d.en), L.x + 28, ry, 17, col);
             std::string kind = T(CLS[BodyClass(app, i)]);
             if (BodyClass(app, i) == BC_MOON) kind = TR(app.B[d.parent].d.jp, app.B[d.parent].d.en) + std::string(" ") + kind;
+            if (d.star >= 0) kind = T(NEARBY_STARS[d.star].kind == 1 ? UI_INFO_WHITE_DWARF : NEARBY_STARS[d.star].kind == 2 ? UI_INFO_BROWN_DWARF : UI_INFO_STAR);
             if (active) snprintf(right, sizeof right, "%s   %s", kind.c_str(), FmtDist(std::max(0.0, SurfaceDist(app.B[i], ShipWorld(app)))).c_str());
             else snprintf(right, sizeof right, T(UI_SEARCH_GOTO), FmtDate(ProbeVisitTime(app, i)).substr(0, 10).c_str());
         }
@@ -567,6 +569,10 @@ static bool IsProbeLike(const Body& b) { return b.d.kind == KIND_PROBE; }
 static double MapDefaultRange(const App& app, int center) {
     if (center == 0) return 40 * AU_KM;
     double r = app.B[center].d.radius * 40;
+    if (app.B[center].d.star >= 0) {   // 連星は相手の遠点まで
+        const NearbyStar& ns = NEARBY_STARS[app.B[center].d.star];
+        if (ns.P > 0) r = std::max(r, ns.a * 1000.0 / ns.plx * (1 + ns.e) * AU_KM * 1.4);
+    }
     for (const Body& b : app.B)
         if (b.d.parent == center && !IsProbeLike(b)) r = std::max(r, b.d.moonA * 1.4);
     return r;
@@ -599,13 +605,16 @@ static MapView GetMapView(const App& app, const Cam& c) {
     return v;
 }
 
-// 図に載せる天体（クリックで選べるもの）と画面の位置。中心が太陽なら惑星・準惑星・彗星・探査機、惑星なら衛星と近くの探査機
+// 図に載せる天体（クリックで選べるもの）と画面の位置。中心が太陽なら惑星・準惑星・彗星・探査機、惑星なら衛星と近くの探査機、
+// 恒星なら連星の相手
 static std::vector<MapItem> MapItems(const App& app, const MapView& v) {
     std::vector<MapItem> items;
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         if (!b.active) continue;
+        int cs = app.B[app.mapCenter].d.star;
         bool in = (int)i == app.mapCenter || b.d.parent == app.mapCenter ||
+                  (cs >= 0 && b.d.star >= 0 && NEARBY_STARS[b.d.star].system == NEARBY_STARS[cs].system) ||   // 連星の相手
                   (IsProbeLike(b) && Len(b.pos - v.origin) < v.range && (app.mapCenter != 0 || b.d.tleN <= 0));
         if (!in) continue;
         bool inside;

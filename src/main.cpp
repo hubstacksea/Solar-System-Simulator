@@ -140,6 +140,16 @@ int main(int argc, char** argv) {
                 V3 r = b.pos - B[b.d.parent].pos;
                 printf("%s %.3f %.3f %.3f\n", b.d.en, r.x, r.y, r.z);
             }
+        // 太陽系の外の恒星: 番号, 太陽から見た赤経・赤緯 deg, 距離 光年, 影響圏 AU
+        for (size_t i = 0; i < B.size(); i++)
+            if (B[i].d.star >= 0) {
+                V3 p = B[i].pos;
+                const double eps = 23.4392911 * DEG;
+                double xe = p.x, ye = -p.z, ze = p.y;   // 黄道座標
+                double y = ye * std::cos(eps) - ze * std::sin(eps), z = ye * std::sin(eps) + ze * std::cos(eps), r = Len(p);
+                printf("S %zu %s %.7f %.7f %.5f %.0f\n", i, B[i].d.en, std::fmod(std::atan2(y, xe) / DEG + 360, 360), std::asin(z / r) / DEG,
+                       r / LY_KM, B[i].soi / AU_KM);
+            }
         return 0;
     }
     LoadSettings();

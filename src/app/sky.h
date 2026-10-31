@@ -4,7 +4,8 @@
 // main.cpp の一部で、main.cpp が決まった順に読み込む（単体ではコンパイルしない）
 
 // ---------------------------------------------------------------- 背景の星
-// ヒッパルコス星表の 8 等級までの恒星と、88 星座の線・名前（tools/make_sky_assets.py で作った埋め込みデータ）
+// ヒッパルコス星表の 8 等級までの恒星と、88 星座の線・名前（tools/make_sky_assets.py で作った埋め込みデータ）。
+// 太陽から 10 光年ほどまでの恒星（シリウスなど）は除いてあり、天体として実際の位置に描く
 struct Star { V3 dir; Color col; float size; float mag; };  // size 0 は 1 ピクセルの点。明るい順に並ぶ
 struct Constellation { V3 label; std::string jp, en; std::vector<std::vector<V3>> lines; };
 struct StarName { V3 dir; float mag; std::string jp, en; };
@@ -27,6 +28,16 @@ static Color StarColor(double bv, unsigned char a) {
     return {(unsigned char)rgb[0], (unsigned char)rgb[1], (unsigned char)rgb[2], a};
 }
 
+// 等級 → 点の大きさ（0 は 1 ピクセルの点）と濃さ。4.5 等より明るい星は円で、暗い星は 1 ピクセルの点の濃さで明るさを表す
+static float StarDotSize(float mag) { return mag < 4.5f ? std::min(3.2f, 1.0f + (4.5f - mag) * 0.38f) : 0.0f; }
+static float StarDotAlpha(float mag) { return mag < 5.0f ? 255.0f : std::max(30.0f, 235.0f - (mag - 5.0f) * 65.0f); }
+// 高解像度の画面では星も画面の倍率に合わせて大きく
+static void DrawStarDot(Vector2 p, float size, Color col) {
+    if (size > 0) DrawCircleV(p, size * g_dpiScale, col);
+    else if (g_dpiScale > 1.4f) DrawCircleV(p, 0.5f * g_dpiScale, col);
+    else DrawPixelV(p, col);
+}
+
 static Sky LoadSky() {
     Sky sky;
     EmbeddedFile sb = StarsBin();
@@ -43,10 +54,7 @@ static Sky LoadSky() {
         std::memcpy(&mag100, p + 8, 2);
         std::memcpy(&bv1000, p + 10, 2);
         float mag = mag100 / 100.0f;
-        // 4.5 等より明るい星は円で、暗い星は 1 ピクセルの点の濃さで明るさを表す
-        float size = mag < 4.5f ? std::min(3.2f, 1.0f + (4.5f - mag) * 0.38f) : 0.0f;
-        float a = mag < 5.0f ? 255.0f : std::max(30.0f, 235.0f - (mag - 5.0f) * 65.0f);
-        sky.stars.push_back({EquToRender(ra, dec), StarColor(bv1000 / 1000.0, (unsigned char)a), size, mag});
+        sky.stars.push_back({EquToRender(ra, dec), StarColor(bv1000 / 1000.0, (unsigned char)StarDotAlpha(mag)), StarDotSize(mag), mag});
     }
 
     EmbeddedFile st = SkyTxt();

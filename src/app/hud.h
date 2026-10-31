@@ -20,10 +20,7 @@ static void DrawStars(const App& app) {
         Vector2 p;
         if (!Project(c, st.dir, &p)) continue;
         if (p.x < -4 || p.y < -4 || p.x >= c.W + 4 || p.y >= c.H + 4) continue;
-        // 高解像度の画面では星も画面の倍率に合わせて大きく
-        if (st.size > 0) DrawCircleV(p, st.size * g_dpiScale, st.col);
-        else if (g_dpiScale > 1.4f) DrawCircleV(p, 0.5f * g_dpiScale, st.col);
-        else DrawPixelV(p, st.col);
+        DrawStarDot(p, st.size, st.col);
     }
 }
 
@@ -166,24 +163,46 @@ static void DrawCorona(Vector2 c, float rs, float k) {
 
 static void DrawSunGlowAndDots(const App& app) {
     const Cam& c = app.cam;
+    double day = SkyDaylight(app);
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        V3 rel = b.pos - c.pos;
+        V3 rel = CamRel(c, b.pos);
         Vector2 p;
         if (!Project(c, rel, &p)) continue;
-        double px = b.d.radius / Len(rel) * c.focal;
-        if (i == B_SUN) {
-            // 日食: 欠けた分だけまぶしさを弱め、皆既の直前からコロナを描く（月の円盤は後で 3D に重なって中央を隠す）
-            double cover = SunCover(app, c.pos);
-            double k = std::max(0.0, std::min(1.0, (cover - 0.985) / 0.015));
-            if (k > 0) DrawCorona(p, (float)px, (float)k);
-            if (Occluded(app, c.pos, b.pos, B_SUN)) continue;
-            float r = (float)(px * 1.8 + 14), g = (float)std::pow(1.0 - cover, 0.6);
-            BeginBlendMode(BLEND_ADDITIVE);
-            DrawCircleGradient((int)p.x, (int)p.y, r, {255, 240, 200, (unsigned char)(200 * g)}, {255, 200, 120, 0});
-            DrawCircleGradient((int)p.x, (int)p.y, r * 3, {255, 200, 140, (unsigned char)(35 * g)}, {255, 160, 80, 0});
-            EndBlendMode();
-            if (px < 0.8) DrawCircleV(p, 2.5f, {255, 250, 230, 255});
+        double dist = Len(rel), px = b.d.radius / dist * c.focal;
+        if (b.d.kind == KIND_STAR) {
+            double cover = 0;
+            if (i == B_SUN) {
+                // 日食: 欠けた分だけまぶしさを弱め、皆既の直前からコロナを描く（月の円盤は後で 3D に重なって中央を隠す）
+                cover = SunCover(app, c.pos);
+                double k = std::max(0.0, std::min(1.0, (cover - 0.985) / 0.015));
+                if (k > 0) DrawCorona(p, (float)px, (float)k);
+            }
+            if (Occluded(app, c.pos, b.pos, (int)i)) continue;
+            // まぶしさ: −3 等より明るい時（惑星から見た太陽、恒星のすぐそば）
+            float mag = (float)StarApparentMag(b.d, dist);
+            double glare = std::max(0.0, std::min(1.0, (-3.0 - mag) / 10.0));
+            if (glare > 0) {
+                // 光の色: 太陽の色との比で染める（太陽は今まで通り）
+                const Col3 &tc = b.d.c1, &sc = app.B[B_SUN].d.c1;
+                float r = (float)(px * 1.8 + 14), g = (float)(std::pow(1.0 - cover, 0.6) * glare);
+                auto tint = [](float base, float k) { return (unsigned char)std::min(255.0f, base * k); };
+                BeginBlendMode(BLEND_ADDITIVE);
+                DrawCircleGradient((int)p.x, (int)p.y, r, {tint(255, tc.r / sc.r), tint(240, tc.g / sc.g), tint(200, tc.b / sc.b), (unsigned char)(200 * g)},
+                                   {tint(255, tc.r / sc.r), tint(200, tc.g / sc.g), tint(120, tc.b / sc.b), 0});
+                DrawCircleGradient((int)p.x, (int)p.y, r * 3, {tint(255, tc.r / sc.r), tint(200, tc.g / sc.g), tint(140, tc.b / sc.b), (unsigned char)(35 * g)},
+                                   {tint(255, tc.r / sc.r), tint(160, tc.g / sc.g), tint(80, tc.b / sc.b), 0});
+                EndBlendMode();
+            }
+            if (px >= 0.8) continue;
+            if (glare > 0) {
+                DrawCircleV(p, 2.5f, {255, 250, 230, 255});
+            } else if (mag < 8.5f) {
+                // 星空の星と同じ描き方（太陽から見た明るさなら、星表の星と同じ見た目）。昼の空では見えない
+                double bv = b.d.star >= 0 ? NEARBY_STARS[b.d.star].bv : 0.65;
+                float a = StarDotAlpha(mag) * (float)(i == B_SUN ? 1.0 : 1.0 - day);
+                if (a >= 4) DrawStarDot(p, StarDotSize(mag), StarColor(bv, (unsigned char)a));
+            }
         } else if (b.d.probe < 0 && b.outer / Len(rel) * c.focal < 0.8) {
             DrawCircleV(p, b.d.parent == 0 ? 1.8f : 1.2f, BodyColor(b));
         }
@@ -214,7 +233,7 @@ static void PlaceLabel(float* x, float* y, float w, float h, float screenH) {
 static void DrawMarker(const App& app, int idx) {
     const Cam& c = app.cam;
     const Body& b = app.B[idx];
-    V3 rel = b.pos - c.pos;
+    V3 rel = CamRel(c, b.pos);
     double dist = Len(rel);
     double surf = SurfaceDist(b, c.pos);
     bool isTarget = idx == app.target;
@@ -290,15 +309,22 @@ static void DrawMarkers(const App& app) {
         }
     }
     if (app.B[app.target].active) DrawMarker(app, app.target);  // ターゲットを優先して配置
+    bool farAway = Len(c.pos) > 0.05 * LY_KM;   // 太陽系から遠く離れていると、太陽系の天体は太陽しか出さない（みな同じ所に重なる）
     for (size_t i = 0; i < app.B.size(); i++) {
         const BodyDef& d = app.B[i].d;
         if ((int)i == app.target || !app.B[i].active) continue;
+        if (farAway && d.kind != KIND_STAR) continue;
         if (d.probe >= 0) {
             // 探査機: 衛星マーカーと一緒に切り替え。近く（1,000 万 km 以内）か画面内に見える時だけ
             if (!app.showMoonMarkers) continue;
             Vector2 p;
             bool on = Project(c, app.B[i].pos - c.pos, &p) && p.x >= 0 && p.y >= 0 && p.x <= c.W && p.y <= c.H;
             if (!on && Len(app.B[i].pos - c.pos) > 1e7) continue;
+        } else if (d.star >= 0) {
+            // 太陽系の外の恒星: 星の名前を出している時（C キー）か、その星から 0.2 光年以内、同じ系の中にいる時だけ
+            const Body& rb = app.B[app.ship.ref];
+            bool sameSys = rb.d.star >= 0 && NEARBY_STARS[rb.d.star].system == NEARBY_STARS[d.star].system;
+            if (app.skyMode != 2 && !sameSys && Len(CamRel(c, app.B[i].pos)) > 0.2 * LY_KM) continue;
         } else if (d.parent > 0) {
             if (!app.showMoonMarkers) continue;
             // 衛星: 母天体の近くにいる時、または画面上で母天体から十分離れて見える時だけ
@@ -472,51 +498,91 @@ static void DrawWarpEffect(const App& app) {
     if (app.warpT < 0) return;
     const Cam& c = app.cam;
     double wi = WarpIntensity(app), flash = WarpFlash(app);
+    bool big = app.warpBig;
     Vector2 ctr = {c.W * 0.5f, c.H * 0.5f};
     float halfDiag = std::sqrt(c.W * c.W + c.H * c.H) * 0.5f;
 
     BeginBlendMode(BLEND_ADDITIVE);
-    // 星の光の筋（画面中央から外へ伸びる）
+    // 恒星間ワープ: 前方の中心が光の速さに近づいたように白く輝く
+    if (big && wi > 0.01)
+        DrawCircleGradient((int)ctr.x, (int)ctr.y, halfDiag * (0.06f + 0.22f * (float)wi), Fade({225, 235, 255, 255}, (float)(0.5 * wi)),
+                           {120, 160, 255, 0});
+    // 星の光の筋（画面中央から外へ伸びる）。恒星間ワープでは光速に近い速さで進む時のように、星が前方へ集まり（光行差）、
+    // 前の星は青く、横から後ろの星は赤くなる（ドップラー効果）
     if (wi > 0.01) {
-        float len = (float)(1.6 * wi);
+        float len = (float)((big ? 2.6 : 1.6) * wi);
+        double beta = big ? 0.97 * wi : 0, gamma = 1 / std::sqrt(1 - beta * beta);
         for (size_t i = 0; i < app.sky.stars.size(); i++) {
             const Star& st = app.sky.stars[i];
             if (st.mag > 6.5f) break;              // 暗い星は描かない（明るい順に並んでいる）
             if (st.size <= 0 && i % 2) continue;  // 暗い星は半分に間引く（画面が白飛びしないように）
+            V3 dir = st.dir;
+            Color col = st.col;
+            if (big) {
+                double ct = Dot(dir, c.fwd);
+                double ct2 = (ct + beta) / (1 + beta * ct);
+                V3 perp = dir - c.fwd * ct;
+                double pl = Len(perp);
+                if (pl > 1e-9) dir = c.fwd * ct2 + perp * (std::sqrt(std::max(0.0, 1 - ct2 * ct2)) / pl);
+                double D = 1 / (gamma * (1 - beta * ct2));   // 1 より大きいと青く、小さいと赤く
+                double kb = std::min(0.85, std::max(0.0, (D - 1) * 0.5)), kr = std::min(1.0, std::max(0.0, (1 - D) * 1.5));
+                auto mix = [](unsigned char a, double b, double k) { return (unsigned char)(a + (b - a) * k); };
+                col = {mix(mix(col.r, 150, kb), 255, kr), mix(mix(col.g, 190, kb), 90, kr), mix(mix(col.b, 255, kb), 60, kr), col.a};
+            }
             Vector2 p;
-            if (!Project(c, st.dir, &p)) continue;
+            if (!Project(c, dir, &p)) continue;
             Vector2 v = {p.x - ctr.x, p.y - ctr.y};
             float r = std::sqrt(v.x * v.x + v.y * v.y) / halfDiag;
             if (r > 1.2f) continue;
             Vector2 q = {p.x + v.x * len * r, p.y + v.y * len * r};
-            Color col = st.col;
-            col.a = (unsigned char)(std::min(1.0, 0.25 + wi) * col.a);
+            col.a = (unsigned char)(std::min(1.0, 0.25 + wi) * (big ? 0.5 : 1.0) * col.a);   // 恒星間ワープは筋が多く重なるので淡く
             DrawLineEx(p, q, st.size > 0 ? 2.0f : 1.0f, col);
         }
     }
-    // 奥から手前へ流れる光の粒（トンネル）
+    // 奥から手前へ流れる光の粒（トンネル）。恒星間ワープでは数を増やし、渦を巻いて流れる
     float tunnel = (float)std::min(1.0, wi * 1.6);
     if (tunnel > 0.01) {
-        for (int i = 0; i < 220; i++) {
+        int n = big ? 420 : 220;
+        for (int i = 0; i < n; i++) {
             double h1 = std::fmod(std::sin(i * 12.9898) * 43758.5453, 1.0);
             double h2 = std::fmod(std::sin(i * 78.233) * 12543.123, 1.0);
             double ang = std::fabs(h1) * 2 * PI;
             double z = 1.0 - std::fmod(std::fabs(h2) + app.warpPhase * (0.6 + 0.4 * std::fabs(h1)), 1.0);  // 1(奥)→0(手前)
             double z2 = std::min(1.0, z + 0.05 + 0.25 * wi);
+            double a1 = ang, a2 = ang;
+            if (big) {   // 手前に来るほど回る
+                a1 += app.warpPhase * 0.35 + (1 - z) * 1.2;
+                a2 += app.warpPhase * 0.35 + (1 - z2) * 1.2;
+            }
             float r1 = (float)(halfDiag * 0.06 / (z + 0.05)), r2 = (float)(halfDiag * 0.06 / (z2 + 0.05));
-            Vector2 dir = {(float)std::cos(ang), (float)std::sin(ang)};
-            Vector2 a = {ctr.x + dir.x * r2, ctr.y + dir.y * r2};
-            Vector2 b = {ctr.x + dir.x * r1, ctr.y + dir.y * r1};
+            Vector2 a = {ctr.x + (float)std::cos(a2) * r2, ctr.y + (float)std::sin(a2) * r2};
+            Vector2 b = {ctr.x + (float)std::cos(a1) * r1, ctr.y + (float)std::sin(a1) * r1};
             float fade = (float)(tunnel * std::min(1.0, (1.0 - z) * 3.0));
             Color col = i % 3 == 0 ? Color{255, 220, 170, 255} : Color{140, 190, 255, 255};
-            DrawLineEx(a, b, 1.5f + 2.5f * (float)(1.0 - z), Fade(col, fade * 0.8f));
+            if (big && i % 5 == 1) col = {200, 150, 255, 255};
+            DrawLineEx(a, b, 1.5f + 2.5f * (float)(1.0 - z), Fade(col, fade * (big ? 0.55f : 0.8f)));
         }
+        // 恒星間ワープ: 奥から迫ってくる光の輪
+        if (big)
+            for (int k = 0; k < 6; k++) {
+                double z = 1.0 - std::fmod(k / 6.0 + app.warpPhase * 0.5, 1.0);
+                float r = (float)(halfDiag * 0.06 / (z + 0.05));
+                float al = (float)(tunnel * std::min(1.0, (1.0 - z) * 2.0) * std::min(1.0, z * 4.0) * 0.35);
+                DrawRing(ctr, r, r + 2.0f + 6.0f * (float)(1 - z), 0, 360, 72, Fade({150, 200, 255, 255}, al));
+            }
+    }
+    // 恒星間ワープの到着: 閃光の後に広がる衝撃波の輪
+    if (big && app.warpJumped) {
+        double u = app.warpT - WarpCharge(app);
+        float r = halfDiag * (float)(0.05 + 1.5 * u), th = std::max(2.0f, 40.0f * (float)(1 - u / 1.5));
+        float al = (float)std::exp(-u * 1.8);
+        if (al > 0.01) DrawRing(ctr, r, r + th, 0, 360, 96, Fade({190, 220, 255, 255}, al * 0.6f));
     }
     EndBlendMode();
 
     // 周辺の青い滲みと閃光
-    DrawCircleGradient((int)ctr.x, (int)ctr.y, halfDiag, {40, 90, 200, 0}, Fade({60, 120, 255, 255}, (float)(0.55 * wi)));
-    if (flash > 0.003) DrawRectangle(0, 0, (int)c.W, (int)c.H, Fade({225, 238, 255, 255}, (float)std::min(1.0, flash)));
+    DrawCircleGradient((int)ctr.x, (int)ctr.y, halfDiag, {40, 90, 200, 0}, Fade({60, 120, 255, 255}, (float)((big ? 0.75 : 0.55) * wi)));
+    if (flash > 0.003) DrawRectangle(0, 0, (int)c.W, (int)c.H, Fade(big ? Color{235, 244, 255, 255} : Color{225, 238, 255, 255}, (float)std::min(1.0, flash)));
 }
 
 static void DrawToast(const App& app) {
@@ -551,6 +617,11 @@ static Appearance SeenFrom(const App& app, int i) {
     if (i == B_SUN) {
         a.k = 1;
         a.mag = -26.74 + 5 * std::log10(delta / AU_KM);
+        return a;
+    }
+    if (b.d.star >= 0) {   // 太陽系の外の恒星（褐色矮星は可視光ではほぼ見えないので等級を出さない）
+        a.k = 1;
+        if (StarAbsMag(b.d) < 90) a.mag = StarApparentMag(b.d, delta);
         return a;
     }
     double ca = Dot(Norm(S - T), Norm(O - T));
@@ -595,7 +666,8 @@ static std::string FmtAngle(double rad) {
     double d = rad / DEG;
     if (d >= 1) snprintf(b, sizeof b, "%.2f°", d);
     else if (d * 60 >= 1) snprintf(b, sizeof b, "%.1f′", d * 60);
-    else snprintf(b, sizeof b, "%.1f″", d * 3600);
+    else if (d * 3600 >= 0.1) snprintf(b, sizeof b, "%.1f″", d * 3600);
+    else snprintf(b, sizeof b, "%.4f″", d * 3600);   // 恒星（ケンタウルス座アルファ星 A は 0.0085″）
     return b;
 }
 
@@ -620,7 +692,9 @@ static std::vector<InfoLine> InfoLines(const App& app) {
     };
     // 種類
     std::string kind, en = d.en;
+    const NearbyStar* ns = d.star >= 0 ? &NEARBY_STARS[d.star] : nullptr;
     if (i == B_SUN) kind = T(UI_INFO_STAR);
+    else if (ns) kind = std::string(T(ns->kind == 1 ? UI_INFO_WHITE_DWARF : ns->kind == 2 ? UI_INFO_BROWN_DWARF : UI_INFO_STAR)) + "  (" + ns->spec + ")";
     else if (d.kind == KIND_PROBE) kind = T(d.tleN > 0 ? UI_INFO_SAT : UI_INFO_PROBE);
     else if (d.parent > 0) {
         snprintf(v, sizeof v, T(UI_INFO_MOON_OF), TR(app.B[d.parent].d.jp, app.B[d.parent].d.en));
@@ -634,9 +708,24 @@ static std::vector<InfoLine> InfoLines(const App& app) {
     const double G = 6.674e-11;
     if (d.kind != KIND_PROBE) {
         snprintf(v, sizeof v, "%s km", Grouped(d.radius, d.radius < 10 ? 2 : d.radius < 100 ? 1 : 0).c_str());
-        L.push_back({T(UI_INFO_RADIUS), std::string(v) + "  (" + earthX(d.radius / 6371.0) + ")"});
+        // 比べる相手: 恒星は太陽、褐色矮星は木星、ほかは地球（白色矮星の半径も地球と、質量は太陽と）
+        auto times = [&](UiId fmt, double ratio) {
+            char r[32], o[64];
+            snprintf(r, sizeof r, "%.3g", ratio);
+            snprintf(o, sizeof o, T(fmt), r);
+            return std::string(o);
+        };
+        bool sunLike = d.kind == KIND_STAR && (!ns || ns->kind == 0), jupLike = ns && ns->kind == 2;
+        std::string rx = sunLike ? times(UI_INFO_SUNX, d.radius / 695700.0) : jupLike ? times(UI_INFO_JUPX, d.radius / 69911.0) : earthX(d.radius / 6371.0);
+        std::string mx = jupLike ? times(UI_INFO_JUPX, d.mass / 1.898e27) : d.kind == KIND_STAR ? times(UI_INFO_SUNX, d.mass / 1.989e30)
+                                                                                                : earthX(d.mass / 5.9722e24);
+        L.push_back({T(UI_INFO_RADIUS), std::string(v) + "  (" + rx + ")"});
         snprintf(v, sizeof v, "%.3e kg", d.mass);
-        L.push_back({T(UI_INFO_MASS), std::string(v) + "  (" + earthX(d.mass / 5.9722e24) + ")"});
+        L.push_back({T(UI_INFO_MASS), std::string(v) + "  (" + mx + ")"});
+        if (ns) {
+            snprintf(v, sizeof v, "%s K", Grouped(ns->teff, 0).c_str());
+            L.push_back({T(UI_INFO_TEMP), v});
+        }
         double g = G * d.mass / std::pow(d.radius * 1000, 2), esc = std::sqrt(2 * G * d.mass / (d.radius * 1000));
         snprintf(v, sizeof v, g < 0.1 ? "%.4f m/s²  (%.4g g)" : "%.2f m/s²  (%.2f g)", g, g / 9.80665);
         L.push_back({T(UI_INFO_GRAVITY), v});
@@ -662,10 +751,17 @@ static std::vector<InfoLine> InfoLines(const App& app) {
             snprintf(v, sizeof v, "%s km", Grouped(d.moonA, 0).c_str());
             L.push_back({T(UI_INFO_SMA), v});
         }
+        if (ns && ns->P > 0)   // 連星の相手と、相手を回る周期・平均の距離
+            for (const Body& o : app.B)
+                if (&o != &b && o.d.star >= 0 && NEARBY_STARS[o.d.star].system == ns->system) {
+                    snprintf(v, sizeof v, T(UI_INFO_PARTNER_V), TR(o.d.jp, o.d.en), ns->P, ns->a * 1000.0 / ns->plx);
+                    L.push_back({T(UI_INFO_PARTNER), v});
+                }
+        if (ns && ns->estimated) L.push_back({T(UI_INFO_ESTIMATED), T(UI_INFO_ESTIMATED_V)});
         int moons = 0;
         for (const Body& o : app.B)
             if (o.d.parent == i && o.d.kind != KIND_PROBE) moons++;
-        if (moons > 0) L.push_back({T(UI_INFO_MOONS), std::to_string(moons)});
+        if (moons > 0 && d.kind != KIND_STAR) L.push_back({T(UI_INFO_MOONS), std::to_string(moons)});
     } else if (d.tleN > 0) {
         double alt = Len(b.pos - app.B[B_EARTH].pos) - app.B[B_EARTH].d.radius;
         L.push_back({T(UI_INFO_ALT), FmtDist(alt) + " / " + FmtDuration(86400 / d.tleN)});
@@ -687,7 +783,7 @@ static std::vector<InfoLine> InfoLines(const App& app) {
             snprintf(v, sizeof v, T(UI_INFO_MAG_UNIT), ap.mag);
             L.push_back({T(ap.here ? UI_INFO_MAG_HERE : UI_INFO_MAG_EARTH), v});
         }
-        if (i != B_SUN) {
+        if (d.kind != KIND_STAR) {
             int sh = ap.k < 0.03 ? 0 : ap.k < 0.35 ? 1 : ap.k < 0.65 ? 2 : ap.k < 0.97 ? 3 : 4;
             snprintf(v, sizeof v, "%.0f%%  (%s)", ap.k * 100, T((UiId)(UI_SHAPE0 + sh)));
             L.push_back({T(UI_INFO_PHASE), v});
@@ -699,7 +795,7 @@ static std::vector<InfoLine> InfoLines(const App& app) {
         }
     }
     // その天体のまわりのデータがある探査機（地球は打ち上げた全機が当たるので除く）
-    if (i != B_SUN && i != B_EARTH && d.kind != KIND_PROBE) {
+    if (d.kind != KIND_STAR && i != B_EARTH && d.kind != KIND_PROBE) {
         std::string list;
         for (const Body& o : app.B) {
             if (o.d.probe < 0 || o.d.probe >= (int)g_probes.size()) continue;

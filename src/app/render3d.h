@@ -14,6 +14,26 @@ static void DrawOrbits(App& app) {
     for (size_t i = 1; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         const BodyDef& d = b.d;
+        if (d.star >= 0) {
+            // 連星: 重心のまわりの軌道（系の中にいる時だけ）
+            const NearbyStar& ns = NEARBY_STARS[d.star];
+            if (ns.P <= 0 || Len(CamRel(c, b.pos)) < d.radius * 40) continue;   // 自分の軌道線が星を貫いて見えるのを防ぐ
+            V3 center = StarBarycenter(ns, app.tDays);
+            if (Len(CamRel(c, center)) > ns.a * ARCSEC * StarDistance(ns) * 300) continue;
+            Color col = BodyColor(b, 0.8f);
+            col.a = (int)i == app.target ? 150 : 70;
+            rlCheckRenderBatchLimit((int)b.orbit.size() * 2);
+            rlBegin(RL_LINES);
+            rlColor4ub(col.r, col.g, col.b, col.a);
+            for (size_t k = 0; k + 1 < b.orbit.size(); k++) {
+                Vector3 p0 = ToF(CamRel(c, center) + b.orbit[k]), p1 = ToF(CamRel(c, center) + b.orbit[k + 1]);
+                rlVertex3f(p0.x, p0.y, p0.z);
+                rlVertex3f(p1.x, p1.y, p1.z);
+            }
+            rlEnd();
+            continue;
+        }
+        if (d.parent < 0) continue;
         V3 center = d.parent == 0 ? V3() : app.B[d.parent].pos;
         if (d.parent > 0 && Len(c.pos - center) > d.moonA * 60) continue;  // 衛星の軌道は近くでだけ表示
         if (Len(c.pos - b.pos) < d.radius * 40) continue;  // 自分の軌道線が天体を貫いて見えるのを防ぐ
@@ -562,7 +582,7 @@ static void SetOccluders(App& app, int i, double s) {
     const Body& b = app.B[i];
     float data[16] = {0};
     int n = 0;
-    if (i != B_SUN) {
+    if (b.d.kind != KIND_STAR) {
         V3 L = Norm(app.B[B_SUN].pos - b.pos);
         double sunAng = app.B[B_SUN].d.radius / Len(app.B[B_SUN].pos - b.pos);
         struct Cand { int j; double k; };
@@ -582,7 +602,7 @@ static void SetOccluders(App& app, int i, double s) {
         for (const Cand& cd : cands) {
             if (n == 4) break;
             const Body& o = app.B[cd.j];
-            V3 cp = (o.pos - app.cam.pos) * s;
+            V3 cp = CamRel(app.cam, o.pos) * s;
             bool atm = o.d.kind == KIND_EARTH;   // 大気で赤い光が回り込む（月食）
             data[n * 4 + 0] = (float)cp.x; data[n * 4 + 1] = (float)cp.y; data[n * 4 + 2] = (float)cp.z;
             data[n * 4 + 3] = (float)(o.d.radius * s) * (atm ? -1.0f : 1.0f);
@@ -601,7 +621,7 @@ static void DrawBodies(App& app) {
     std::vector<Item> items;
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        V3 rel = b.pos - c.pos;
+        V3 rel = CamRel(c, b.pos);
         double dist = Len(rel);
         if (b.d.probe >= 0) continue;  // 探査機は DrawProbes で描く
         if (Dot(rel, c.fwd) < -b.outer) continue;
@@ -613,7 +633,7 @@ static void DrawBodies(App& app) {
     for (const Item& it : items) {
         const Body& b = app.B[it.i];
         const BodyDef& d = b.d;
-        V3 rel = b.pos - c.pos;
+        V3 rel = CamRel(c, b.pos);
         double dist = it.dist;
         double s = 100.0 / dist;
         double rPol = d.radius * (1 - d.flattening);
@@ -624,7 +644,7 @@ static void DrawBodies(App& app) {
         SetPassProjection(c, nearKm * s, (dist + b.outer) * s * 1.01);
         ClearDepth();
 
-        V3 L = it.i == B_SUN ? V3(0, 1, 0) : Norm(-b.pos);
+        V3 L = d.kind == KIND_STAR ? V3(0, 1, 0) : Norm(-b.pos);
         V3 Lobj(Dot(L, b.ex), Dot(L, b.pole), Dot(L, b.ez));
         Vector3 lf = ToF(L), lo = ToF(Lobj);
         Vector3 c1 = {d.c1.r, d.c1.g, d.c1.b}, c2 = {d.c2.r, d.c2.g, d.c2.b}, atm = {d.atm.r, d.atm.g, d.atm.b};
@@ -740,11 +760,29 @@ static void DrawBodies(App& app) {
 
 static bool Occluded(const App& app, V3 from, V3 to, int self);
 
-// 自機の照明: 太陽（天体の影に入ると消える）と、近くの天体からの照り返し
+// 一番明るく見える恒星（太陽系の中では太陽）
+static int BrightestStar(const App& app, V3 from, double* mag) {
+    int best = B_SUN;
+    *mag = 1e9;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        if (app.B[i].d.kind != KIND_STAR) continue;
+        double m = StarApparentMag(app.B[i].d, Len(app.B[i].pos - from));
+        if (m < *mag) { *mag = m; best = (int)i; }
+    }
+    return best;
+}
+
+// 自機の照明: 一番明るい恒星（天体の影に入ると消える。恒星の間では暗く）と、近くの天体からの照り返し
 static void SetShipLighting(App& app, V3 shipWorld) {
-    V3 sun = Norm(app.B[B_SUN].pos - shipWorld);
-    float sunK = Occluded(app, shipWorld, app.B[B_SUN].pos, B_SUN) ? 0.0f : 1.05f;
-    Vector3 sunDir = ToF(sun), sunColor = {sunK, sunK * 0.98f, sunK * 0.94f};
+    double mag;
+    int si = BrightestStar(app, shipWorld, &mag);
+    const Body& star = app.B[si];
+    V3 sun = Norm(star.pos - shipWorld);
+    // 冥王星から見た太陽（−19 等）までは今まで通りの明るさ。恒星の間（0 等ほど）では最低限の明るさ
+    float sunK = Occluded(app, shipWorld, star.pos, si) ? 0.0f : 1.05f * (float)std::max(0.12, std::min(1.0, (-mag - 4.0) / 12.0));
+    const Col3 &tc = star.d.c1, &sc = app.B[B_SUN].d.c1;   // 恒星の色（太陽の色との比）
+    Vector3 sunDir = ToF(sun), sunColor = {sunK * std::min(1.2f, tc.r / sc.r), sunK * 0.98f * std::min(1.2f, tc.g / sc.g),
+                                           sunK * 0.94f * std::min(1.2f, tc.b / sc.b)};
     // 見かけの大きさが最大の天体（太陽以外）
     int best = -1;
     double bestK = 0;
@@ -831,7 +869,7 @@ static void DrawProbes(App& app) {
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         if (b.d.probe < 0 || !b.active) continue;
-        V3 rel = b.pos - c.pos;
+        V3 rel = CamRel(c, b.pos);
         double dist = Len(rel);
         if (0.015 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -0.02) continue;
         if (Occluded(app, c.pos, b.pos, (int)i)) continue;

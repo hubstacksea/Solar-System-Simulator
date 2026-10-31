@@ -4,12 +4,18 @@
 // main.cpp の一部で、main.cpp が決まった順に読み込む（単体ではコンパイルしない）
 
 // ---------------------------------------------------------------- ワープ演出
-// 加速（機首を目標へ向けながら光の筋が伸びる）→ 閃光の頂点で移動 → 到着（筋が縮んで消える）
-static const double WARP_CHARGE = 0.9, WARP_ARRIVE = 0.8;  // 実時間 秒
+// 加速（機首を目標へ向けながら光の筋が伸びる）→ 閃光の頂点で移動 → 到着（筋が縮んで消える）。
+// 恒星間ワープ（STAR_WARP_KM より遠くへ）は長く大きく: 星空が前方へ集まって青く（後ろは赤く）なり、渦を巻く光のトンネルを抜ける
+static const double WARP_CHARGE = 0.9, WARP_ARRIVE = 0.8;            // 実時間 秒
+static const double STAR_WARP_CHARGE = 2.6, STAR_WARP_ARRIVE = 2.0;
+static const double STAR_WARP_KM = 0.03 * LY_KM;                     // 約 1,900 AU
+static double WarpCharge(const App& app) { return app.warpBig ? STAR_WARP_CHARGE : WARP_CHARGE; }
+static double WarpArrive(const App& app) { return app.warpBig ? STAR_WARP_ARRIVE : WARP_ARRIVE; }
 
 static void StartWarp(App& app, int ti, bool land) {
     if (app.warpT >= 0) return;
-    sfx::Warp();
+    app.warpBig = Len(app.B[ti].pos - ShipWorld(app)) > STAR_WARP_KM;
+    sfx::Warp(app.warpBig);
     app.warpT = 0;
     app.warpTarget = ti;
     app.warpLand = land;
@@ -22,16 +28,17 @@ static void StartWarp(App& app, int ti, bool land) {
 // 演出の強さ 0..1（光の筋の長さ・視野角の広がり）
 static double WarpIntensity(const App& app) {
     if (app.warpT < 0) return 0;
-    if (app.warpT < WARP_CHARGE) { double k = app.warpT / WARP_CHARGE; return k * k; }
-    double k = 1 - std::min(1.0, (app.warpT - WARP_CHARGE) / WARP_ARRIVE);
+    double ch = WarpCharge(app);
+    if (app.warpT < ch) { double k = app.warpT / ch; return k * k; }
+    double k = 1 - std::min(1.0, (app.warpT - ch) / WarpArrive(app));
     return k * k * k;
 }
 
-// 移動の瞬間を頂点とする閃光 0..1
+// 移動の瞬間を頂点とする閃光 0..1（恒星間ワープは長く尾を引く）
 static double WarpFlash(const App& app) {
     if (app.warpT < 0) return 0;
-    double d = app.warpT - WARP_CHARGE;
-    return d < 0 ? std::exp(d * 14.0) : std::exp(-d * 6.0);
+    double d = app.warpT - WarpCharge(app);
+    return d < 0 ? std::exp(d * (app.warpBig ? 6.0 : 14.0)) : std::exp(-d * (app.warpBig ? 2.5 : 6.0));
 }
 
 static double TurnToward(Ship& s, V3 desired, double maxAngle);
@@ -44,7 +51,7 @@ static void UpdateWarp(App& app, double dt) {
         V3 d = app.B[app.warpTarget].pos - ShipWorld(app);
         TurnToward(app.ship, d, 3.0 * dt);
         app.ship.thrusting = true;
-        if (app.warpT >= WARP_CHARGE) {
+        if (app.warpT >= WarpCharge(app)) {
             std::vector<Bookmark> bms = app.warpBookmark >= 0 ? LoadBookmarks(app) : std::vector<Bookmark>();
             if (app.warpEvent >= 0 && app.warpEvent < (int)app.events.size()) ApplyEvent(app, app.events[app.warpEvent]);
             else if (app.warpBookmark >= 0 && app.warpBookmark < (int)bms.size()) ApplyBookmark(app, bms[app.warpBookmark]);
@@ -54,8 +61,9 @@ static void UpdateWarp(App& app, double dt) {
             app.warpJumped = true;
             if (app.physics) app.ship.vel = CircularVelocity(app);   // 重力モード: 着いた天体のまわりの円軌道に乗せる
         }
-    } else if (app.warpT >= WARP_CHARGE + WARP_ARRIVE) {
+    } else if (app.warpT >= WarpCharge(app) + WarpArrive(app)) {
         app.warpT = -1;
+        app.warpBig = false;
     }
 }
 
@@ -745,7 +753,7 @@ static void UpdateCamera(App& app) {
     double targetFov = (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || app.padZoom || app.eventZoom) ? 8 * DEG : 60 * DEG;
     c.fovBase += (targetFov - c.fovBase) * std::min(1.0, GetFrameTime() * 10.0);
     double wi = WarpIntensity(app);
-    c.fovy = std::min(150 * DEG, c.fovBase * (1.0 + 0.75 * wi));  // ワープ中は視野が広がる
+    c.fovy = std::min(150 * DEG, c.fovBase * (1.0 + (app.warpBig ? 1.1 : 0.75) * wi));  // ワープ中は視野が広がる
     c.focal = c.H * 0.5 / std::tan(c.fovy * 0.5);
     c.fwd = ShipFwd(s);
     c.up = ShipUp(s);
@@ -754,7 +762,7 @@ static void UpdateCamera(App& app) {
     // ワープ中は自機が前へ飛び出し、カメラが置いていかれる。閃光の前後は小刻みに揺れる
     double lag = 0.055 + (app.warpJumped ? 0.12 : 0.2) * wi;
     V3 off = app.cockpit ? c.up * 0.0025 : c.up * 0.013 - c.fwd * lag;   // 自機からカメラへ
-    double shake = WarpFlash(app) * 0.0012;
+    double shake = WarpFlash(app) * (app.warpBig ? 0.0022 : 0.0012) + (app.warpBig && !app.warpJumped ? wi * 0.0006 : 0.0);
     if (shake > 0) {
         double t = GetTime() * 61.0;
         off = off + c.right * (std::sin(t) * shake) + c.up * (std::sin(t * 1.37 + 1.0) * shake);
@@ -769,18 +777,21 @@ static void UpdateCamera(App& app) {
         c.right = Norm(Cross(c.fwd, u0));
         c.up = Cross(c.right, c.fwd);
     }
-    c.pos = sw + off;
+    c.origin = app.B[s.ref].pos;
+    c.local = s.local + off;
     for (const Body& b : app.B) {
-        V3 rel = c.pos - b.pos;
+        V3 bl = b.pos - c.origin;   // 基準天体なら 0（丸めなし）
+        V3 rel = c.local - bl;
         double d = Len(rel);
         if (d > b.d.radius * 1.2 + 1) continue;
         V3 dir = rel * (1.0 / d);
         double rs = SurfaceRadius(b, dir) + MinAltitude(b) * 0.5;
-        if (d < rs) {   // 地面にめり込まないよう押し上げる（天体のそばなので座標は小さく、引き算でよい）
-            c.pos = b.pos + dir * rs;
-            off = c.pos - sw;
+        if (d < rs) {   // 地面にめり込まないよう押し上げる
+            c.local = bl + dir * rs;
+            off = c.local - s.local;
         }
     }
+    c.pos = c.origin + c.local;
     c.shipRel = off * -1.0;
     g_view = MatrixLookAt({0, 0, 0}, ToF(c.fwd), ToF(c.up));
 }
