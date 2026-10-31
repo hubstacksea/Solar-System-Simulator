@@ -234,6 +234,46 @@ static double StarApparentMag(const BodyDef& d, double distKm) {
     return StarAbsMag(d) + 5 * std::log10(std::max(distKm, 1.0) / PC_KM) - 5;
 }
 
+// 表面の描き方: 0 太陽型（粒状斑と低緯度の黒点）, 1 赤色矮星（大きな黒点が高緯度まで）, 2 高温の星（模様が淡い）,
+// 3 白色矮星（なめらかで青白い）
+static int StarSurface(const BodyDef& d) {
+    if (d.star < 0) return 0;
+    const NearbyStar& ns = NEARBY_STARS[d.star];
+    return ns.kind == 1 ? 3 : ns.teff > 7500 ? 2 : ns.kind == 0 && ns.teff < 4000 ? 1 : 0;
+}
+
+// フレア星（ときどき数分だけ明るくなる赤色矮星）。くじら座 UV 星は 1 分たらずで何倍にも明るくなる
+static bool IsFlareStar(const BodyDef& d) {
+    if (d.star < 0) return false;
+    for (const char* n : {"Proxima Centauri", "UV Ceti", "BL Ceti", "Wolf 359", "Ross 154"})
+        if (std::strcmp(NEARBY_STARS[d.star].en, n) == 0) return true;
+    return false;
+}
+
+// フレアの明るさ 0〜1（時刻 tDays のシミュレーションの時間で）。2 分ごとの区切りの 35% でフレアが始まり、
+// 8 秒で明るくなって約 70 秒で減っていく（実際より頻繁に起こす）。seq はフレアの通し番号（場所を決める）
+static double FlareLevel(const Body& b, int idx, double tDays, int* seq) {
+    *seq = 0;
+    if (!IsFlareStar(b.d)) return 0;
+    const double slot = 2.0 / 1440;
+    long long k0 = (long long)std::floor(tDays / slot);
+    double best = 0;
+    for (long long k = k0 - 4; k <= k0; k++) {
+        uint64_t h = (uint64_t)k * 0x9E3779B97F4A7C15ull ^ (uint64_t)(idx + 1) * 0xBF58476D1CE4E5B9ull;
+        h ^= h >> 31; h *= 0x94D049BB133111EBull; h ^= h >> 29;
+        if ((h & 1023) > 358) continue;
+        double start = (k + ((h >> 10) & 1023) / 1024.0) * slot, amp = 0.3 + 0.7 * ((h >> 20) & 1023) / 1023.0;
+        double dt = (tDays - start) * 86400;
+        if (dt < 0) continue;
+        double lv = amp * (dt < 8 ? dt / 8 : std::exp(-(dt - 8) / 70));
+        if (lv > best) {
+            best = lv;
+            *seq = (int)(k & 0xffff);
+        }
+    }
+    return best;
+}
+
 // ---------------------------------------------------------------- 探査機の軌跡
 // assets/probes.bin（tools/make_probe_assets.py、JPL Horizons）。区間ごとに太陽中心か惑星中心の位置・速度の点列を持ち、
 // 点の間は 3 次エルミート補間。惑星中心の区間は「シミュレータの惑星 + 相対位置」なので、惑星の位置の誤差があっても

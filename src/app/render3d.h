@@ -652,6 +652,12 @@ static void DrawBodies(App& app) {
         // 大気の縁の光は外から見た時だけ（地表付近では地面全体が光ってしまう）
         float atmK = (float)std::min(1.0, std::max(0.0, alt / (d.radius * 0.05)));
         float params[4] = {(float)d.kind, d.bands, (float)(it.i * 7.31), d.atmStrength * atmK};
+        if (d.kind == KIND_STAR) {   // 恒星: y は表面の描き方、w はフレア（整数部が通し番号、小数部が明るさ）
+            int seq;
+            double fl = FlareLevel(b, it.i, app.tDays, &seq);
+            params[1] = (float)StarSurface(d);
+            params[3] = fl > 0.01 ? (float)(seq % 4096) + (float)std::min(0.99, fl) : 0.0f;
+        }
         SetShaderValue(app.shader, app.locLight, &lf, SHADER_UNIFORM_VEC3);
         // 本体の描画では自転込みの座標系での太陽方向（環の影に使う）
         {

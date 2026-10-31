@@ -7,6 +7,7 @@
 // 天文イベント（日食・月食・木星面の衛星の影の通過・太陽面通過・惑星の接近・衝）、彗星、探査機のできごと
 enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TOTAL, EV_LUNAR_PARTIAL, EV_SHADOW,
                  EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH, EV_ECLIPSE_GROUND, EV_METEOR,
+                 EV_PERIASTRON, EV_VIEW,   // 連星の近星点通過（body: 主星, body2: 伴星）、ツアーの眺め（body の近くから body2 の方を見る）
                  EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT };
 struct AstroEvent {
     int kind = 0;
@@ -50,12 +51,14 @@ struct App {
     int warpTarget = 0;
     bool warpLand = false, warpJumped = false;
     bool warpBig = false;                 // 恒星間ワープ（遠く離れた所へ。演出を長く・大きく）
+    double warpDist = 0;                  // ワープを始めた時の目標までの距離 km
     int warpBookmark = -1;                // ブックマークへのワープ中はその番号
     int nextBookmark = 0;                 // N キーで次に向かうブックマーク
     bool eventsOpen = false;              // 天文イベント一覧（K キー）
     bool mapOpen = false;                 // 全体図（F3 キー）
     int mapCenter = 0;                    // 全体図の中心の天体（0: 太陽、ほかは惑星など）
     double mapRange = 0;                  // 全体図の半径 km（0: 中心に合わせて自動）
+    bool mapStars = false;                // 全体図: 太陽のまわりの恒星の図（太陽中心から縮小し切ると）
     bool mapWasCaptured = false;          // 全体図を開く前にマウスを捕捉していたか
     bool timeReverse = false;             // 時間を逆に進める（全体図を開いている間だけ）
     bool showInfo = false;                // ターゲットの天体の情報（I キー）

@@ -186,6 +186,26 @@ static std::vector<AstroEvent> FindCometEvents(const App& app) {
             }
         }
     }
+    // 連星の近星点通過（論文の軌道の近点通過の時刻 T から周期 P ごと。年は 365.25 日で J2000 からの日数に）
+    for (size_t i = 0; i < app.B.size(); i++) {
+        int si = app.B[i].d.star;
+        if (si < 0 || NEARBY_STARS[si].P <= 0 || NEARBY_STARS[si].k >= 0) continue;   // 主星（係数が負）だけ
+        const NearbyStar& ns = NEARBY_STARS[si];
+        int comp = -1;
+        for (size_t j = 0; j < app.B.size(); j++)
+            if (j != i && app.B[j].d.star >= 0 && NEARBY_STARS[app.B[j].d.star].system == ns.system) comp = (int)j;
+        if (comp < 0) continue;
+        double y0 = 2000 + t0 / 365.25, y1 = 2000 + t1 / 365.25;
+        for (double y = ns.T + std::ceil((y0 - ns.T) / ns.P) * ns.P; y < y1; y += ns.P) {
+            AstroEvent ev;
+            ev.kind = EV_PERIASTRON;
+            ev.t = (y - 2000) * 365.25;
+            ev.body = (int)i;
+            ev.body2 = comp;
+            ev.dist = ns.a * 1000.0 / ns.plx * (1 - ns.e) * AU_KM;
+            out.push_back(ev);
+        }
+    }
     std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
     return out;
 }
@@ -420,6 +440,13 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
             break;
         case EV_IMPACT: snprintf(b, sizeof b, T(UI_EV_IMPACT), name(ev.probe), name(ev.body)); break;
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR), T(SHOWERS[ev.moon].name)); break;
+        case EV_PERIASTRON: {   // 主星の名前の末尾の「 A」を除いて連星の名前に
+            std::string n = name(ev.body);
+            if (n.size() > 2 && n.compare(n.size() - 2, 2, " A") == 0) n.resize(n.size() - 2);
+            snprintf(b, sizeof b, T(UI_EV_PERIASTRON), n.c_str());
+            break;
+        }
+        case EV_VIEW: snprintf(b, sizeof b, T(UI_EV_VIEW), name(g_jp ? ev.body : ev.body2), name(g_jp ? ev.body2 : ev.body)); break;
         default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
@@ -437,6 +464,7 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_FROM_SUN), FmtDist(ev.dist).c_str()); return b;
         case EV_IMPACT: return T(UI_EV_IMPACT_D);
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
+        case EV_PERIASTRON: snprintf(b, sizeof b, T(UI_EV_SEPARATION), FmtDist(ev.dist).c_str()); return b;
         default: break;
     }
     if (ev.kind > EV_SOLAR_PARTIAL && ev.kind != EV_ECLIPSE_GROUND) return "";
@@ -541,6 +569,30 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         V3 up = Norm(app.ship.local), rad = EquToRender(ms.ra, ms.dec);
         V3 h = rad - up * Dot(rad, up);
         if (Len(h) > 1e-6) app.ship.q = QuatFromBasis(Norm(h) * std::cos(50 * DEG) + up * std::sin(50 * DEG), up);
+    } else if (ev.kind == EV_PERIASTRON) {
+        // 2 つの星を結ぶ線に垂直な、軌道の外から（間隔の 3 倍の距離）、2 つの星の真ん中を見る
+        const Body& a = app.B[ev.body];
+        const Body& b = app.B[ev.body2];
+        V3 sep = b.pos - a.pos, n = Cross(sep, Y_UP);
+        n = Len(n) > 1e-6 ? Norm(n) : V3(1, 0, 0);
+        V3 mid = sep * 0.5;
+        app.ship.ref = ev.body;
+        app.ship.local = mid + n * (Len(sep) * 3) + Y_UP * (Len(sep) * 0.6);
+        app.ship.q = QuatFromBasis(mid - app.ship.local, Y_UP);
+        app.target = ev.body;
+    } else if (ev.kind == EV_VIEW) {
+        // body2 と反対側（惑星は照らす恒星の側へ寄せる）の body の半径の 6 倍の所から、body と body2 の間の方を見る
+        // （両方が画面に入る）
+        const Body& a = app.B[ev.body];
+        V3 away = Norm(a.pos - app.B[ev.body2].pos), side = Y_UP - away * Dot(Y_UP, away);
+        side = Len(side) > 1e-6 ? Norm(side) : V3(1, 0, 0);
+        int host = HostStar(app.B, ev.body);
+        V3 toHost = host != ev.body ? Norm(app.B[host].pos - a.pos) : V3(0, 0, 0);
+        V3 u = Norm(away + side * 0.35 + toHost * 0.7);
+        app.ship.ref = ev.body;
+        app.ship.local = u * (a.d.radius * 6);
+        app.ship.q = QuatFromBasis(Norm(u * -1.0 - away), Y_UP);
+        app.target = ev.body;
     } else if (ev.kind >= EV_FLYBY) {
         // 探査機の斜め後ろ（惑星と反対側）から惑星の方を見る。探査機は画面の横に、惑星は正面に見える。
         // 惑星の夜側を通る時は、昼側の縁（三日月形に光る部分）を正面にする
@@ -636,7 +688,7 @@ static void StartWarp(App& app, int ti, bool land);
 
 // イベントへワープする時に向かう天体
 static int EventBody(const AstroEvent& ev) {
-    if (ev.kind == EV_IMPACT) return ev.body;
+    if (ev.kind == EV_IMPACT || ev.kind == EV_PERIASTRON || ev.kind == EV_VIEW) return ev.body;
     if (ev.kind >= EV_FLYBY) return ev.probe;
     if (ev.kind == EV_ECLIPSE_GROUND) return B_EARTH;
     if (ev.kind >= EV_TRANSIT) return ev.body;
@@ -657,10 +709,11 @@ static void OpenEventsPage(App& app) {
 }
 
 // ---------------------------------------------------------------- 自動ツアー（U キー）
-// イベント一覧の名場面を年代順に巡る。各場面は一覧（0: 天文, 1: 彗星, 2: 探査機）の種類・天体名・日付で探す
+// イベント一覧の名場面を年代順に巡る。各場面は一覧（0: 天文, 1: 彗星・連星, 2: 探査機）の種類・天体名・日付で探す。
+// 3 は一覧にない眺め（EV_VIEW: who の近くから body の方を見る）
 struct TourStop {
     int page, kind;
-    const char* who;    // 探査機か彗星の英語名（天文イベントは nullptr）
+    const char* who;    // 探査機・彗星・連星の主星の英語名（天文イベントは nullptr）
     const char* body;   // 探査機の相手の天体の英語名（nullptr: 問わない）
     const char* date;   // "YYYYMMDD"（UTC、±2 日で探す）
     const char* jp;
@@ -709,6 +762,12 @@ static const TourStop TOUR[] = {
     {2, EV_IMPACT, "DART", "Dimorphos", "20220926",
      "小惑星の軌道を変えられるかを確かめる、人類初の惑星防衛の実験。秒速 6 km で衝突し、\nディモルフォスの公転周期を 33 分縮めた",
      "The first planetary-defense test: could a spacecraft change an asteroid's orbit? Hitting at 6 km/s,\nit shortened Dimorphos's orbital period by 33 minutes"},
+    {3, EV_VIEW, "Sirius B", "Sirius A", "20261101",
+     "夜空で一番明るい恒星シリウスの伴星。太陽ほどの質量が地球ほどの大きさに詰まった白色矮星で、\nスプーン 1 杯が数トンになる。20 AU 先に主星のシリウス A が輝く",
+     "The companion of Sirius, the brightest star in the night sky: a white dwarf packing about the Sun's mass\ninto the size of the Earth, where a spoonful weighs tonnes. Sirius A shines 20 AU away"},
+    {3, EV_VIEW, "Proxima Centauri b", "Alpha Centauri A", "20261102",
+     "太陽に一番近い恒星を回る、地球ほどの大きさの惑星。赤い恒星のすぐ近くを 11 日で回り、\n水が液体でいられる範囲にある。空には 13,000 AU 先のアルファ星 A・B が明るく光る",
+     "An Earth-sized planet around the nearest star to the Sun. It circles the red dwarf in 11 days,\nwithin the zone where water could be liquid. Alpha Centauri A and B shine brightly 13,000 AU away"},
     {2, EV_ARRIVE, "BepiColombo", "Mercury", "20261121",
      "日本と欧州の水星探査機。6 回の水星フライバイで減速し、水星を回る軌道に入る。\nこのあと日本の「みお」と欧州の MPO に分かれ、磁場と表面を調べる",
      "The joint Japanese-European Mercury mission. Slowed by six Mercury flybys, it enters orbit.\nIt then splits into Japan's Mio and Europe's MPO to study the magnetic field and the surface"},
@@ -721,6 +780,9 @@ static const TourStop TOUR[] = {
     {0, EV_TRANSIT, nullptr, nullptr, "20321113",
      "水星が太陽の前を横切る太陽面通過。地球から見えるのは 100 年に 13 回ほどで、\n次は 2039 年",
      "Mercury crosses the face of the Sun. Seen from Earth this happens about 13 times a century;\nthe next one is in 2039"},
+    {1, EV_PERIASTRON, "Alpha Centauri A", nullptr, "20350430",
+     "ケンタウルス座アルファ星 A と B が、80 年に一度の近星点で 11 AU まで近づく。\n太陽系なら土星の軌道ほどの間隔で、2 つの太陽が互いを回る",
+     "Alpha Centauri A and B come within 11 AU of each other at periastron, once every 80 years.\nThe two suns orbit each other about as far apart as Saturn is from our Sun"},
     {1, EV_PERIHELION, "Halley", nullptr, "20610728",
      "ハレー彗星の次の近日点。今度は地球から見やすい位置関係になり、\n1986 年より明るく見えると予想されている",
      "Halley's next perihelion. This time Earth is better placed,\nand the comet is expected to look brighter than in 1986"},
@@ -734,6 +796,20 @@ static void BuildTour(App& app) {
     for (int i = 0; i < (int)(sizeof TOUR / sizeof TOUR[0]); i++) {
         const TourStop& st = TOUR[i];
         double t = ParseDateDigits(st.date);
+        if (st.page == 3) {
+            AstroEvent ev;
+            ev.kind = st.kind;
+            ev.t = t;
+            for (size_t k = 0; k < app.B.size(); k++) {
+                if (std::strcmp(app.B[k].d.en, st.who) == 0) ev.body = (int)k;
+                if (std::strcmp(app.B[k].d.en, st.body) == 0) ev.body2 = (int)k;
+            }
+            if (ev.body >= 0 && ev.body2 >= 0) {
+                app.tourEvents.push_back(ev);
+                app.tourStops.push_back(i);
+            }
+            continue;
+        }
         std::vector<AstroEvent> list = st.page == 0 ? FindEvents(app, t - 3) : st.page == 1 ? app.cometEvents : app.probeEvents;
         for (const AstroEvent& ev : list) {
             if (ev.kind != st.kind || std::fabs(ev.t - t) > 2) continue;

@@ -588,12 +588,33 @@ vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out fl
 }
 
 // ---------------------------------------------------------------- 太陽
-vec3 sun(vec3 p, float mu, vec3 o) {
+// 恒星の表面。surf: 0 太陽型, 1 赤色矮星, 2 高温の星, 3 白色矮星。flare: 整数部がフレアの通し番号、小数部が明るさ
+vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
+    if (surf >= 2) {
+        // 高温の星・白色矮星: 対流による粒状斑がほとんどなく、なめらか。白色矮星は周辺減光が弱く、縁まで青白い
+        float g = fbmL(p, 20.0, 6, 0.5, o);
+        vec3 c = mix(color2, color1, clamp(0.85 + g * 0.08, 0.0, 1.0));
+        float limb = surf == 3 ? 0.75 + 0.25 * pow(mu, 0.5) : 0.5 + 0.5 * pow(mu, 0.5);
+        return c * limb * (surf == 3 ? vec3(0.92 + 0.08 * mu, 0.96 + 0.04 * mu, 1.05) : vec3(1.0));
+    }
     float g = fbmL(p, 45.0, 18, 0.55, o);                 // 粒状斑
     float sg = fbmL(p, 6.0, 4, 0.5, o + 3.0);             // 超粒状斑
     vec3 c = mix(color2, color1, clamp(0.65 + g * 0.45 + sg * 0.15, 0.0, 1.0));
+    if (surf == 1) {
+        // 赤色矮星: 表面の数割を覆う大きな黒点が高緯度まで広がり、極のまわりにも黒点の帽子がある
+        for (int k = 0; k < 2; k++) {
+            vec3 d; float r, rnd;
+            if (cellSpot(p, 2.2 + 2.0 * float(k), 0.4, o + float(k) * 4.1, 0.18, 0.4, d, r, rnd)) {
+                float x = length(d) / r;
+                c = mix(c, c * 0.5, 1.0 - smoothstep(0.7, 1.0, x));
+                c = mix(c, c * 0.25, 1.0 - smoothstep(0.3, 0.55, x));
+            }
+        }
+        float cap = smoothstep(0.78, 0.9, abs(p.y) + 0.06 * fbmL(p, 8.0, 3, 0.5, o + 9.0));
+        c = mix(c, c * 0.45, cap);
+    }
     // 黒点（低緯度帯）
-    for (int k = 0; k < 2; k++) {
+    for (int k = 0; k < (surf == 1 ? 0 : 2); k++) {
         vec3 d; float r, rnd;
         if (cellSpot(p, 9.0 * float(k + 1), 0.35, o + float(k) * 5.3, 0.06, 0.2, d, r, rnd)) {
             float x = length(d) / r;
@@ -607,6 +628,19 @@ vec3 sun(vec3 p, float mu, vec3 o) {
     c *= 1.0 + fac * 0.5;
     c *= 0.42 + 0.58 * pow(mu, 0.5);                       // 周辺減光
     c *= vec3(1.0, 0.94 + 0.06 * mu, 0.82 + 0.18 * mu);    // 縁ほど赤い
+    if (flare > 0.0) {
+        // フレア: 低〜中緯度の 1 か所が青白く強く光り、まわりに 2 本の光の帯（フレアリボン）が伸びる
+        int n = int(flare);
+        float a = fract(flare);
+        float lon = hash1(ivec3(n, 17, 3)) * 6.2832, lat = (hash1(ivec3(n, 5, 11)) - 0.5) * 1.6;
+        vec3 fc = vec3(cos(lat) * cos(lon), sin(lat), cos(lat) * sin(lon));
+        vec3 side = normalize(cross(fc, vec3(0.0, 1.0, 0.0)));
+        vec3 q = p - fc * dot(p, fc);
+        float u = dot(q, side), v = length(q - side * u);
+        float core = exp(-dot(p - fc, p - fc) / 0.004);
+        float ribbon = exp(-pow((v - 0.035) / 0.012, 2.0)) * exp(-u * u / 0.006) * (0.6 + 0.4 * fbmL(p, 60.0, 3, 0.5, o + float(n)));
+        c += vec3(1.3, 1.4, 1.7) * a * (core * 2.5 + ribbon * 1.2) * step(0.0, dot(p, fc));
+    }
     return c;
 }
 
@@ -669,7 +703,7 @@ void main() {
     fw = max(length(fragWorld) * detail.y / max(mu, 0.25), 1e-8);
 
     if (kind == 0) {
-        finalColor = vec4(sun(p, mu, o), 1.0);
+        finalColor = vec4(sun(p, mu, o, int(params.y + 0.5), params.w), 1.0);
         return;
     }
 

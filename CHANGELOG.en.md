@@ -4,6 +4,17 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.18.0 (2026-10-31)
+
+- The background stars in 3D: the 41,000 stars have distances from the parallaxes of the Hipparcos new reduction, and away from the Sun they are drawn in the direction and brightness seen from where you are (constellation lines and star names too). From Alpha Centauri the nearer stars shift within their constellations
+- "Stars around the Sun" on the system map: zooming all the way out from the Sun shows the stars within 12 light-years, seen obliquely with stems for the height above the ecliptic. Far from the Sun the map opens this way
+- During an interstellar warp the distance left and how many years light would take are shown, and the info card of stars and exoplanets tells how many years ago the light you see left them
+- Binary periastra: the "Comets and binary stars" page of the event list has the times when the binaries of Alpha Centauri, Sirius, Luhman 16 and BL/UV Ceti come closest
+- Three new guided tour scenes: Sirius A seen from Sirius B, Alpha Centauri seen from Proxima Centauri b, and the 2035 periastron of Alpha Centauri
+- The ground of Proxima Centauri b (the "Surface" search tab, formerly "On Earth"): the red star hangs still in the sky. The panel notes that the surface is an artist's impression
+- Large starspots on red dwarfs, flares on the flare stars (Proxima Centauri, UV and BL Ceti, Wolf 359, Ross 154; up to about 3 magnitudes brighter for a few minutes, more often than in reality), and a smooth surface with an intense blue-white glow for the white dwarf Sirius B
+- Fixed a crash when the window cannot be created, for example without a display (it now exits with a message)
+
 ## 2.17.0 (2026-10-31)
 
 - Nine planets of other stars (Proxima Centauri b and d, Barnard's Star b to e, Lalande 21185 b and c, Epsilon Eridani b) orbit at their current positions from the NASA Exoplanet Archive orbital elements, lit by their own star. Estimated orbital tilts, masses, radii and surfaces are marked on the info card, which also shows the equilibrium temperature. They are in the "Stars" tab of the search and on the system map centered on their star

@@ -224,6 +224,8 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
 // 地上から空を見る場所（天体, 緯度・経度 deg, 標準時 UTC+時間（夏時間は考えない。NAN は UTC で表示））。
 // 選ぶと地表に降り、赤道側（北半球なら南）の空を見上げる。月面では地球が出ていれば地球を見る
 struct City { const char* jp; const char* en; double lat, lon; int body; double tz; };
+// 太陽系の外の惑星は番号が決まっていないので、英語名で探す（City::body に負の値で）
+static const int CITY_PROXIMA_B = -2;
 static const City CITIES[] = {
     {"東京", "Tokyo", 35.68, 139.69, B_EARTH, 9},         {"札幌", "Sapporo", 43.06, 141.35, B_EARTH, 9},
     {"那覇", "Naha", 26.21, 127.68, B_EARTH, 9},          {"北京", "Beijing", 39.90, 116.41, B_EARTH, 8},
@@ -246,6 +248,14 @@ static const City CITIES[] = {
     {"ジェゼロ・クレーター（パーシビアランス）", "Jezero crater (Perseverance)", 18.44, 77.45, B_MARS, NAN},
     {"ゲール・クレーター（キュリオシティ）", "Gale crater (Curiosity)", -4.59, 137.44, B_MARS, NAN},
     {"クリュセ平原（バイキング1号）", "Chryse Planitia (Viking 1)", 22.27, -47.95, B_MARS, NAN},
+    // プロキシマ・ケンタウリ b（自転が公転と同期していると考え、経度 0° が恒星の真下。経度 70° では恒星が高さ 20° に止まって見える）
+    {"プロキシマ・ケンタウリ b（想像図）", "Proxima Centauri b (artist's impression)", 0, 70, CITY_PROXIMA_B, NAN},
 };
+static int CityBody(const App& app, const City& c) {
+    if (c.body >= 0) return c.body;
+    for (size_t i = 0; i < app.B.size(); i++)
+        if (std::strcmp(app.B[i].d.en, "Proxima Centauri b") == 0) return (int)i;
+    return B_EARTH;
+}
 static const int CITY_COUNT = sizeof CITIES / sizeof CITIES[0];
 static void GoToCity(App& app, int k, double elDeg = 35);

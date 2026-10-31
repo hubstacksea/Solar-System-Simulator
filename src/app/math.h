@@ -8,6 +8,7 @@ static const double AU_KM = 149597870.7;
 static const double C_KMS = 299792.458;
 static const double LY_KM = 9460730472580.8;      // 1 光年
 static const double PC_KM = 30856775814913.67;    // 1 パーセク
+static const double STAR_WARP_KM = 0.03 * LY_KM;  // これより遠くへのワープは恒星間ワープ（約 1,900 AU）
 static const double J2000_UNIX = 946728000.0;  // 2000-01-01 12:00:00 UTC
 static const double DEG = PI / 180.0;
 

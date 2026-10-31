@@ -5,14 +5,20 @@
 
 // ---------------------------------------------------------------- 背景の星
 // ヒッパルコス星表の 8 等級までの恒星と、88 星座の線・名前（tools/make_sky_assets.py で作った埋め込みデータ）。
-// 太陽から 10 光年ほどまでの恒星（シリウスなど）は除いてあり、天体として実際の位置に描く
-struct Star { V3 dir; Color col; float size; float mag; };  // size 0 は 1 ピクセルの点。明るい順に並ぶ
-struct Constellation { V3 label; std::string jp, en; std::vector<std::vector<V3>> lines; };
-struct StarName { V3 dir; float mag; std::string jp, en; };
+// 太陽から 10 光年ほどまでの恒星（シリウスなど）は除いてあり、天体として実際の位置に描く。
+// 星には年周視差からの距離があり、太陽から離れると見える向きと明るさが変わる（UpdateSkyParallax）
+struct Star { V3 dir; Color col; float size; float mag; V3 pos; float mag0; };  // size 0 は 1 ピクセルの点。明るい順に並ぶ
+// pos は太陽からの位置 pc、mag0 は太陽から見た等級
+struct Constellation {
+    V3 label; std::string jp, en; std::vector<std::vector<V3>> lines;   // 今の場所から見た向き（自分のすぐ近くの頂点は 0）
+    V3 labelPos; std::vector<std::vector<V3>> linePos;                   // 太陽からの位置 pc
+};
+struct StarName { V3 dir; float mag; std::string jp, en; V3 pos; };
 struct Sky {
     std::vector<Star> stars;
     std::vector<Constellation> cons;
     std::vector<StarName> names;
+    V3 obs = {0, 0, 0};   // 向きを計算した場所（太陽からの位置 pc）
 };
 
 // 色指数 B-V → 見た目の色（青白い星〜赤い星。白に寄せて淡くする）
@@ -43,18 +49,20 @@ static Sky LoadSky() {
     EmbeddedFile sb = StarsBin();
     uint32_t n = 0;
     if (sb.size >= 4) std::memcpy(&n, sb.data, 4);
-    n = (uint32_t)std::min<size_t>(n, (sb.size - 4) / 12);
+    n = (uint32_t)std::min<size_t>(n, (sb.size - 4) / 16);
     sky.stars.reserve(n);
     for (uint32_t i = 0; i < n; i++) {
-        const unsigned char* p = sb.data + 4 + 12 * (size_t)i;
-        float ra, dec;
+        const unsigned char* p = sb.data + 4 + 16 * (size_t)i;
+        float ra, dec, pc;
         int16_t mag100, bv1000;
         std::memcpy(&ra, p, 4);
         std::memcpy(&dec, p + 4, 4);
         std::memcpy(&mag100, p + 8, 2);
         std::memcpy(&bv1000, p + 10, 2);
+        std::memcpy(&pc, p + 12, 4);
         float mag = mag100 / 100.0f;
-        sky.stars.push_back({EquToRender(ra, dec), StarColor(bv1000 / 1000.0, (unsigned char)StarDotAlpha(mag)), StarDotSize(mag), mag});
+        V3 dir = EquToRender(ra, dec);
+        sky.stars.push_back({dir, StarColor(bv1000 / 1000.0, (unsigned char)StarDotAlpha(mag)), StarDotSize(mag), mag, dir * (double)pc, mag});
     }
 
     EmbeddedFile st = SkyTxt();
@@ -70,17 +78,52 @@ static Sky LoadSky() {
             q = tab + 1;
         }
         pos = eol + 1;
-        if (f[0] == "C" && f.size() >= 5) {
-            sky.cons.push_back({EquToRender(atof(f[1].c_str()), atof(f[2].c_str())), f[3], f[4], {}});
+        auto at = [&](size_t k) { return EquToRender(atof(f[k].c_str()), atof(f[k + 1].c_str())); };
+        if (f[0] == "C" && f.size() >= 6) {
+            V3 d = at(1);
+            sky.cons.push_back({d, f[4], f[5], {}, d * atof(f[3].c_str()), {}});
         } else if (f[0] == "L" && !sky.cons.empty()) {
-            std::vector<V3> line;
-            for (size_t k = 1; k + 1 < f.size(); k += 2) line.push_back(EquToRender(atof(f[k].c_str()), atof(f[k + 1].c_str())));
+            std::vector<V3> line, pos;
+            for (size_t k = 1; k + 2 < f.size(); k += 3) {
+                line.push_back(at(k));
+                pos.push_back(at(k) * atof(f[k + 2].c_str()));
+            }
             sky.cons.back().lines.push_back(line);
-        } else if (f[0] == "S" && f.size() >= 6) {
-            sky.names.push_back({EquToRender(atof(f[1].c_str()), atof(f[2].c_str())), (float)atof(f[3].c_str()), f[4], f[5]});
+            sky.cons.back().linePos.push_back(pos);
+        } else if (f[0] == "S" && f.size() >= 7) {
+            V3 d = at(1);
+            sky.names.push_back({d, (float)atof(f[4].c_str()), f[5], f[6], d * atof(f[3].c_str())});
         }
     }
     return sky;
+}
+
+// 場所 obs（太陽からの位置 pc）から見た星の向きと明るさに計算し直す。0.002 pc（約 400 AU）動くまでは前の結果のまま。
+// 星座線は、自分のすぐ近く（0.3 pc 以内）の星につながる線を描かない（その星の中にいるので向きが決まらない）
+static void UpdateSkyParallax(Sky& sky, V3 obs) {
+    if (Len(obs - sky.obs) < 0.002) return;
+    sky.obs = obs;
+    for (Star& st : sky.stars) {
+        V3 d = st.pos - obs;
+        double L = std::max(Len(d), 1e-3);
+        st.dir = d * (1 / L);
+        st.mag = st.mag0 + 5 * (float)std::log10(L / std::max(Len(st.pos), 1e-3));
+        st.size = StarDotSize(st.mag);
+        st.col.a = (unsigned char)StarDotAlpha(st.mag);
+    }
+    // 明るい順に並べ直す（ワープの演出などが暗い星を途中で打ち切る）
+    std::stable_sort(sky.stars.begin(), sky.stars.end(), [](const Star& a, const Star& b) { return a.mag < b.mag; });
+    auto look = [&](V3 p, bool line) {
+        V3 d = p - obs;
+        double L = Len(d);
+        return line && L < 0.3 ? V3{0, 0, 0} : d * (1 / std::max(L, 1e-3));
+    };
+    for (Constellation& con : sky.cons) {
+        con.label = look(con.labelPos, false);
+        for (size_t i = 0; i < con.lines.size(); i++)
+            for (size_t k = 0; k < con.lines[i].size(); k++) con.lines[i][k] = look(con.linePos[i][k], true);
+    }
+    for (StarName& n : sky.names) n.dir = look(n.pos, false);
 }
 
 // ---------------------------------------------------------------- 小惑星帯などの粒（assets/asteroids.bin）

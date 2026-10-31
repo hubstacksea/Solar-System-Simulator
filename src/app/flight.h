@@ -8,13 +8,13 @@
 // 恒星間ワープ（STAR_WARP_KM より遠くへ）は長く大きく: 星空が前方へ集まって青く（後ろは赤く）なり、渦を巻く光のトンネルを抜ける
 static const double WARP_CHARGE = 0.9, WARP_ARRIVE = 0.8;            // 実時間 秒
 static const double STAR_WARP_CHARGE = 2.6, STAR_WARP_ARRIVE = 2.0;
-static const double STAR_WARP_KM = 0.03 * LY_KM;                     // 約 1,900 AU
 static double WarpCharge(const App& app) { return app.warpBig ? STAR_WARP_CHARGE : WARP_CHARGE; }
 static double WarpArrive(const App& app) { return app.warpBig ? STAR_WARP_ARRIVE : WARP_ARRIVE; }
 
 static void StartWarp(App& app, int ti, bool land) {
     if (app.warpT >= 0) return;
-    app.warpBig = Len(app.B[ti].pos - ShipWorld(app)) > STAR_WARP_KM;
+    app.warpDist = Len(app.B[ti].pos - ShipWorld(app));
+    app.warpBig = app.warpDist > STAR_WARP_KM;
     sfx::Warp(app.warpBig);
     app.warpT = 0;
     app.warpTarget = ti;

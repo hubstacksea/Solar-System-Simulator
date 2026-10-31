@@ -13,6 +13,7 @@ static void DrawStars(const App& app) {
             for (const std::vector<V3>& line : con.lines)
                 for (size_t i = 0; i + 1 < line.size(); i++) {
                     Vector2 p, q;
+                    if (Len(line[i]) == 0 || Len(line[i + 1]) == 0) continue;
                     if (Project(c, line[i], &p) && Project(c, line[i + 1], &q)) DrawLineEx(p, q, 1.2f, lc);
                 }
     }
@@ -179,15 +180,25 @@ static void DrawSunGlowAndDots(const App& app) {
                 if (k > 0) DrawCorona(p, (float)px, (float)k);
             }
             if (Occluded(app, c.pos, b.pos, (int)i)) continue;
-            // まぶしさ: −3 等より明るい時（惑星から見た太陽、恒星のすぐそば）
-            float mag = (float)StarApparentMag(b.d, dist);
+            // まぶしさ: −3 等より明るい時（惑星から見た太陽、恒星のすぐそば）。フレアの間は最大で約 3 等明るい
+            int seq;
+            double flare = FlareLevel(b, (int)i, app.tDays, &seq);
+            float mag = (float)(StarApparentMag(b.d, dist) - 2.5 * std::log10(1 + 15 * flare));
             double glare = std::max(0.0, std::min(1.0, (-3.0 - mag) / 10.0));
             if (glare > 0) {
-                // 光の色: 太陽の色との比で染める（太陽は今まで通り）
-                const Col3 &tc = b.d.c1, &sc = app.B[B_SUN].d.c1;
-                float r = (float)(px * 1.8 + 14), g = (float)(std::pow(1.0 - cover, 0.6) * glare);
+                // 光の色: 太陽の色との比で染める（太陽は今まで通り）。フレアの間は青白く
+                Col3 tc = b.d.c1;
+                const Col3& sc = app.B[B_SUN].d.c1;
+                float fk = (float)std::min(1.0, flare * 1.5);
+                tc = {tc.r + (sc.r * 0.85f - tc.r) * fk, tc.g + (sc.g * 0.95f - tc.g) * fk, tc.b + (sc.b * 1.25f - tc.b) * fk};
+                float r = (float)(px * 1.8 + 14) * (1 + fk), g = (float)(std::pow(1.0 - cover, 0.6) * glare);
                 auto tint = [](float base, float k) { return (unsigned char)std::min(255.0f, base * k); };
                 BeginBlendMode(BLEND_ADDITIVE);
+                if (StarSurface(b.d) == 3) {
+                    // 白色矮星: 小さな星から強い青白い光がにじみ出る（光の広がりを大きく）
+                    DrawCircleGradient((int)p.x, (int)p.y, r * 2.2f, {200, 220, 255, (unsigned char)(170 * g)}, {150, 180, 255, 0});
+                    DrawCircleGradient((int)p.x, (int)p.y, r * 6, {170, 200, 255, (unsigned char)(45 * g)}, {120, 160, 255, 0});
+                }
                 DrawCircleGradient((int)p.x, (int)p.y, r, {tint(255, tc.r / sc.r), tint(240, tc.g / sc.g), tint(200, tc.b / sc.b), (unsigned char)(200 * g)},
                                    {tint(255, tc.r / sc.r), tint(200, tc.g / sc.g), tint(120, tc.b / sc.b), 0});
                 DrawCircleGradient((int)p.x, (int)p.y, r * 3, {tint(255, tc.r / sc.r), tint(200, tc.g / sc.g), tint(140, tc.b / sc.b), (unsigned char)(35 * g)},
@@ -584,6 +595,16 @@ static void DrawWarpEffect(const App& app) {
     // 周辺の青い滲みと閃光
     DrawCircleGradient((int)ctr.x, (int)ctr.y, halfDiag, {40, 90, 200, 0}, Fade({60, 120, 255, 255}, (float)((big ? 0.75 : 0.55) * wi)));
     if (flash > 0.003) DrawRectangle(0, 0, (int)c.W, (int)c.H, Fade(big ? Color{235, 244, 255, 255} : Color{225, 238, 255, 255}, (float)std::min(1.0, flash)));
+    // 恒星間ワープ: 残りの距離と、光の速さならかかる時間（移動の瞬間に 0 へ向けて減っていく）
+    if (big && !app.warpJumped) {
+        double k = std::min(1.0, app.warpT / WarpCharge(app)), rem = app.warpDist * (1 - k * k * k);
+        float al = (float)std::min(1.0, app.warpT * 3) * (float)(1 - flash);
+        std::string s1 = std::string(T(UI_WARP_REMAIN)) + "  " + FmtDist(rem);
+        char s2[96];
+        snprintf(s2, sizeof s2, "%s %s%s", T(UI_WARP_LIGHT_TIME), Grouped(rem / C_KMS / (365.25 * 86400), 2).c_str(), T(UI_YEAR));
+        TxtC(s1.c_str(), ctr.x, c.H * 0.70f, 26, Fade({235, 242, 255, 255}, al));
+        TxtC(s2, ctr.x, c.H * 0.70f + 34, 17, Fade({170, 200, 245, 255}, al));
+    }
 }
 
 static void DrawToast(const App& app) {
@@ -787,6 +808,13 @@ static std::vector<InfoLine> InfoLines(const App& app) {
         L.push_back({T(UI_INFO_FROM_SUN), FmtDist(ds) + "  (" + T(UI_LIGHT) + " " + FmtDuration(ds / C_KMS) + ")"});
     }
     if (i != B_EARTH) L.push_back({T(UI_INFO_FROM_EARTH), FmtDist(Len(b.pos - app.B[B_EARTH].pos))});
+    // 恒星と系外惑星: 今見ている光が何年前に出たか（自機から）
+    double dShip = Len(b.pos - ShipWorld(app));
+    if ((d.star >= 0 || d.exo >= 0) && dShip > 0.001 * LY_KM) {
+        double yr = dShip / C_KMS / (365.25 * 86400);
+        snprintf(v, sizeof v, T(UI_INFO_LIGHT_LEFT_V), yr, (int)std::floor(2000 + app.tDays / 365.25 - yr));
+        L.push_back({T(UI_INFO_LIGHT_LEFT), v});
+    }
     L.push_back({T(UI_INFO_FROM_SHIP), FmtDist(std::max(0.0, SurfaceDist(b, ShipWorld(app))))});
     // 見え方（地上にいればそこから、ほかは地球から）
     Appearance ap = SeenFrom(app, i);
@@ -1115,8 +1143,14 @@ static void DrawGroundView(const App& app) {
                      tm(rs.set).c_str());
     }
     float w = std::max(TxtW(l1, 15), std::max(TxtW(l2, 15), TxtW(l3, 14))) + 24, h = l2[0] ? 76.0f : 30.0f;
+    bool imagined = b.d.exo >= 0;   // 太陽系の外の惑星の地表は想像図
+    if (imagined) {
+        w = std::max(w, TxtW(T(UI_GND_IMAGINED), 13) + 24);
+        h += 20;
+    }
     float x = 6, y = c.H - 64 - 44 - h;
     DrawRectangleRounded({x, y, w, h}, 0.1f, 6, {0, 10, 25, 170});
+    if (imagined) Txt(T(UI_GND_IMAGINED), x + 12, y + h - 22, 13, {255, 190, 140, 255});
     Txt(l1, x + 12, y + 7, 15, {170, 220, 170, 255});
     if (l2[0]) {
         Txt(l2, x + 12, y + 29, 15, {255, 220, 80, 255});

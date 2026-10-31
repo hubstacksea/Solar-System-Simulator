@@ -95,6 +95,34 @@ EM_JS(int, WebViewH, (), {
 #include "app/hud.h"
 
 // ---------------------------------------------------------------- main
+#if !defined(__EMSCRIPTEN__) && !defined(__APPLE__)
+// raylib に組み込まれた GLFW の関数（ヘッダはビルドのインクルードパスにないので、使うものだけ宣言する）
+extern "C" {
+struct GLFWwindow;
+int glfwInit(void);
+void glfwTerminate(void);
+void glfwDefaultWindowHints(void);
+void glfwWindowHint(int hint, int value);
+GLFWwindow* glfwCreateWindow(int w, int h, const char* title, void* monitor, void* share);
+void glfwDestroyWindow(GLFWwindow* w);
+}
+
+// OpenGL 3.3 のウィンドウを作れるか（画面がない・ドライバが古いなどでは作れない）
+static bool ProbeGlWindow(bool msaa) {
+    if (!glfwInit()) return false;
+    glfwDefaultWindowHints();
+    glfwWindowHint(0x00020004, 0);                   // GLFW_VISIBLE
+    glfwWindowHint(0x00022002, 3);                   // GLFW_CONTEXT_VERSION_MAJOR
+    glfwWindowHint(0x00022003, 3);                   // GLFW_CONTEXT_VERSION_MINOR
+    glfwWindowHint(0x00022008, 0x00032001);          // GLFW_OPENGL_PROFILE = GLFW_OPENGL_CORE_PROFILE
+    if (msaa) glfwWindowHint(0x0002100D, 4);         // GLFW_SAMPLES
+    GLFWwindow* w = glfwCreateWindow(64, 64, "", nullptr, nullptr);
+    if (w) glfwDestroyWindow(w);
+    glfwTerminate();
+    return w != nullptr;
+}
+#endif
+
 int main(int argc, char** argv) {
     setvbuf(stdout, nullptr, _IOLBF, 0);   // ログを 1 行ごとに書き出す（ファイルへ出している時に異常終了しても残るように）
     Options opt = ParseArgs(argc, argv);
@@ -166,6 +194,22 @@ int main(int argc, char** argv) {
         SetSetting("initfail", "1");
         SaveSettings();
     }
+#if !defined(__APPLE__)
+    // raylib は GLFW の初期化やウィンドウの作成に失敗しても OpenGL の関数を呼んで落ちるので、先に GLFW で
+    // 見えないウィンドウを作って確かめる。MSAA 付きで作れなければ MSAA なしで、それでも作れなければメッセージを出して終わる
+    {
+        int ok = ProbeGlWindow(msaa);
+        if (!ok && msaa) ok = ProbeGlWindow(msaa = false);
+        if (!ok) {
+            if (!opt.shot) {
+                SetSetting("initfail", "");
+                SaveSettings();
+            }
+            fprintf(stderr, "Solar System Voyager: could not create the window (a display and OpenGL 3.3 are required)\n");
+            return 1;
+        }
+    }
+#endif
     unsigned int flags = FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT | (msaa ? FLAG_MSAA_4X_HINT : 0);
 #if defined(__APPLE__)
     flags |= FLAG_WINDOW_HIGHDPI;   // Retina: 座標は今までどおり（ポイント単位）で、描画だけ細かくする
@@ -177,6 +221,12 @@ int main(int argc, char** argv) {
         SaveSettings();
     }
 #endif
+    // 画面（ディスプレイ）につながらない・OpenGL 3.3 が使えないなど。GLFW が初期化できないまま
+    // ウィンドウの関数を呼ぶと落ちるので、すぐに終わる
+    if (!IsWindowReady()) {
+        fprintf(stderr, "Solar System Voyager: could not create the window (a display and OpenGL 3.3 are required)\n");
+        return 1;
+    }
 #if !defined(__EMSCRIPTEN__) && !defined(__APPLE__)
     {   // 高解像度の画面: ウィンドウと 2D の表示を画面の表示倍率に合わせて大きくする（画面の 9 割まで）
         Vector2 dpi = GetWindowScaleDPI();
@@ -194,10 +244,6 @@ int main(int argc, char** argv) {
         }
     }
 #endif
-    if (!IsWindowReady()) {   // OpenGL 3.3 が使えないなど
-        fprintf(stderr, "Solar System Voyager: could not create the window (OpenGL 3.3 is required)\n");
-        return 1;
-    }
     SetExitKey(KEY_NULL);
     {
         EmbeddedFile f = IconPng();
@@ -388,6 +434,7 @@ int main(int argc, char** argv) {
     }
     if (!opt.shot) DisableCursor(); else app.mouseCaptured = false;
     if (opt.map) OpenMap(app);
+    if (opt.mapStars) app.mapStars = true;
     app.showInfo = opt.info;
     if (opt.city >= 0 && opt.city < CITY_COUNT) GoToCity(app, opt.city, std::isnan(opt.cityEl) ? 35 : opt.cityEl);
     if (opt.frameLock) SetFrameLock(app, true, true);
@@ -510,6 +557,7 @@ int main(int argc, char** argv) {
             EndMode3D();
             if (lowRes) rlScalef(rk, rk, 1);   // EndMode3D で modelview が単位行列に戻るので、縮小を掛け直す
         }
+        UpdateSkyParallax(app.sky, (app.cam.pos - app.B[0].pos) * (1 / PC_KM));
         DrawStars(app);
         DrawAsteroids(app);
         {

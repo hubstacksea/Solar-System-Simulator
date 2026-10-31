@@ -95,13 +95,16 @@
     X(MUSIC_8, "♪ ベートーヴェン 交響曲第6番「田園」第1楽章 Skidmore College Orchestra (Musopen)", "Now playing: Beethoven, Symphony No. 6 \"Pastoral\", I - Skidmore College Orchestra (Musopen)") \
     X(MUSIC_9, "♪ ドビュッシー「月の光」 ピアノ: Laurens Goedhart (2011, CC BY 3.0)", "Now playing: Debussy, Clair de lune - Laurens Goedhart, piano (2011, CC BY 3.0)") \
     X(EV_TITLE, "天文イベント", "Astronomical events") \
-    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 彗星 / 探査機    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / comets / spacecraft    Esc / K : close") \
+    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 彗星・連星 / 探査機    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / comets and binaries / spacecraft    Esc / K : close") \
     X(EV_PROBE_TITLE, "探査機のできごと", "Spacecraft events") \
-    X(EV_COMET_TITLE, "彗星", "Comets") \
-    X(EV_COMET_NOTE, "1980〜2070 年の近日点と地球への最接近。尾の長さは見た目の演出です", "Perihelia and closest approaches to Earth, 1980-2070. Tail lengths are illustrative") \
+    X(EV_COMET_TITLE, "彗星・連星", "Comets and binary stars") \
+    X(EV_COMET_NOTE, "1980〜2070 年の彗星の近日点と地球への最接近、連星の近星点。尾の長さは見た目の演出です", "Comet perihelia and closest approaches to Earth, and binary-star periastra, 1980-2070. Tail lengths are illustrative") \
     X(EV_PERIHELION, "%sが近日点を通過", "%s at perihelion") \
     X(EV_COMET_EARTH, "%sが地球に最接近", "%s: closest approach to Earth") \
     X(EV_FROM_SUN, "太陽から %s", "%s from the Sun") \
+    X(EV_PERIASTRON, "%sの連星が最接近（近星点）", "%s binary at periastron") \
+    X(EV_SEPARATION, "間隔 %s", "%s apart") \
+    X(EV_VIEW, "%sから見た%s", "%s seen from %s")  /* 英語は引数の順を入れ替えて渡す */ \
     X(EV_FROM_EARTH, "地球から %s", "%s from Earth") \
     X(EV_TRANSIT, "%sの太陽面通過", "Transit of %s") \
     X(EV_TRANSIT_D, "太陽の中心から半径の %.2f 倍", "%.2f solar radii from the center") \
@@ -186,6 +189,9 @@
     X(INFO_ECC, "離心率 / 軌道傾斜角", "Eccentricity / inclination") \
     X(INFO_MOONS, "衛星（このシミュレータ内）", "Moons (in this simulator)") \
     X(INFO_FROM_SUN, "太陽からの距離", "Distance from the Sun") \
+    X(GND_IMAGINED, "地表は想像図（実際の様子は分かっていない）", "The surface is an artist's impression (its real appearance is unknown)") \
+    X(INFO_LIGHT_LEFT, "見ている光", "Light you see") \
+    X(INFO_LIGHT_LEFT_V, "%.2f 年前に出た光（%d 年ごろ）", "left %.2f years ago (around %d)") \
     X(INFO_FROM_EARTH, "地球からの距離", "Distance from Earth") \
     X(INFO_FROM_SHIP, "自機からの距離", "Distance from you") \
     X(INFO_VISITS, "近くを飛んだ探査機", "Spacecraft that flew by") \
@@ -209,6 +215,8 @@
     X(INFO_EST_ORBIT, "軌道の傾き・質量・半径・表面", "orbit tilt, mass, radius, surface") \
     X(INFO_EST_SURFACE, "半径・自転・表面", "radius, rotation, surface") \
     X(WARP_STAR, "恒星間ワープ", "Interstellar warp") \
+    X(WARP_REMAIN, "残り", "Remaining") \
+    X(WARP_LIGHT_TIME, "光の速さなら", "at light speed") \
     X(TB_INFO, "情報", "Info") \
     X(TB_SEARCH, "検索", "Search") \
     X(MS_QUA, "しぶんぎ座流星群", "Quadrantids") \
@@ -271,7 +279,7 @@
     X(SEARCH_SMALL, "小天体", "Small bodies") \
     X(SEARCH_PROBES, "探査機", "Spacecraft") \
     X(SEARCH_STARS, "恒星系", "Stars") \
-    X(SEARCH_CITIES, "地上", "On Earth") \
+    X(SEARCH_CITIES, "地上", "Surface") \
     X(SEARCH_GOTO, "%s の名場面へ移る", "go to %s") \
     X(SEARCH_JUMPED, "日時を %s に移して %s へ", "Moved to %s for %s") \
     X(CITY_AT, "%s の地上（%s %.1f°  %s %.1f°）から空を見る", "Sky from %s (%s %.1f°  %s %.1f°)") \
@@ -294,7 +302,9 @@
     X(MAP_TITLE, "全体図", "System map") \
     X(MAP_SUN, "太陽中心", "centered on the Sun") \
     X(MAP_NOTE, "真上（黄道の北）から見た図。距離は中心ほど広げた対数目盛り。半径 %s", "Seen from above (ecliptic north), logarithmic distances, radius %s") \
-    X(MAP_KEYS, "クリック/タップ: ターゲット（もう一度でワープ）   Enter/G: ワープ   Shift: 地表へ   Tab: 次のターゲット   ↑↓/ホイール: 拡大縮小   Space: 中心の切替   ←→: 時間の速さ   P: 停止   R: 逆再生   Esc/F3: 閉じる", "Click/tap: target (again: warp)   Enter/G: warp   Shift: to surface   Tab: next target   Up/Down/wheel: zoom   Space: switch center   Left/Right: time speed   P: pause   R: reverse   Esc/F3: close") \
+    X(MAP_STARS, "太陽のまわりの恒星", "stars around the Sun") \
+    X(MAP_STARS_NOTE, "黄道の北から斜めに見た図。縦の線は黄道面からの高さ。半径 %s（拡大で太陽中心の図へ）", "Seen obliquely from ecliptic north; the stems show the height above the ecliptic. Radius %s (zoom in for the Solar System)") \
+    X(MAP_KEYS, "クリック/タップ: ターゲット（もう一度でワープ）   Enter/G: ワープ   Shift: 地表へ   Tab: 次のターゲット   ↑↓/ホイール: 拡大縮小（縮小し切ると近くの恒星）   Space: 中心の切替   ←→: 時間の速さ   P: 停止   R: 逆再生   Esc/F3: 閉じる", "Click/tap: target (again: warp)   Enter/G: warp   Shift: to surface   Tab: next target   Up/Down/wheel: zoom (all the way out: nearby stars)   Space: switch center   Left/Right: time speed   P: pause   R: reverse   Esc/F3: close") \
     X(MAP_PAD, "[パッド] 十字左右: ターゲット   十字上下: 拡大縮小   A/Y: ワープ   X: 中心の切替   B / LB+RB: 閉じる", "[Pad] D-pad L/R: target   D-pad U/D: zoom   A/Y: warp   X: switch center   B / LB+RB: close") \
     X(MAP_REV, "逆再生", "reverse") \
     X(MAP_SHIP, "自機", "You") \

@@ -289,29 +289,32 @@ static void GoToCity(App& app, int k, double elDeg) {
     app.autopilot = false;
     app.warpT = -1;
     app.physics = false;
-    int keep = app.target;
-    PlaceAt(app, c.body, c.lat, c.lon, 0);
-    app.target = keep == c.body ? B_SUN : keep;
+    int keep = app.target, cb = CityBody(app, c);
+    PlaceAt(app, cb, c.lat, c.lon, 0);
+    app.target = keep == cb ? B_SUN : keep;
     // 赤道側（北半球なら南、南半球なら北）の空を仰角 35° で見る
-    const Body& e = app.B[c.body];
+    const Body& e = app.B[cb];
     V3 up = Norm(app.ship.local);
     V3 north = e.pole - up * Dot(e.pole, up);
     north = Len(north) < 1e-9 ? Norm(e.ex - up * Dot(e.ex, up)) : Norm(north);
     V3 h = c.lat >= 0 ? north * -1.0 : north;
     double el = elDeg * DEG;
     app.ship.q = QuatFromBasis(h * std::cos(el) + up * std::sin(el), up);
-    if (c.body == B_MOON) {   // 月面: 地球が空にあれば地球を見る
-        V3 toEarth = Norm(app.B[B_EARTH].pos - ShipWorld(app));
-        if (Dot(toEarth, up) > std::sin(5 * DEG)) {
-            app.target = B_EARTH;
-            app.ship.q = QuatFromBasis(toEarth, up);
+    // 月面は地球が、太陽系の外の惑星はその恒星が空にあれば、それを見る
+    int sky = cb == B_MOON ? B_EARTH : e.d.exo >= 0 ? HostStar(app.B, cb) : -1;
+    if (sky >= 0) {
+        V3 toSky = Norm(app.B[sky].pos - ShipWorld(app));
+        if (Dot(toSky, up) > std::sin(5 * DEG)) {
+            app.target = sky;
+            V3 h = toSky - up * Dot(toSky, up);   // 惑星の地上は、恒星を上寄せにして地面も入れる
+            app.ship.q = QuatFromBasis(e.d.exo >= 0 ? Norm(h) * std::cos(8 * DEG) + up * std::sin(8 * DEG) : toSky, up);
         }
     }
     app.cockpit = true;
     // 時刻はその都市の標準時で
     app.groundTzOk = !std::isnan(c.tz);
     app.groundTz = app.groundTzOk ? c.tz : 0;
-    app.groundTzBody = c.body;
+    app.groundTzBody = cb;
     {
         V3 X, Z;
         BodyFixedAxes(e, &X, &Z);
@@ -474,7 +477,7 @@ static void DrawSearch(const App& app) {
         if (IsCityResult(i)) {   // 都市
             const City& cc = CITIES[-1 - i];
             Txt(TR(cc.jp, cc.en), L.x + 28, ry, 17, sel ? Color{255, 240, 200, 255} : Color{200, 235, 210, 255});
-            snprintf(right, sizeof right, "%s   %s %.1f°  %s %.1f°", TR(app.B[cc.body].d.jp, app.B[cc.body].d.en), cc.lat >= 0 ? "N" : "S",
+            snprintf(right, sizeof right, "%s   %s %.1f°  %s %.1f°", TR(app.B[CityBody(app, cc)].d.jp, app.B[CityBody(app, cc)].d.en), cc.lat >= 0 ? "N" : "S",
                      std::fabs(cc.lat), cc.lon >= 0 ? "E" : "W", std::fabs(cc.lon));
         } else {
             const BodyDef& d = app.B[i].d;
@@ -579,13 +582,22 @@ static double MapDefaultRange(const App& app, int center) {
     return r;
 }
 
+// 太陽のまわりの恒星の図: 半径 12 光年、等倍の目盛りで、黄道面から 50° の高さから見下ろす（縦の線で黄道面からの高さを示す）
+static const double MAP_STARS_RANGE = 12 * LY_KM, MAP_STARS_TILT = 50 * DEG;
+
 struct MapView {
     float cx, cy, R;   // 画面上の中心と半径
     double range;      // 半径に当たる距離 km
     V3 origin;         // 中心の天体の位置
-    // 太陽中心の位置 → 画面。黄道面に投影して、距離を対数目盛りに
+    bool stars = false;   // 太陽のまわりの恒星の図
+    // 太陽中心の位置 → 画面。黄道面に投影して、距離を対数目盛りに（恒星の図は等倍で、斜めから見る）
     Vector2 Project(V3 w, bool* inside = nullptr) const {
         V3 r = w - origin;
+        if (stars) {
+            double k = R / range;
+            if (inside) *inside = std::sqrt(r.x * r.x + r.z * r.z) <= range;
+            return {(float)(cx + r.x * k), (float)(cy + (r.z * std::sin(MAP_STARS_TILT) - r.y * std::cos(MAP_STARS_TILT)) * k)};
+        }
         double d = std::sqrt(r.x * r.x + r.z * r.z);
         double r0 = range / 40;
         double f = std::log1p(d / r0) / std::log1p(range / r0);
@@ -603,6 +615,11 @@ static MapView GetMapView(const App& app, const Cam& c) {
     v.R = std::min(c.W * 0.5f - 40, c.H * 0.5f - 64);
     v.range = app.mapRange > 0 ? app.mapRange : MapDefaultRange(app, app.mapCenter);
     v.origin = app.B[app.mapCenter].pos;
+    if (app.mapStars) {
+        v.stars = true;
+        v.range = MAP_STARS_RANGE;
+        v.origin = app.B[B_SUN].pos;
+    }
     return v;
 }
 
@@ -614,7 +631,7 @@ static std::vector<MapItem> MapItems(const App& app, const MapView& v) {
         const Body& b = app.B[i];
         if (!b.active) continue;
         int cs = app.B[app.mapCenter].d.star;
-        bool in = (int)i == app.mapCenter || b.d.parent == app.mapCenter ||
+        bool in = v.stars ? (i == B_SUN || b.d.star >= 0) : (int)i == app.mapCenter || b.d.parent == app.mapCenter ||
                   (cs >= 0 && b.d.star >= 0 && NEARBY_STARS[b.d.star].system == NEARBY_STARS[cs].system) ||   // 連星の相手
                   (IsProbeLike(b) && Len(b.pos - v.origin) < v.range && (app.mapCenter != 0 || b.d.tleN <= 0));
         if (!in) continue;
@@ -645,7 +662,20 @@ static void MapTimeButton(App& app, int i) {
 }
 
 static void MapZoom(App& app, double factor) {
+    // 太陽中心の図を縮小し切ると太陽のまわりの恒星の図に、そこから拡大すると戻る
+    if (app.mapStars) {
+        if (factor < 1) {
+            app.mapStars = false;
+            app.mapCenter = 0;
+            app.mapRange = 200 * AU_KM;
+        }
+        return;
+    }
     double range = app.mapRange > 0 ? app.mapRange : MapDefaultRange(app, app.mapCenter);
+    if (app.mapCenter == 0 && factor > 1 && range >= 200 * AU_KM * 0.999) {
+        app.mapStars = true;
+        return;
+    }
     app.mapRange = std::max(app.B[app.mapCenter].d.radius * 4, std::min(200 * AU_KM, range * factor));
 }
 
@@ -653,8 +683,10 @@ static void MapZoom(App& app, double factor) {
 static void MapToggleCenter(App& app) {
     const Body& t = app.B[app.target];
     int planet = IsProbeLike(t) ? 0 : t.d.parent > 0 ? t.d.parent : app.target;
-    app.mapCenter = app.mapCenter == 0 ? planet : 0;
+    app.mapCenter = app.mapCenter == 0 || app.mapStars ? planet : 0;
     app.mapRange = 0;
+    // 太陽から遠く離れている時は、太陽中心の図の代わりに恒星の図
+    app.mapStars = app.mapCenter == 0 && Len(ShipWorld(app) - app.B[B_SUN].pos) > STAR_WARP_KM;
 }
 
 static void OpenMap(App& app) {
@@ -663,6 +695,7 @@ static void OpenMap(App& app) {
     app.mapCenter = IsProbeLike(ref) ? 0 : ref.d.parent > 0 ? ref.d.parent : app.ship.ref;
     if (app.mapCenter != 0 && Len(ShipWorld(app) - app.B[app.mapCenter].pos) > MapDefaultRange(app, app.mapCenter)) app.mapCenter = 0;
     app.mapRange = 0;
+    app.mapStars = app.mapCenter == 0 && Len(ShipWorld(app) - app.B[B_SUN].pos) > STAR_WARP_KM;
     app.mapWasCaptured = app.mouseCaptured;
     if (app.mouseCaptured) {
         app.mouseCaptured = false;
@@ -706,10 +739,43 @@ static void MapPick(App& app, Vector2 p, bool land) {
     }
 }
 
+// 恒星の図の目盛り（黄道面の 2 光年ごとの円と春分点の方向）と、恒星から黄道面へ下ろした縦の線
+static void DrawStarMapGrid(const App& app, const MapView& v) {
+    const int N = 96;
+    for (int ly = 2; ly <= 12; ly += 2) {
+        double r = ly * LY_KM;
+        Vector2 prev = v.Project(v.origin + V3{r, 0, 0});
+        for (int k = 1; k <= N; k++) {
+            double a = 2 * PI * k / N;
+            Vector2 p = v.Project(v.origin + V3{r * std::cos(a), 0, r * std::sin(a)});
+            DrawLineEx(prev, p, 1.0f, ly == 12 ? Color{70, 100, 140, 160} : Color{40, 60, 90, 120});
+            prev = p;
+        }
+        char rl[32];
+        snprintf(rl, sizeof rl, "%d %s", ly, TR("光年", "ly"));
+        Vector2 lp = v.Project(v.origin + V3{r * 0.707, 0, -r * 0.707});
+        Txt(rl, lp.x + 4, lp.y - 14, 12, {90, 120, 160, 200});
+    }
+    DrawLineEx(v.Project(v.origin), v.Project(v.origin + V3{v.range, 0, 0}), 1.0f, {40, 60, 90, 120});
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const Body& b = app.B[i];
+        if (b.d.star < 0 || !b.active) continue;
+        V3 foot = b.pos - v.origin;
+        foot.y = 0;
+        Vector2 p = v.Project(b.pos), q = v.Project(v.origin + foot);
+        Color col = BodyColor(b, 0.6f);
+        col.a = 150;
+        DrawLineEx(p, q, 1.0f, col);
+        DrawCircleV(q, 1.5f, col);
+    }
+}
+
 static void DrawMap(const App& app) {
     const Cam& c = app.cam;
     MapView v = GetMapView(app, c);
     DrawRectangle(0, 0, (int)c.W, (int)c.H, {0, 4, 12, 252});
+    if (v.stars) DrawStarMapGrid(app, v);
+    else {
     // 距離の目安の円（1 / 10 / 100 AU、惑星中心なら 10 万 km ごとの桁）
     double unit = app.mapCenter == 0 ? AU_KM : 1e4;
     for (double r = unit * 0.1; r <= v.range * 1.001; r *= 10) {
@@ -767,6 +833,7 @@ static void DrawMap(const App& app) {
             }
         }
     }
+    }
     // 天体（名前は重ならないものだけ。ターゲットは必ず）
     std::vector<MapItem> items = MapItems(app, v);
     Vector2 shipP = v.Project(ShipWorld(app));
@@ -778,7 +845,7 @@ static void DrawMap(const App& app) {
             int order = tgt ? 0 : (!probe && (b.d.radius > 2000 || it.body == app.mapCenter)) ? 1 : 2;
             if (order != pass) continue;
             Color col = probe ? Color{255, 196, 120, 255} : BodyColor(b, 1.0f);
-            float r = it.body == app.mapCenter ? 7.0f : probe ? 2.5f : b.d.parent == app.mapCenter && b.d.radius > 2000 ? 4.5f : 3.0f;
+            float r = v.stars ? (it.body == B_SUN ? 5.0f : 4.0f) : it.body == app.mapCenter ? 7.0f : probe ? 2.5f : b.d.parent == app.mapCenter && b.d.radius > 2000 ? 4.5f : 3.0f;
             if (probe) DrawPoly(it.p, 4, r + 1, 45, col);
             else DrawCircleV(it.p, r, col);
             if (tgt) {
@@ -803,12 +870,13 @@ static void DrawMap(const App& app) {
     // 見出しと操作
     char b[200];
     std::string title = std::string(T(UI_MAP_TITLE)) + "  /  " +
-                        (app.mapCenter == 0 ? std::string(T(UI_MAP_SUN)) : std::string(TR(app.B[app.mapCenter].d.jp, app.B[app.mapCenter].d.en)));
+                        (v.stars ? std::string(T(UI_MAP_STARS)) : app.mapCenter == 0 ? std::string(T(UI_MAP_SUN)) : std::string(TR(app.B[app.mapCenter].d.jp, app.B[app.mapCenter].d.en)));
     Txt(title.c_str(), 20, 14, 22, {255, 220, 120, 255});
     char rs[32];
-    if (app.mapCenter == 0) snprintf(rs, sizeof rs, "%.3g AU", v.range / AU_KM);
+    if (v.stars) snprintf(rs, sizeof rs, "%s", FmtDist(v.range).c_str());
+    else if (app.mapCenter == 0) snprintf(rs, sizeof rs, "%.3g AU", v.range / AU_KM);
     else snprintf(rs, sizeof rs, "%s", FmtDist(v.range).c_str());
-    snprintf(b, sizeof b, T(UI_MAP_NOTE), rs);
+    snprintf(b, sizeof b, v.stars ? T(UI_MAP_STARS_NOTE) : T(UI_MAP_NOTE), rs);
     Txt(b, 20, 44, 14, {160, 190, 225, 255});
     std::string ts = app.paused ? T(UI_PAUSED) : TIME_SCALE_NAMES[app.timeIdx];
     if (app.timeReverse && !app.paused) ts = std::string(T(UI_MAP_REV)) + " " + ts;
