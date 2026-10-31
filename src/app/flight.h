@@ -67,6 +67,15 @@ static void UpdateWarp(App& app, double dt) {
     }
 }
 
+static bool JumpToProbeTime(App& app, int i);
+// ターゲットへワープ（G キーなど）。ターゲットにしたまま日時を変えるなどで今は飛んでいない探査機なら、
+// 検索で選んだ時と同じくその名場面の日時へ移ってからワープする
+static void WarpToTarget(App& app, bool land) {
+    if (app.warpT >= 0) return;
+    if (!app.B[app.target].active && !JumpToProbeTime(app, app.target)) return;
+    StartWarp(app, app.target, land);
+}
+
 // ---------------------------------------------------------------- ゲームパッド
 struct PadState {
     double pitch = 0, yaw = 0, roll = 0;  // -1..1
@@ -273,7 +282,7 @@ static void HandleInput(App& app, double dt) {
             if (pad.timeDown) MapZoom(app, 1.6);
             if (pad.nextTarget) MapToggleCenter(app);
             if ((pad.autopilot || pad.warp || pad.land) && app.warpT < 0) {
-                StartWarp(app, app.target, pad.land);
+                WarpToTarget(app, pad.land);
                 CloseMap(app);
                 return;
             }
@@ -424,8 +433,8 @@ static void HandleInput(App& app, double dt) {
             Toast(app, T(shift ? UI_AP_ON_AUTO : UI_AP_ON));
         }
     }
-    if (IsKeyPressed(KEY_G)) StartWarp(app, app.target, shift);
-    if (pad.warp || pad.land) StartWarp(app, app.target, pad.land);
+    if (IsKeyPressed(KEY_G)) WarpToTarget(app, shift);
+    if (pad.warp || pad.land) WarpToTarget(app, pad.land);
 
     // 表示
     if (IsKeyPressed(KEY_V) || pad.view) { app.cockpit = !app.cockpit; Toast(app, T(app.cockpit ? UI_VIEW_COCKPIT : UI_VIEW_CHASE)); }

@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.19.2 (2026-11-01)
+
+- Fixed warping to a spacecraft that is not flying at the current date (after changing the date with it targeted) arriving where it is not; like the search, it now moves to the spacecraft's highlight first
+
 ## 2.19.1 (2026-11-01)
 
 - Fixed the heading and roll of the compass jumping around when looking straight down or up, as right after a warp

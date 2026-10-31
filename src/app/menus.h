@@ -359,6 +359,18 @@ static double ProbeVisitTime(const App& app, int i) {
         return (g_probes[d.probe].segs.front().t.front() + g_probes[d.probe].segs.back().t.back()) / 2;
     return app.tDays;
 }
+static void WarpToTarget(App& app, bool land);
+// 今は飛んでいない探査機 i の名場面の日時へ移る（移った先でも飛んでいなければ false）
+static bool JumpToProbeTime(App& app, int i) {
+    app.tDays = ProbeVisitTime(app, i);
+    UpdateBodies(app.B, app.tDays);
+    UpdateReferenceFrame(app);
+    if (!app.B[i].active) return false;
+    char b[160];
+    snprintf(b, sizeof b, T(UI_SEARCH_JUMPED), FmtDate(app.tDays).substr(0, 10).c_str(), TR(app.B[i].d.jp, app.B[i].d.en));
+    Toast(app, b);
+    return true;
+}
 static bool InSearchTab(int i, int cls, int tab) {
     switch (tab) {
         case 5: return false;
@@ -430,15 +442,8 @@ static void SearchPick(App& app, int code, bool warp, bool land) {
         return;
     }
     app.target = code;
-    if (!app.B[code].active) {
-        app.tDays = ProbeVisitTime(app, code);
-        UpdateBodies(app.B, app.tDays);
-        UpdateReferenceFrame(app);
-        if (!app.B[code].active) return;
-        StartWarp(app, code, false);
-        char b[160];
-        snprintf(b, sizeof b, T(UI_SEARCH_JUMPED), FmtDate(app.tDays).substr(0, 10).c_str(), TR(app.B[code].d.jp, app.B[code].d.en));
-        Toast(app, b);
+    if (!app.B[code].active) {   // その名場面の日時へ移ってワープ
+        WarpToTarget(app, false);
         return;
     }
     if (warp && app.warpT < 0) StartWarp(app, code, land);
@@ -993,7 +998,7 @@ static bool HandleModalInput(App& app) {
             }
         }
         if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_G)) && app.warpT < 0) {
-            StartWarp(app, app.target, shift);
+            WarpToTarget(app, shift);
             CloseMap(app);
             return true;
         }

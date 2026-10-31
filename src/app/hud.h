@@ -355,38 +355,52 @@ static void DrawMarkers(const App& app) {
 }
 
 // 方位計（コンパス・テープ）
-static void DrawCompass(const App& app) {
+// 方位計の値: 天体の近く（半径の 30 倍以内）では、その天体の自転軸を北とする方位・ピッチ・ロール（local = true）。
+// 離れると黄経・黄緯とロール。east・north は方位を測る基準の向き
+struct CompassFrame { bool local; V3 upRef, north, east; double heading, pitch, roll; };
+static CompassFrame GetCompass(const App& app) {
     const Cam& c = app.cam;
     const Ship& s = app.ship;
     const Body& ref = app.B[s.ref];
     V3 rel = ShipWorld(app) - ref.pos;
-    bool local = s.ref != B_SUN && Len(rel) < ref.d.radius * 30;
-    V3 upRef, north, east;
-    if (local) {
-        upRef = Norm(rel);
-        east = Cross(ref.pole, upRef);
-        if (Len(east) < 1e-9) east = Cross(V3(1, 0, 0), upRef);
-        east = Norm(east);
-        north = Cross(upRef, east);
+    CompassFrame f;
+    f.local = s.ref != B_SUN && Len(rel) < ref.d.radius * 30;
+    if (f.local) {
+        f.upRef = Norm(rel);
+        f.east = Cross(ref.pole, f.upRef);
+        if (Len(f.east) < 1e-9) f.east = Cross(V3(1, 0, 0), f.upRef);
+        f.east = Norm(f.east);
+        f.north = Cross(f.upRef, f.east);
     } else {
-        upRef = Y_UP;
-        north = V3(1, 0, 0);   // 黄経 0°（春分点方向）
-        east = V3(0, 0, -1);   // 黄経 90°
+        f.upRef = Y_UP;
+        f.north = V3(1, 0, 0);   // 黄経 0°（春分点方向）
+        f.east = V3(0, 0, -1);   // 黄経 90°
     }
-    auto headingOf = [&](V3 v) { return std::atan2(Dot(v, east), Dot(v, north)) / DEG; };
     // 真下・真上を向くと機首の水平成分がほぼ 0 になり、方位とロールが向きの小さな誤差で飛び回る（ワープ直後は天体の中心を
     // 真下に見る）。機体の上の向きの水平成分をごくわずか（1e-4）足して、その向きでも方位が画面の上の向きに決まるようにする
-    double sp = std::max(-1.0, std::min(1.0, Dot(c.fwd, upRef)));
-    V3 hv = c.fwd - upRef * sp, hu = c.up - upRef * Dot(c.up, upRef);
+    double sp = std::max(-1.0, std::min(1.0, Dot(c.fwd, f.upRef)));
+    V3 hv = c.fwd - f.upRef * sp, hu = c.up - f.upRef * Dot(c.up, f.upRef);
     hv = hv + hu * (sp < 0 ? 1e-4 : -1e-4);
     double hl = Len(hv);
-    V3 hn = hl > 1e-12 ? hv * (1 / hl) : north;
-    double heading = headingOf(hn);
-    if (heading < 0) heading += 360;
-    double pitch = std::asin(sp) / DEG;
+    V3 hn = hl > 1e-12 ? hv * (1 / hl) : f.north;
+    f.heading = std::atan2(Dot(hn, f.east), Dot(hn, f.north)) / DEG;
+    if (f.heading < 0) f.heading += 360;
+    f.pitch = std::asin(sp) / DEG;
     // ロール: 方位 hn・ピッチのまま横に傾けない時の上の向き U0 との角度
-    V3 U0 = upRef * std::sqrt(1 - sp * sp) - hn * sp;
-    double roll = std::atan2(-Dot(c.right, U0), Dot(c.up, U0)) / DEG;
+    V3 U0 = f.upRef * std::sqrt(1 - sp * sp) - hn * sp;
+    f.roll = std::atan2(-Dot(c.right, U0), Dot(c.up, U0)) / DEG;
+    return f;
+}
+
+static void DrawCompass(const App& app) {
+    const Cam& c = app.cam;
+    const Ship& s = app.ship;
+    const Body& ref = app.B[s.ref];
+    CompassFrame cf = GetCompass(app);
+    bool local = cf.local;
+    V3 north = cf.north, east = cf.east;
+    auto headingOf = [&](V3 v) { return std::atan2(Dot(v, east), Dot(v, north)) / DEG; };
+    double heading = cf.heading, pitch = cf.pitch, roll = cf.roll;
 
     // 左右の情報パネル（幅 420 / 380）と重ならない幅にする
     float W = std::max(240.0f, std::min(560.0f, c.W - 2 * 432)), cx = c.W * 0.5f, y0 = 10, h = 34;

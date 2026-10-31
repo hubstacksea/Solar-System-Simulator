@@ -453,7 +453,7 @@ int main(int argc, char** argv) {
         if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) break;
 
         HandleInput(app, dt);
-        if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) StartWarp(app, app.target, opt.land);
+        if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) WarpToTarget(app, opt.land);
         if (opt.saveBookmark && frame == 1) SaveBookmark(app);
         if (opt.gotoEvent > 0 && frame == 60) {
             app.events = app.eventsPage == 0 ? FindEvents(app, app.tDays) : app.eventsPage == 1 ? app.cometEvents : app.probeEvents;
@@ -617,6 +617,22 @@ int main(int argc, char** argv) {
             printf("t=%3ds engine=%d speed=%.6g km/s dist=%s ap=%d phase=%s remain=%s music=%d vol=%.2f\n", frame / 60, app.ship.engine + 1, app.ship.speed,
                    FmtDist(SurfaceDist(tb, ShipWorld(app))).c_str(), app.autopilot ? 1 : 0,
                    app.autopilot ? UI_EN[app.apPhase] : "-", FmtDist(app.apRemain).c_str(), mt, mv);
+            fflush(stdout);
+        }
+        // 確認用（--trace）: 最後の 60 フレームの機首の向きの変化と、最後のフレームのターゲットの向き・距離・方位計の値
+        static V3 fwd60;
+        if (opt.trace && frame == opt.frames - 60) fwd60 = app.cam.fwd;
+        if (opt.trace && frame == opt.frames) {
+            const Body& tb = app.B[app.target];
+            V3 td = CamRel(app.cam, tb.pos);
+            auto angle = [](V3 a, V3 b) { return std::atan2(Len(Cross(a, b)), Dot(a, b)) / DEG; };   // acos より 0° 付近で正確
+            double ang = angle(td, app.cam.fwd), drift = angle(fwd60, app.cam.fwd);
+            CompassFrame cf = GetCompass(app);
+            V3 sw = ShipWorld(app);
+            bool finite = std::isfinite(sw.x) && std::isfinite(sw.y) && std::isfinite(sw.z) && std::isfinite(app.cam.fwd.x);
+            printf("CHECK %d|%s|active=%d|warp=%.2f|ref=%s|surf=%s|ang=%.2f|drift=%.4f|hdg=%.1f|pitch=%.1f|roll=%.1f|finite=%d\n", app.target,
+                   tb.d.en, tb.active ? 1 : 0, app.warpT, app.B[app.ship.ref].d.en, FmtDist(SurfaceDist(tb, sw)).c_str(), ang, drift,
+                   cf.heading, cf.pitch, cf.roll, finite ? 1 : 0);
             fflush(stdout);
         }
         bool quitAfterShot = opt.shot && frame == opt.frames;
