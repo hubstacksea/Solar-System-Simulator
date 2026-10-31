@@ -588,7 +588,7 @@ vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out fl
 }
 
 // ---------------------------------------------------------------- 太陽
-// 恒星の表面。surf: 0 太陽型, 1 赤色矮星, 2 高温の星, 3 白色矮星, 4 褐色矮星。flare: 整数部がフレアの通し番号、小数部が明るさ
+// 恒星の表面。surf: 0 太陽型, 1 赤色矮星, 2 高温の星, 3 白色矮星, 4 褐色矮星, 5 速く自転する高温の星。flare: 整数部がフレアの通し番号、小数部が明るさ
 vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
     if (surf == 4) {
         // 褐色矮星: 木星のような雲の帯と、明るさの変化から分かっている濃淡のまだらな雲（自ら弱く光る）
@@ -600,12 +600,19 @@ vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
         vec3 c = mix(color2 * 0.45, color1 * 1.2, clamp(0.3 + band * 0.45 + patchy * 0.8, 0.0, 1.0)) * (1.0 + fine * 0.1);
         return c * (0.35 + 0.65 * pow(mu, 0.6));
     }
-    if (surf >= 2) {
+    if (surf == 2 || surf == 3 || surf == 5) {
         // 高温の星・白色矮星: 対流による粒状斑がほとんどなく、なめらか。白色矮星は周辺減光が弱く、縁まで青白い
         float g = fbmL(p, 20.0, 6, 0.5, o);
         vec3 c = mix(color2, color1, clamp(0.85 + g * 0.08, 0.0, 1.0));
         float limb = surf == 3 ? 0.75 + 0.25 * pow(mu, 0.5) : 0.5 + 0.5 * pow(mu, 0.5);
-        return c * limb * (surf == 3 ? vec3(0.92 + 0.08 * mu, 0.96 + 0.04 * mu, 1.05) : vec3(1.0));
+        c *= limb * (surf == 3 ? vec3(0.92 + 0.08 * mu, 0.96 + 0.04 * mu, 1.05) : vec3(1.0));
+        if (surf == 5) {
+            // 重力減光: 速い自転で赤道がふくらみ、重力が弱い赤道は冷たく暗く（アルタイルは約 6,900 K）、極は熱く明るく
+            // 青白い（約 8,700 K）。明るさは温度の 4 乗で、赤道は極の 4 割ほど（Monnier et al. 2007 の干渉計の像）
+            float w = pow(abs(p.y), 1.5);
+            c *= mix(vec3(1.0, 0.88, 0.74) * 0.62, vec3(0.95, 1.02, 1.15) * 1.2, w);
+        }
+        return c;
     }
     float g = fbmL(p, 45.0, 18, 0.55, o);                 // 粒状斑
     float sg = fbmL(p, 6.0, 4, 0.5, o + 3.0);             // 超粒状斑

@@ -368,6 +368,18 @@ int main(int argc, char** argv) {
     app.shipMat.shader = app.shipShader;
     app.shipMesh = GenShipMesh();
     for (int i = 0; i < PM_COUNT; i++) app.probeMesh[i] = GenProbeMesh(i);
+    // 探査機の大きさ（ワープで着く距離に使う）は、模型の頂点の中心からの最大の距離 km
+    for (Body& b : app.B) {
+        int pm = b.d.probeModel;
+        if (b.d.kind != KIND_PROBE || pm < 0 || pm >= PM_COUNT) continue;
+        const Mesh& m = app.probeMesh[pm];
+        float r2 = 0;
+        for (int k = 0; k < m.vertexCount; k++) {
+            const float* v = m.vertices + 3 * k;
+            r2 = std::max(r2, v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        }
+        if (r2 > 0) b.outer = std::sqrt(r2) * 0.001;
+    }
     for (int i = 0; i < 260; i++)
         app.dust.push_back({GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f, GetRandomValue(-1200, 1200) / 10000.0f});
 

@@ -7,7 +7,8 @@
 // ヒッパルコス星表の 8 等級までの恒星と、88 星座の線・名前（tools/make_sky_assets.py で作った埋め込みデータ）。
 // 太陽から 10 光年ほどまでの恒星（シリウスなど）は除いてあり、天体として実際の位置に描く。
 // 星には年周視差からの距離と固有運動があり、太陽から離れた所や遠い昔・未来では見える向きと明るさが変わる（UpdateSkyParallax）
-struct Star { V3 dir; Color col; float size; float mag; V3 pos; float mag0; V3 vel; };  // size 0 は 1 ピクセルの点。明るい順に並ぶ
+struct Star { V3 dir; Color col; float size; float mag; V3 pos; float mag0; V3 vel; };  // size 0 は 1 ピクセルの点。
+// 太陽から見た明るさ（mag0）の順に並ぶ（動いても並べ直さない。超光速では毎フレーム計算し直すので）
 // pos は J2000 の太陽からの位置 pc、mag0 は J2000 に太陽から見た等級、vel は固有運動による速度 pc/年（視線速度は入れない）
 struct Constellation {
     V3 label; std::string jp, en; std::vector<std::vector<V3>> lines;   // 今の場所・年代で見た向き（自分のすぐ近くの頂点は 0）
@@ -138,8 +139,6 @@ static void UpdateSkyParallax(Sky& sky, V3 obs, double years) {
         st.size = StarDotSize(st.mag);
         st.col.a = (unsigned char)StarDotAlpha(st.mag);
     }
-    // 明るい順に並べ直す（ワープの演出などが暗い星を途中で打ち切る）
-    std::stable_sort(sky.stars.begin(), sky.stars.end(), [](const Star& a, const Star& b) { return a.mag < b.mag; });
     auto look = [&](V3 p, bool line) {   // p は年代 years の位置
         V3 d = p - obs;
         double L = Len(d);

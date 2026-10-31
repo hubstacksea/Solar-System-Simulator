@@ -73,6 +73,7 @@ struct BodyDef {
     double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
     double launch = -1e9;      // 打ち上げ（J2000 からの日数）。これより前は表示しない
     int star = -1;             // 太陽系の外の恒星: NEARBY_STARS の番号（位置は固有運動と連星の軌道から求める）
+    int longEl = -1;           // 惑星: LONG_ELEMENTS の番号（1800〜2050 年の外では長い期間用の要素を使う）
     int exo = -1;              // 太陽系の外の惑星: NEARBY_PLANETS の番号（parent はその恒星。moonA・moonPeriod も入れる）
     int style = S_GENERIC;
 };
@@ -392,11 +393,15 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         {"Neptune", 0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664},
         {"Pluto", -0.00031596, 0.00005170, 0.00004818, 145.20780515, -0.04062942, -0.01183482},
     };
-    for (BodyDef& d : v)
+    static const char* LONG_NAMES[] = {"Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"};
+    for (BodyDef& d : v) {
         for (const auto& r : RATES)
             if (std::strcmp(d.en, r.en) == 0) {
                 d.da = r.da; d.de = r.de; d.dinc = r.dinc; d.dL = r.dL; d.dvarpi = r.dvarpi; d.dnode = r.dnode;
             }
+        for (int k = 0; k < 8; k++)
+            if (std::strcmp(d.en, LONG_NAMES[k]) == 0) d.longEl = k;
+    }
 
     // 衛星の軌道（月以外）。軌道面は JPL Solar System Dynamics の平均軌道要素（https://ssd.jpl.nasa.gov/sats/elem/、
     // J2000）の基準面・傾斜角・昇交点。面内の角度 u = u0 + 360 t / P + A sin(2πt/T) + B cos(2πt/T) は

@@ -4,6 +4,15 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.20.0 (2026-11-01)
+
+- Dates from 3000 BC to AD 2999: outside 1800-2050 the planets use JPL's long-term elements, and further out the slowing of Earth's rotation (ΔT), the precession of its axis and long-term lunar terms are included, so ancient solar eclipses (such as Thales's) fall on the same days as in NASA's catalog. Julian calendar before 15 October 1582; press - in the date entry for BC
+- Near the speed of light, the light-speed engine shows the stars and the Milky Way crowding forward (aberration), blue and bright ahead and red and dark behind (Doppler effect)
+- Warping to a spacecraft shows it large in the center of a zoomed view, from a distance matched to its size
+- Gravity darkening on Altair (bright white poles, darker equator)
+- 40 Eridani B and C orbit each other (Mason et al. 2017)
+- Lighter starry-sky updates while moving (no more re-sorting every time)
+
 ## 2.19.2 (2026-11-01)
 
 - Fixed warping to a spacecraft that is not flying at the current date (after changing the date with it targeted) arriving where it is not; like the search, it now moves to the spacecraft's highlight first

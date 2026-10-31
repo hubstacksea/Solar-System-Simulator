@@ -180,7 +180,7 @@ that script.
 - Hipparcos new reduction: van Leeuwen 2007, A&A 474, 653
 - Binary orbits and masses: Akeson et al. 2021, AJ 162, 14 (Alpha Centauri); Bond et al. 2017, ApJ 840, 70 (Sirius);
   Kervella et al. 2016, A&A 593, A127 (GJ 65); Lazorenko & Sahlmann 2018, A&A 618, A111 (Luhman 16);
-  Bond et al. 2015, ApJ 813, 106 (Procyon)
+  Bond et al. 2015, ApJ 813, 106 (Procyon); Mason et al. 2017, AJ 154, 200 (40 Eridani B and C)
 - Altair's shape: Monnier et al. 2007, Science 317, 342
 - WISE 0855−0714: Kirkpatrick et al. 2021, ApJS 253, 7
 - Planets: NASA Exoplanet Archive (https://exoplanetarchive.ipac.caltech.edu/), operated by the California Institute of
@@ -190,6 +190,18 @@ that script.
   (Tau Ceti g, h, f); Dreizler et al. 2024, A&A 684, A117 (Teegarden's Star b–d); Sanghi et al. 2026, AJ 172, 115
   (Epsilon Indi A b)
 - Habitable zone: Kopparapu et al. 2013, ApJ 765, 131
+
+## Planet, Moon and Earth-orientation models (src/app/bodies.h)
+
+Published formulas and coefficients, written into the code:
+
+- Planets: E.M. Standish and J.G. Williams, "Approximate Positions of the Planets" (JPL Solar System Dynamics,
+  https://ssd.jpl.nasa.gov/planets/approx_pos.html), Tables 1, 2a and 2b
+- ΔT outside 1800–2200: Morrison & Stephenson 2004, Journal for the History of Astronomy 35, 327
+- Precession of Earth's axis: Lieske et al. 1977, A&A 58, 1 (IAU 1976)
+- Long-term terms of the Moon's mean elements and the obliquity: J. Meeus, *Astronomical Algorithms*, 2nd ed. (1998)
+- Ancient eclipses were checked against F. Espenak and J. Meeus, *Five Millennium Catalog of Solar Eclipses*
+  (NASA, https://eclipse.gsfc.nasa.gov/); no data from it is included
 
 ## Starry sky (assets/stars.bin, assets/sky.txt)
 

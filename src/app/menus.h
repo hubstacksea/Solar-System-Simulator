@@ -367,7 +367,7 @@ static bool JumpToProbeTime(App& app, int i) {
     UpdateReferenceFrame(app);
     if (!app.B[i].active) return false;
     char b[160];
-    snprintf(b, sizeof b, T(UI_SEARCH_JUMPED), FmtDate(app.tDays).substr(0, 10).c_str(), TR(app.B[i].d.jp, app.B[i].d.en));
+    snprintf(b, sizeof b, T(UI_SEARCH_JUMPED), FmtDay(app.tDays).c_str(), TR(app.B[i].d.jp, app.B[i].d.en));
     Toast(app, b);
     return true;
 }
@@ -512,7 +512,7 @@ static void DrawSearch(const App& app) {
             if (BodyClass(app, i) == BC_MOON) kind = TR(app.B[d.parent].d.jp, app.B[d.parent].d.en) + std::string(" ") + kind;
             if (d.star >= 0) kind = T(NEARBY_STARS[d.star].kind == 1 ? UI_INFO_WHITE_DWARF : NEARBY_STARS[d.star].kind == 2 ? UI_INFO_BROWN_DWARF : UI_INFO_STAR);
             if (active) snprintf(right, sizeof right, "%s   %s", kind.c_str(), FmtDist(std::max(0.0, SurfaceDist(app.B[i], ShipWorld(app)))).c_str());
-            else snprintf(right, sizeof right, T(UI_SEARCH_GOTO), FmtDate(ProbeVisitTime(app, i)).substr(0, 10).c_str());
+            else snprintf(right, sizeof right, T(UI_SEARCH_GOTO), FmtDay(ProbeVisitTime(app, i)).c_str());
         }
         Txt(right, L.x + L.w - 28 - TxtW(right, 14), ry + 2, 14, {150, 175, 210, 255});
     }
@@ -955,7 +955,7 @@ static void GoSelectedEvent(App& app) {
     StartWarp(app, EventBody(ev), false);
     app.warpEvent = app.eventSel;
     app.eventsOpen = false;
-    std::string when = FmtDate(ev.t).substr(0, 16) + " UTC";
+    std::string when = FmtMinute(ev.t) + " UTC";
     char b[256];
     snprintf(b, sizeof b, T(UI_EV_GO), when.c_str(), EventTitle(app, ev).c_str());
     Toast(app, b);
@@ -1062,8 +1062,11 @@ static bool HandleModalInput(App& app) {
         return true;
     }
     if (app.dateOpen) {
-        for (int ch = GetCharPressed(); ch > 0; ch = GetCharPressed())
-            if (ch >= '0' && ch <= '9' && app.dateDigits.size() < 12) app.dateDigits += (char)ch;
+        for (int ch = GetCharPressed(); ch > 0; ch = GetCharPressed()) {
+            bool neg = !app.dateDigits.empty() && app.dateDigits[0] == '-';
+            if (ch >= '0' && ch <= '9' && app.dateDigits.size() < (neg ? 13u : 12u)) app.dateDigits += (char)ch;
+            if (ch == '-') app.dateDigits = neg ? app.dateDigits.substr(1) : "-" + app.dateDigits;   // 紀元前の切り替え
+        }
         if (IsKeyPressed(KEY_BACKSPACE) && !app.dateDigits.empty()) app.dateDigits.pop_back();
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_Y)) app.dateOpen = false;
         if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) ApplyDateEntry(app);
@@ -1130,7 +1133,7 @@ static void DrawModalPanels(const App& app) {
             bool sel = first + i == app.eventSel;
             if (sel) DrawRectangle((int)x + 12, (int)ry - 3, (int)w - 24, 26, {60, 90, 140, 200});
             Color col = sel ? Color{255, 240, 200, 255} : Color{215, 228, 245, 255};
-            Txt((FmtDate(ev.t).substr(0, 16) + " UTC").c_str(), x + 24, ry, 17, col);
+            Txt((FmtMinute(ev.t) + " UTC").c_str(), x + 24, ry, 17, col);
             Txt(EventTitle(app, ev).c_str(), x + 230, ry, 17, col);
             Txt(EventDetail(app, ev).c_str(), x + 520, ry, 15, {170, 200, 230, 255});
         }

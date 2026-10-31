@@ -358,9 +358,9 @@
     X(PHOTO_1, "写真モード: 表示を隠す（Z で自機も隠す）", "Photo mode: overlays hidden (Z again to hide the ship)") \
     X(PHOTO_2, "写真モード: 表示と自機を隠す", "Photo mode: overlays and ship hidden") \
     X(DATE_TITLE, "日時を指定（UTC）", "Set date and time (UTC)") \
-    X(DATE_KEYS, "数字を入力    Backspace : 1 文字消す    Enter : 決定    Esc / Y : 取消", "Type digits    Backspace : delete    Enter : apply    Esc / Y : cancel") \
+    X(DATE_KEYS, "数字を入力    - : 紀元前（天文学的な年: 0 年 = 紀元前 1 年）    Backspace : 1 文字消す    Enter : 決定    Esc / Y : 取消", "Type digits    - : BC (astronomical years: year 0 = 1 BC)    Backspace : delete    Enter : apply    Esc / Y : cancel") \
     X(DATE_SET, "日時: %s", "Date: %s") \
-    X(DATE_BAD, "日時が正しくありません（1800〜2200 年）", "Invalid date (years 1800-2200)") \
+    X(DATE_BAD, "日時が正しくありません（紀元前 3000 年〜西暦 2999 年。- で紀元前）", "Invalid date (3000 BC to AD 2999; - for BC)") \
     X(SOUND_ON, "効果音: オン", "Sound: on") \
     X(SOUND_OFF, "効果音: オフ", "Sound: off") \
     X(SHOT_SAVED, "保存しました: ピクチャ/", "Saved: Pictures/") \

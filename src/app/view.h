@@ -212,13 +212,68 @@ static std::string FmtDuration(double sec) {
 
 static double NowDaysSinceJ2000() { return ((double)std::time(nullptr) - J2000_UNIX) / 86400.0; }
 
-static std::string FmtDate(double tDays) {
-    double unixSec = J2000_UNIX + tDays * 86400.0;
-    if (unixSec < -62135596800.0 || unixSec > 253402300799.0) return "----";
-    time_t tt = (time_t)std::floor(unixSec);
-    struct tm* g = std::gmtime(&tt);
-    if (!g) return "----";
+// 暦: 1582 年 10 月 15 日（グレゴリオ暦の始まり）より前はユリウス暦（天文の慣例。NASA の日食表なども同じ）。
+// 年は天文学的な数え方（0 年 = 紀元前 1 年、−584 年 = 紀元前 585 年）
+static const long long GREGORIAN_START_JDN = 2299161;
+static long long JdnFromCivil(long long y, int m, int d, bool gregorian) {
+    long long a = (14 - m) / 12, y2 = y + 4800 - a, m2 = m + 12 * a - 3;
+    long long base = d + (153 * m2 + 2) / 5 + 365 * y2 + y2 / 4;
+    return gregorian ? base - y2 / 100 + y2 / 400 - 32045 : base - 32083;
+}
+static long long JdnFromDate(long long y, int m, int d) {
+    long long g = JdnFromCivil(y, m, d, true);
+    return g >= GREGORIAN_START_JDN ? g : JdnFromCivil(y, m, d, false);
+}
+static void CivilFromJdn(long long jdn, long long* y, int* m, int* d) {
+    long long b = 0, c;
+    if (jdn >= GREGORIAN_START_JDN) {
+        long long a = jdn + 32044;
+        b = (4 * a + 3) / 146097;
+        c = a - 146097 * b / 4;
+    } else {
+        c = jdn + 32082;
+    }
+    long long dd = (4 * c + 3) / 1461, e = c - 1461 * dd / 4, mm = (5 * e + 2) / 153;
+    *d = (int)(e - (153 * mm + 2) / 5 + 1);
+    *m = (int)(mm + 3 - 12 * (mm / 10));
+    *y = 100 * b + dd - 4800 + mm / 10;
+}
+
+// J2000 からの日数 → 年月日・時分秒（UTC）
+struct CivilTime { long long y; int mo, d, h, mi, s; };
+static CivilTime CivilOf(double tDays) {
+    double days = tDays + 2451545.0 + 0.5;   // ユリウス日 + 0.5（日付の変わり目が 0 時）
+    double fl = std::floor(days);
+    long long secs = (long long)std::floor((days - fl) * 86400.0 + 1e-6);
+    if (secs >= 86400) { secs -= 86400; fl += 1; }
+    CivilTime c;
+    CivilFromJdn((long long)fl, &c.y, &c.mo, &c.d);
+    c.h = (int)(secs / 3600); c.mi = (int)(secs / 60 % 60); c.s = (int)(secs % 60);
+    return c;
+}
+static std::string FmtYear(long long y) {
+    char b[24];
+    snprintf(b, sizeof b, y < 0 ? "-%04lld" : "%04lld", y < 0 ? -y : y);
+    return b;
+}
+// "YYYY-MM-DD"（紀元前は "-0584-05-28" のように年に − が付く）
+static std::string FmtDay(double tDays) {
+    CivilTime c = CivilOf(tDays);
+    char b[48];
+    snprintf(b, sizeof b, "%s-%02d-%02d", FmtYear(c.y).c_str(), c.mo, c.d);
+    return b;
+}
+// "YYYY-MM-DD hh:mm"
+static std::string FmtMinute(double tDays) {
+    CivilTime c = CivilOf(tDays);
     char b[64];
-    snprintf(b, sizeof b, "%04d-%02d-%02d %02d:%02d:%02d UTC", g->tm_year + 1900, g->tm_mon + 1, g->tm_mday, g->tm_hour, g->tm_min, g->tm_sec);
+    snprintf(b, sizeof b, "%s-%02d-%02d %02d:%02d", FmtYear(c.y).c_str(), c.mo, c.d, c.h, c.mi);
+    return b;
+}
+static std::string FmtDate(double tDays) {
+    if (!std::isfinite(tDays) || std::fabs(tDays) > 3.0e6) return "----";
+    CivilTime c = CivilOf(tDays);
+    char b[64];
+    snprintf(b, sizeof b, "%s-%02d-%02d %02d:%02d:%02d UTC", FmtYear(c.y).c_str(), c.mo, c.d, c.h, c.mi, c.s);
     return b;
 }

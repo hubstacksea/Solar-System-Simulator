@@ -643,45 +643,43 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
 }
 
 // ---------------------------------------------------------------- 日時の指定
-// 年月日 → 1970-01-01 からの日数（グレゴリオ暦）
-static long long DaysFromCivil(int y, int m, int d) {
-    y -= m <= 2;
-    long long era = (y >= 0 ? y : y - 399) / 400;
-    unsigned yoe = (unsigned)(y - era * 400);
-    unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-    unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    return era * 146097 + (long long)doe - 719468;
-}
+// 入力できる年（惑星の位置の計算が使える範囲。JPL の長い期間用の表が紀元前 3000 年〜西暦 3000 年）
+static const int DATE_YEAR_MIN = -2999, DATE_YEAR_MAX = 2999;
 
-// "YYYYMMDD" または "YYYYMMDDhhmm"（UTC）→ J2000 からの日数。不正なら NaN
-static double ParseDateDigits(const std::string& s) {
+// "YYYYMMDD" または "YYYYMMDDhhmm"（UTC。先頭に - で紀元前、天文学的な年）→ J2000 からの日数。不正なら NaN。
+// 1582 年 10 月 15 日より前はユリウス暦
+static double ParseDateDigits(const std::string& s0) {
+    bool neg = !s0.empty() && s0[0] == '-';
+    std::string s = neg ? s0.substr(1) : s0;
     if (s.size() != 8 && s.size() != 12) return NAN;
-    int y = std::stoi(s.substr(0, 4)), mo = std::stoi(s.substr(4, 2)), d = std::stoi(s.substr(6, 2));
+    long long y = std::stoi(s.substr(0, 4)) * (neg ? -1 : 1);
+    int mo = std::stoi(s.substr(4, 2)), d = std::stoi(s.substr(6, 2));
     int h = s.size() == 12 ? std::stoi(s.substr(8, 2)) : 0, mi = s.size() == 12 ? std::stoi(s.substr(10, 2)) : 0;
-    static const int MD[] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    if (y < 1800 || y > 2200 || mo < 1 || mo > 12 || d < 1 || d > MD[mo - 1] || h > 23 || mi > 59) return NAN;
-    bool leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
-    if (mo == 2 && d == 29 && !leap) return NAN;
-    double unixSec = (double)DaysFromCivil(y, mo, d) * 86400.0 + h * 3600.0 + mi * 60.0;
-    return (unixSec - J2000_UNIX) / 86400.0;
+    if (y < DATE_YEAR_MIN || y > DATE_YEAR_MAX || mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return NAN;
+    long long jdn = JdnFromDate(y, mo, d);
+    long long ry;
+    int rm, rd;
+    CivilFromJdn(jdn, &ry, &rm, &rd);
+    if (ry != y || rm != mo || rd != d) return NAN;   // 2 月 30 日や、暦の切り替えで飛んだ 1582 年 10 月 5〜14 日など
+    return (double)jdn - 2451545.0 - 0.5 + (h * 60 + mi) / 1440.0;
 }
 
-// 入力中の数字を "2026-10-28 14:05" の形に（未入力は _）
-static std::string FormatDateDigits(const std::string& dg) {
-    const char* pat = "____-__-__ __:__";
-    std::string out = pat;
+// 入力中の数字を "2026-10-28 14:05" の形に（未入力は _。紀元前は先頭に −）
+static std::string FormatDateDigits(const std::string& dg0) {
+    bool neg = !dg0.empty() && dg0[0] == '-';
+    std::string dg = neg ? dg0.substr(1) : dg0;
+    std::string out = "____-__-__ __:__";
     size_t k = 0;
     for (size_t i = 0; i < out.size() && k < dg.size(); i++)
         if (out[i] == '_') out[i] = dg[k++];
-    return out;
+    return neg ? "-" + out : out;
 }
 
 static std::string DigitsOfTime(double tDays) {
-    std::string f = FmtDate(tDays);   // "YYYY-MM-DD hh:mm:ss UTC"
-    std::string d;
-    for (size_t i = 0; i < 16 && i < f.size(); i++)
-        if (f[i] >= '0' && f[i] <= '9') d += f[i];
-    return d;
+    CivilTime c = CivilOf(tDays);
+    char b[32];
+    snprintf(b, sizeof b, "%s%04lld%02d%02d%02d%02d", c.y < 0 ? "-" : "", c.y < 0 ? -c.y : c.y, c.mo, c.d, c.h, c.mi);
+    return b;
 }
 
 static void StartWarp(App& app, int ti, bool land);
@@ -878,7 +876,7 @@ static void DrawTourPanel(const App& app) {
     DrawRectangleRoundedLinesEx({x, y, w, h}, 0.08f, 6, 1.5f, {90, 130, 180, 255});
     char head[96];
     snprintf(head, sizeof head, T(UI_TOUR), app.tourIdx + 1, (int)app.tourEvents.size());
-    Txt((std::string(head) + "    " + FmtDate(ev.t).substr(0, 16) + " UTC").c_str(), x + 18, y + 10, 15, {170, 200, 230, 255});
+    Txt((std::string(head) + "    " + FmtMinute(ev.t) + " UTC").c_str(), x + 18, y + 10, 15, {170, 200, 230, 255});
     Txt(EventTitle(app, ev).c_str(), x + 18, y + 30, 21, {255, 220, 120, 255});
     for (size_t i = 0; i < lines.size(); i++) Txt(lines[i].c_str(), x + 18, y + 60 + i * 22.0f, 16, {215, 228, 245, 255});
     Txt(T(UI_TOUR_KEYS), x + w - 18 - TxtW(T(UI_TOUR_KEYS), 13), y + 12, 13, {150, 170, 190, 255});

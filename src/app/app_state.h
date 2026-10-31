@@ -184,7 +184,16 @@ static void WarpTo(App& app, int ti, bool land) {
     app.ship.ref = ti;
     app.ship.speed = 0;
     app.autopilot = false;
-    if (!land) {
+    if (!land && b.d.kind == KIND_PROBE) {
+        // 探査機・人工衛星: 小さいので、ズームした視野（8°）で機体が視野の 6 割ほどに映る距離から見る（右クリック・加速で
+        // 元の視野へ）。カメラは自機の少し上・後ろ（後ろから見る視点は上 13 m・後ろ 55 m、操縦席は上 2.5 m）にあるので、
+        // その分だけ自機を下げて近づけ、探査機が画面の中央に来るようにする
+        double camDist = std::max(b.outer / std::tan(2.4 * DEG), 0.09);   // 数 m の小さな探査機も、カメラから 90 m 以上
+        app.ship.q = QuatFromBasis(-dir, Y_UP);
+        app.ship.local = dir * std::max(b.outer * 1.5, camDist - (app.cockpit ? 0.0 : 0.055)) -
+                         ShipUp(app.ship) * (app.cockpit ? 0.0025 : 0.013);
+        app.eventZoom = true;
+    } else if (!land) {
         double d = std::max(b.d.radius * 4.0, b.outer * 2.4);
         app.ship.local = dir * d;
         app.ship.q = QuatFromBasis(-dir, Y_UP);

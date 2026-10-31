@@ -6,8 +6,9 @@
 // ---------------------------------------------------------------- 描画: 2D
 static void DrawStars(const App& app) {
     const Cam& c = app.cam;
-    if (app.skyMode > 0) {
-        // 星座線は星より奥に、暗く細く描く
+    Relativity rel = GetRelativity(app);
+    if (app.skyMode > 0 && (!rel.on || rel.beta < 0.05)) {
+        // 星座線は星より奥に、暗く細く描く（光速に近いと星が動くので描かない）
         const Color lc = {90, 130, 200, 120};
         for (const Constellation& con : app.sky.cons)
             for (const std::vector<V3>& line : con.lines)
@@ -19,9 +20,17 @@ static void DrawStars(const App& app) {
     }
     for (const Star& st : app.sky.stars) {
         Vector2 p;
-        if (!Project(c, st.dir, &p)) continue;
+        V3 dir = st.dir;
+        Color col = st.col;
+        if (rel.on) {
+            double D;
+            dir = Aberrate(rel, dir, &D);
+            col = DopplerColor(col, D);
+            if (col.a < 4) continue;
+        }
+        if (!Project(c, dir, &p)) continue;
         if (p.x < -4 || p.y < -4 || p.x >= c.W + 4 || p.y >= c.H + 4) continue;
-        DrawStarDot(p, st.size, st.col);
+        DrawStarDot(p, st.size, col);
     }
 }
 
@@ -165,9 +174,14 @@ static void DrawCorona(Vector2 c, float rs, float k) {
 static void DrawSunGlowAndDots(const App& app) {
     const Cam& c = app.cam;
     double day = SkyDaylight(app);
+    Relativity rv = GetRelativity(app);
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         V3 rel = CamRel(c, b.pos);
+        if (rv.on && b.d.kind == KIND_STAR) {   // 光速に近いと恒星も背景の星と同じく前方へ集まる
+            double D, L = Len(rel);
+            rel = Aberrate(rv, rel * (1 / L), &D) * L;
+        }
         Vector2 p;
         if (!Project(c, rel, &p)) continue;
         double dist = Len(rel), px = b.d.radius / dist * c.focal;
@@ -551,7 +565,8 @@ static void DrawWarpEffect(const App& app) {
         double beta = big ? 0.97 * wi : 0, gamma = 1 / std::sqrt(1 - beta * beta);
         for (size_t i = 0; i < app.sky.stars.size(); i++) {
             const Star& st = app.sky.stars[i];
-            if (st.mag > 6.5f) break;              // 暗い星は描かない（明るい順に並んでいる）
+            if (st.mag0 > 7.5f) break;             // 暗い星は描かない（太陽から見た明るさの順に並んでいる）
+            if (st.mag > 6.5f) continue;
             if (st.size <= 0 && i % 2) continue;  // 暗い星は半分に間引く（画面が白飛びしないように）
             V3 dir = st.dir;
             Color col = st.col;
@@ -825,7 +840,7 @@ static std::vector<InfoLine> InfoLines(const App& app) {
         L.push_back({T(UI_INFO_ALT), FmtDist(alt) + " / " + FmtDuration(86400 / d.tleN)});
     } else if (d.probe >= 0 && d.probe < (int)g_probes.size() && !g_probes[d.probe].segs.empty()) {
         const auto& segs = g_probes[d.probe].segs;
-        L.push_back({T(UI_INFO_DATA), FmtDate(segs.front().t.front()).substr(0, 10) + " - " + FmtDate(segs.back().t.back()).substr(0, 10)});
+        L.push_back({T(UI_INFO_DATA), FmtDay(segs.front().t.front()) + " - " + FmtDay(segs.back().t.back())});
     }
     // 今の距離
     if (i != B_SUN) {
@@ -1029,8 +1044,11 @@ static const RiseSet& GetRiseSet(const App& app, int g) {
 
 // 時刻の表示（tz: UTC からの時間）。1 日より長い範囲なら日付も
 static std::string GroundTime(double t, double tz, bool withDate) {
-    std::string s = FmtDate(t + tz / 24);   // "YYYY-MM-DD hh:mm:ss UTC"
-    return withDate ? s.substr(5, 11) : s.substr(11, 5);
+    CivilTime c = CivilOf(t + tz / 24);
+    char b[32];
+    if (withDate) snprintf(b, sizeof b, "%02d-%02d %02d:%02d", c.mo, c.d, c.h, c.mi);
+    else snprintf(b, sizeof b, "%02d:%02d", c.h, c.mi);
+    return b;
 }
 
 // 流れ星（地球の地上で、夜に）。流星群の放射点から飛び出す向きに流れる。散在流星（1 時間に 6 個）も

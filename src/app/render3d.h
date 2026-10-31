@@ -391,6 +391,36 @@ static void LoadMoonTextures(App& app) {
 
 // 天の川の光: 赤道座標の全天画像を、カメラを中心とする球の内側に薄く貼る（星より先に描く）。
 // 画像は中央が赤経 0h で、左へ行くほど赤経が増える
+// 光速に近い速さで動く自機から見た星（特殊相対論）。v は進む向き、beta は速さ / 光速。
+// 光行差で星は前方へ集まり（cos θ′ = (cos θ + β) / (1 + β cos θ)）、ドップラー係数 D = 1 / (γ(1 − β cos θ′)) が 1 より大きい
+// 前方は青く明るく、小さい後方は赤く暗くなる（明るさは D³ に比例。色は青・赤へ寄せる見た目の近似）
+struct Relativity { bool on = false; V3 v; double beta = 0, gamma = 1; };
+static Relativity GetRelativity(const App& app) {
+    Relativity r;
+    const Ship& s = app.ship;
+    double sp = app.physics ? Len(s.vel) : std::fabs(s.speed);
+    if (app.warpT >= 0 || sp < C_KMS * 0.01 || sp > C_KMS * 1.0001) return r;   // 超光速エンジンは架空なので入れない
+    r.on = true;
+    r.v = app.physics ? s.vel * (1 / sp) : ShipFwd(s) * (s.speed >= 0 ? 1.0 : -1.0);
+    r.beta = std::min(0.995, sp / C_KMS);
+    r.gamma = 1 / std::sqrt(1 - r.beta * r.beta);
+    return r;
+}
+static V3 Aberrate(const Relativity& r, V3 dir, double* D) {
+    double ct = Dot(dir, r.v), ct2 = (ct + r.beta) / (1 + r.beta * ct);
+    V3 perp = dir - r.v * ct;
+    double pl = Len(perp);
+    *D = 1 / (r.gamma * (1 - r.beta * ct2));
+    return pl > 1e-12 ? r.v * ct2 + perp * (std::sqrt(std::max(0.0, 1 - ct2 * ct2)) / pl) : dir;
+}
+static Color DopplerColor(Color col, double D) {
+    double kb = std::min(0.85, std::max(0.0, (D - 1) * 0.5)), kr = std::min(1.0, std::max(0.0, (1 - D) * 1.5));
+    auto mix = [](unsigned char a, double b, double k) { return (unsigned char)(a + (b - a) * k); };
+    double bright = std::min(1.0, std::pow(D, 3.0));
+    return {mix(mix(col.r, 150, kb), 255, kr), mix(mix(col.g, 190, kb), 90, kr), mix(mix(col.b, 255, kb), 60, kr),
+            (unsigned char)(col.a * bright)};
+}
+
 static void DrawMilkyWay(const App& app) {
     if (!app.milkyWay.id || !app.showMilkyWay) return;
     const Cam& c = app.cam;
@@ -406,6 +436,7 @@ static void DrawMilkyWay(const App& app) {
     }
     if (k <= 0) return;
     unsigned char br = (unsigned char)(170 * k);
+    Relativity rel = GetRelativity(app);   // 光速に近いと、天の川も星と同じく前方へ集まって青く（後方は赤く暗く）
     SetPassProjection(c, 1.0, 1e6);
     rlDisableDepthTest();
     rlDisableBackfaceCulling();
@@ -417,6 +448,13 @@ static void DrawMilkyWay(const App& app) {
     auto vtx = [&](int i, int j) {
         double u = (double)i / NU, v = (double)j / NV;
         V3 p = EquToRender((0.5 - u) * 360.0, 90.0 - v * 180.0) * R;
+        if (rel.on) {
+            double D;
+            p = Aberrate(rel, p * (1 / R), &D) * R;
+            Color cc = DopplerColor({br, br, br, 255}, D);
+            unsigned char a = cc.a;   // 明るさは色に掛ける（加算で重ねるので）
+            rlColor4ub((unsigned char)(cc.r * a / 255), (unsigned char)(cc.g * a / 255), (unsigned char)(cc.b * a / 255), 255);
+        }
         rlTexCoord2f((float)u, (float)v);
         rlVertex3f((float)p.x, (float)p.y, (float)p.z);
     };

@@ -40,6 +40,7 @@ struct Body {
     int shape = -1;         // 実際の形（g_shapes の番号。-1 は楕円体）
     int map = -1;           // 探査機の画像による地図（App::maps の番号。-1 はなし）
     double primeOffset = 0; // 自転角 0 の X 軸から IAU の基準（赤道と ICRF 赤道の昇交点）までの角度 rad
+    V3 pole0, ex0, ez0;     // J2000 の自転軸と赤道の基底（地球は歳差でここから回す）
 };
 
 // ---------------------------------------------------------------- 彗星・小惑星の実際の形（assets/shapes.bin）
@@ -134,14 +135,73 @@ static V3 PlanetOrbitPoint(const BodyDef& d, double E) {
     return EclToRender(x, y, z);
 }
 
+// ΔT（地球の自転の遅れ。地球時 − 世界時）日。惑星・地球・月の位置は地球時で、自転は世界時で求める。
+// 1800〜2200 年は 0 のまま（数十秒で、今までどおり）とし、その外は Morrison & Stephenson (2004) の放物線
+// −20 + 32u² 秒（u は 1820 年からの世紀）を、1800・2200 年でつながるように足す（紀元前 500 年で約 4.8 時間）
+static double DeltaTDays(double tDays) {
+    auto par = [](double y) { double u = (y - 1820) / 100; return -20 + 32 * u * u; };
+    double y = 2000 + tDays / 365.25;
+    return (par(y) - par(std::max(1800.0, std::min(2200.0, y)))) / 86400.0;
+}
+
+// 惑星の長い期間用の軌道要素と変化率 /世紀（JPL "Approximate Positions of the Planets" 表 2a、紀元前 3000 年〜西暦 3000 年）
+// と、木星〜海王星の平均近点角に足す項 b·T² + c·cos(f·T) + s·sin(f·T)（表 2b）。地球は地球と月の重心の値
+static const struct { double a, e, i, L, varpi, node, da, de, di, dL, dvarpi, dnode, b, c, s, f; } LONG_ELEMENTS[] = {
+    {0.38709843, 0.20563661, 7.00559432, 252.25166724, 77.45771895, 48.33961819,
+     0.00000000, 0.00002123, -0.00590158, 149472.67486623, 0.15940013, -0.12214182, 0, 0, 0, 0},
+    {0.72332102, 0.00676399, 3.39777545, 181.97970850, 131.76755713, 76.67261496,
+     -0.00000026, -0.00005107, 0.00043494, 58517.81560260, 0.05679648, -0.27274174, 0, 0, 0, 0},
+    {1.00000018, 0.01673163, -0.00054346, 100.46691572, 102.93005885, -5.11260389,
+     -0.00000003, -0.00003661, -0.01337178, 35999.37306329, 0.31795260, -0.24123856, 0, 0, 0, 0},
+    {1.52371243, 0.09336511, 1.85181869, -4.56813164, -23.91744784, 49.71320984,
+     0.00000097, 0.00009149, -0.00724757, 19140.29934243, 0.45223625, -0.26852431, 0, 0, 0, 0},
+    {5.20248019, 0.04853590, 1.29861416, 34.33479152, 14.27495244, 100.29282654,
+     -0.00002864, 0.00018026, -0.00322699, 3034.90371757, 0.18199196, 0.13024619, -0.00012452, 0.06064060, -0.35635438, 38.35125000},
+    {9.54149883, 0.05550825, 2.49424102, 50.07571329, 92.86136063, 113.63998702,
+     -0.00003065, -0.00032044, 0.00451969, 1222.11494724, 0.54179478, -0.25015002, 0.00025899, -0.13434469, 0.87320147, 38.35125000},
+    {19.18797948, 0.04685740, 0.77298127, 314.20276625, 172.43404441, 73.96250215,
+     -0.00020455, -0.00001550, -0.00180155, 428.49512595, 0.09266985, 0.05739699, 0.00058331, -0.97731848, 0.17689245, 7.67025000},
+    {30.06952752, 0.00895439, 1.77005520, 304.22289287, 46.68158724, 131.78635853,
+     0.00006447, 0.00000818, 0.00022400, 218.46515314, 0.01009938, -0.00606302, -0.00041348, 0.68346318, -0.10162547, 7.67025000},
+};
+
+// 歳差（IAU 1976、Lieske et al. 1977）: J2000 の平均赤道から時刻 t の平均赤道への回転の逆 Pᵀ を、描画座標のベクトル v に
+// 掛ける。地球の向き（自転軸と赤道）を J2000 の向きから回すのに使う。何千年も離れると自転軸の向きが十数度変わる
+static V3 PrecessFromJ2000TT(V3 v, double T) {   // T: 地球時の J2000 からの世紀
+    double as = DEG / 3600.0;
+    double zeta = (2306.2181 * T + 0.30188 * T * T + 0.017998 * T * T * T) * as;
+    double z = (2306.2181 * T + 1.09468 * T * T + 0.018203 * T * T * T) * as;
+    double th = (2004.3109 * T - 0.42665 * T * T - 0.041833 * T * T * T) * as;
+    V3 ex = EquVecToRender(1, 0, 0), ey = EquVecToRender(0, 1, 0), ez = EquVecToRender(0, 0, 1);
+    double x = Dot(v, ex), y = Dot(v, ey), w = Dot(v, ez);   // 赤道座標の成分
+    auto r3 = [](double a, double& x, double& y) { double c = std::cos(a), s = std::sin(a), nx = c * x + s * y; y = -s * x + c * y; x = nx; };
+    auto r2 = [](double a, double& x, double& z) { double c = std::cos(a), s = std::sin(a), nx = c * x - s * z; z = s * x + c * z; x = nx; };
+    r3(z, x, y);     // Pᵀ = R3(ζ) R2(−θ) R3(z)（P = R3(−z) R2(θ) R3(−ζ)）
+    r2(-th, x, w);
+    r3(zeta, x, y);
+    return ex * x + ey * y + ez * w;
+}
+static V3 PrecessFromJ2000(V3 v, double tDays) { return PrecessFromJ2000TT(v, (tDays + DeltaTDays(tDays)) / 36525.0); }
+
 static V3 PlanetPos(const BodyDef& d0, double tDays) {
     // 要素を時刻 t の値へ（JPL の変化率。平均経度の変化率が公転の速さ）
+    if (d0.longEl >= 0 || d0.parent == 0) tDays += DeltaTDays(tDays);
     double T = tDays / 36525.0;
     BodyDef d = d0;
-    d.a_au += d0.da * T; d.e += d0.de * T; d.inc += d0.dinc * T;
-    d.varpi += d0.dvarpi * T; d.node += d0.dnode * T;
-    double L = d0.L0 + (d0.dL != 0 ? d0.dL * T : 360.0 / (365.25 * std::pow(d0.a_au, 1.5)) * tDays);
-    double M = std::remainder(L - d.varpi, 360.0) * DEG;  // -π〜π
+    double L, extraM = 0;
+    double year = 2000 + tDays / 365.25;
+    if (d0.longEl >= 0 && (year < 1800 || year > 2050)) {   // 表 1 の範囲の外は、長い期間用の表 2
+        const auto& le = LONG_ELEMENTS[d0.longEl];
+        d.a_au = le.a + le.da * T; d.e = le.e + le.de * T; d.inc = le.i + le.di * T;
+        d.varpi = le.varpi + le.dvarpi * T; d.node = le.node + le.dnode * T;
+        L = le.L + le.dL * T;
+        extraM = le.b * T * T + le.c * std::cos(le.f * T * DEG) + le.s * std::sin(le.f * T * DEG);
+    } else {
+        d.a_au += d0.da * T; d.e += d0.de * T; d.inc += d0.dinc * T;
+        d.varpi += d0.dvarpi * T; d.node += d0.dnode * T;
+        L = d0.L0 + (d0.dL != 0 ? d0.dL * T : 360.0 / (365.25 * std::pow(d0.a_au, 1.5)) * tDays);
+    }
+    double M = std::remainder(L - d.varpi + extraM, 360.0) * DEG;  // -π〜π
     // ケプラー方程式（ハレー彗星の e = 0.97 でも収束する初期値）
     double E = M + 0.85 * d.e * (M >= 0 ? 1 : -1);
     for (int i = 0; i < 50; i++) {
@@ -154,19 +214,27 @@ static V3 PlanetPos(const BodyDef& d0, double tDays) {
 
 // 月の地心位置 km（J2000 黄道系→描画座標）。Astronomical Almanac の簡易式（精度 約 0.3°）
 static V3 MoonGeoPos(double tDays) {
+    tDays += DeltaTDays(tDays);   // 地球時
     double T = tDays / 36525.0;
     auto sd = [](double deg) { return std::sin(deg * DEG); };
     auto cd = [](double deg) { return std::cos(deg * DEG); };
-    double lam = 218.32 + 481267.881 * T + 6.29 * sd(135.0 + 477198.87 * T) - 1.27 * sd(259.3 - 413335.36 * T) +
-                 0.66 * sd(235.7 + 890534.22 * T) + 0.21 * sd(269.9 + 954397.74 * T) -
-                 0.19 * sd(357.5 + 35999.05 * T) - 0.11 * sd(186.5 + 966404.03 * T);
-    double bet = 5.13 * sd(93.3 + 483202.02 * T) + 0.28 * sd(228.2 + 960400.89 * T) -
-                 0.28 * sd(318.3 + 6003.15 * T) - 0.17 * sd(217.6 - 407332.21 * T);
-    double par = 0.9508 + 0.0518 * cd(135.0 + 477198.87 * T) + 0.0095 * cd(259.3 - 413335.36 * T) +
-                 0.0078 * cd(235.7 + 890534.22 * T) + 0.0028 * cd(269.9 + 954397.74 * T);
-    lam -= 1.396971 * T;  // 日付の分点 → J2000 分点（歳差）
+    // 何千年も離れると効く T² の項（Meeus『Astronomical Algorithms』47 章の平均経度 L′・離角 D・太陽と月の平均近点角
+    // M・M′・緯度引数 F）。式の各項の引数はこれらの組み合わせなので、その分を足す
+    double T2 = T * T, dL = -0.0015786 * T2, dD = -0.0018819 * T2, dM = -0.0001536 * T2, dMp = 0.0087414 * T2,
+           dF = -0.0036539 * T2;
+    double aMp = 135.0 + 477198.87 * T + dMp, a2DMp = 259.3 - 413335.36 * T - (2 * dD - dMp), a2D = 235.7 + 890534.22 * T + 2 * dD,
+           a2Mp = 269.9 + 954397.74 * T + 2 * dMp, aM = 357.5 + 35999.05 * T + dM, a2F = 186.5 + 966404.03 * T + 2 * dF;
+    double lam = 218.32 + 481267.881 * T + dL + 6.29 * sd(aMp) - 1.27 * sd(a2DMp) + 0.66 * sd(a2D) + 0.21 * sd(a2Mp) -
+                 0.19 * sd(aM) - 0.11 * sd(a2F);
+    double bet = 5.13 * sd(93.3 + 483202.02 * T + dF) + 0.28 * sd(228.2 + 960400.89 * T + dMp + dF) -
+                 0.28 * sd(318.3 + 6003.15 * T + dF - dMp) - 0.17 * sd(217.6 - 407332.21 * T - (2 * dD - dF));
+    double par = 0.9508 + 0.0518 * cd(aMp) + 0.0095 * cd(a2DMp) + 0.0078 * cd(a2D) + 0.0028 * cd(a2Mp);
+    // λ・β はその日時の黄道と分点から測った値。その日時の黄道傾斜角で赤道座標にして、歳差で J2000 へ戻す
+    // （黄道面も 100 年に約 47″ 傾いていくので、何千年も離れると緯度を J2000 の黄道のまま扱うと 0.3° 以上ずれる）
     double r = 6378.137 / sd(par);
-    return EclToRender(r * cd(bet) * cd(lam), r * cd(bet) * sd(lam), r * sd(bet));
+    double eps = 23.43929111 - 0.0130042 * T - 1.64e-7 * T * T + 5.04e-7 * T * T * T;
+    double x = r * cd(bet) * cd(lam), y = r * cd(bet) * sd(lam), z = r * sd(bet);
+    return PrecessFromJ2000TT(EquVecToRender(x, y * cd(eps) - z * sd(eps), y * sd(eps) + z * cd(eps)), T);
 }
 
 // 地球の中心。軌道要素は地球と月の重心のものなので、月の位置の分だけずらす（月の質量比 0.0121505）
@@ -243,11 +311,11 @@ static double StarApparentMag(const BodyDef& d, double distKm) {
 }
 
 // 表面の描き方: 0 太陽型（粒状斑と低緯度の黒点）, 1 赤色矮星（大きな黒点が高緯度まで）, 2 高温の星（模様が淡い）,
-// 3 白色矮星（なめらかで青白い）, 4 褐色矮星（雲の帯とまだらな雲）
+// 3 白色矮星（なめらかで青白い）, 4 褐色矮星（雲の帯とまだらな雲）, 5 速く自転する高温の星（重力減光: 極が熱く明るい）
 static int StarSurface(const BodyDef& d) {
     if (d.star < 0) return 0;
     const NearbyStar& ns = NEARBY_STARS[d.star];
-    return ns.kind == 1 ? 3 : ns.kind == 2 ? 4 : ns.teff > 7500 ? 2 : ns.kind == 0 && ns.teff < 4000 ? 1 : 0;
+    return ns.kind == 1 ? 3 : ns.kind == 2 ? 4 : ns.flattening > 0.05 ? 5 : ns.teff > 7500 ? 2 : ns.kind == 0 && ns.teff < 4000 ? 1 : 0;
 }
 
 // 恒星の明るさ（太陽 = 1）: 半径² × (表面温度 / 5772 K)⁴
@@ -478,6 +546,7 @@ static std::vector<Body> InitBodies() {
         const BodyDef& d = b.d;
         b.pole = d.inheritPole ? B[d.parent].pole : EquToRender(d.poleRA, d.poleDec);
         EquatorBasis(b.pole, &b.ex, &b.ez);
+        b.pole0 = b.pole; b.ex0 = b.ex; b.ez0 = b.ez;
         if (!std::isnan(d.w0)) {
             // IAU の W は、天体の赤道が ICRF の赤道と交わる昇交点 Q（赤経 = 自転軸の赤経 + 90°）から測る
             V3 Q = Norm(Cross(EquToRender(0, 90), b.pole));
@@ -597,6 +666,11 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
             b.pos = B[d.parent].pos + ExoRelative(d, B[d.parent].d, t);   // 恒星は先に更新済み（惑星は配列の最後）
         } else if (d.parent == 0) {
             b.pos = &b == &B[B_EARTH] ? EarthPos(d, t) : PlanetPos(d, t);
+            if (&b == &B[B_EARTH]) {   // 地球の自転軸と赤道は歳差で回る（自転角 spin はこの赤道の上で測る）
+                b.pole = PrecessFromJ2000(b.pole0, t);
+                b.ex = PrecessFromJ2000(b.ex0, t);
+                b.ez = PrecessFromJ2000(b.ez0, t);
+            }
         } else if (&b == &B[B_MOON]) {
             b.pos = B[d.parent].pos + MoonGeoPos(t);
             // 軌道線は 1 日ごとに、今から 1 公転分の実際の経路で引き直す
