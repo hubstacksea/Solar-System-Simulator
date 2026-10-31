@@ -171,7 +171,9 @@ static void UpdateReferenceFrame(App& app) {
 static void WarpTo(App& app, int ti, bool land) {
     const Body& b = app.B[ti];
     double from = Len(b.pos - ShipWorld(app));
-    V3 toSun = ti == B_SUN ? Norm(app.B[B_EARTH].pos) : Norm(-b.pos);
+    // 照らしている恒星の側（昼側）から見る。恒星は太陽の側から
+    int host = HostStar(app.B, ti);
+    V3 toSun = ti == B_SUN ? Norm(app.B[B_EARTH].pos) : host == ti ? Norm(-b.pos) : Norm(app.B[host].pos - b.pos);
     V3 side = Cross(toSun, Y_UP);
     if (Len(side) < 1e-6) side = V3(1, 0, 0);
     side = Norm(side);

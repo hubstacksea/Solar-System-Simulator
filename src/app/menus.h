@@ -263,12 +263,13 @@ static void DrawIntro(const App& app) {
 // ---------------------------------------------------------------- 天体の検索（/ キー・F4 キー）
 // 名前の一部（日本語はひらがなでも、英語は大文字小文字を区別せず）で絞り込み、Enter でターゲット、Shift+Enter でワープ。
 // タッチ操作では文字を打てないので、分類のタブと一覧から選ぶ
-enum BodyClassId { BC_STAR, BC_PLANET, BC_DWARF, BC_MOON, BC_ASTEROID, BC_COMET, BC_PROBE, BC_SAT };
+enum BodyClassId { BC_STAR, BC_PLANET, BC_DWARF, BC_MOON, BC_ASTEROID, BC_COMET, BC_PROBE, BC_SAT, BC_EXOPLANET };
 
 static int BodyClass(const App& app, int i) {
     const BodyDef& d = app.B[i].d;
     std::string en = d.en;
     if (d.kind == KIND_STAR) return BC_STAR;
+    if (d.exo >= 0) return BC_EXOPLANET;
     if (d.kind == KIND_PROBE) return d.tleN > 0 ? BC_SAT : BC_PROBE;
     if (d.parent > 0) return BC_MOON;
     if (i <= B_NEPTUNE) return BC_PLANET;
@@ -277,7 +278,7 @@ static int BodyClass(const App& app, int i) {
     return BC_ASTEROID;
 }
 
-// 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星, 5 地上の都市, 6 恒星
+// 分類のタブ: 0 すべて, 1 惑星・準惑星（と太陽）, 2 衛星, 3 小惑星・彗星, 4 探査機・人工衛星, 5 地上の都市, 6 恒星とその惑星
 static const int SEARCH_TABS = 7;
 
 // 検索の候補の番号: 0 以上は天体、負は都市（-1 - 都市の番号）
@@ -341,7 +342,7 @@ static bool InSearchTab(int i, int cls, int tab) {
     switch (tab) {
         case 5: return false;
         case 1: return (cls == BC_STAR && i == B_SUN) || cls == BC_PLANET || cls == BC_DWARF;
-        case 6: return cls == BC_STAR;
+        case 6: return cls == BC_STAR || cls == BC_EXOPLANET;
         case 2: return cls == BC_MOON;
         case 3: return cls == BC_ASTEROID || cls == BC_COMET;
         case 4: return cls == BC_PROBE || cls == BC_SAT;
@@ -445,7 +446,7 @@ static void DrawSearch(const App& app) {
     static const UiId TAB[SEARCH_TABS] = {UI_SEARCH_ALL, UI_SEARCH_PLANETS, UI_SEARCH_MOONS, UI_SEARCH_SMALL, UI_SEARCH_PROBES,
                                           UI_SEARCH_CITIES, UI_SEARCH_STARS};
     static const UiId CLS[] = {UI_INFO_STAR, UI_INFO_PLANET, UI_INFO_DWARF, UI_SEARCH_MOON, UI_INFO_ASTEROID, UI_INFO_COMET,
-                               UI_INFO_PROBE, UI_INFO_SAT};
+                               UI_INFO_PROBE, UI_INFO_SAT, UI_INFO_EXOPLANET};
     DrawRectangleRounded({L.x, L.y, L.w, L.h}, 0.04f, 6, {0, 8, 20, 235});
     DrawRectangleRoundedLinesEx({L.x, L.y, L.w, L.h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
     Txt(T(UI_SEARCH_TITLE), L.x + 20, L.y + 12, 20, {255, 220, 120, 255});

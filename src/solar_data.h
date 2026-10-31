@@ -73,6 +73,7 @@ struct BodyDef {
     double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
     double launch = -1e9;      // 打ち上げ（J2000 からの日数）。これより前は表示しない
     int star = -1;             // 太陽系の外の恒星: NEARBY_STARS の番号（位置は固有運動と連星の軌道から求める）
+    int exo = -1;              // 太陽系の外の惑星: NEARBY_PLANETS の番号（parent はその恒星。moonA・moonPeriod も入れる）
     int style = S_GENERIC;
 };
 
@@ -99,6 +100,19 @@ inline BodyDef MakeMoon(const char* jp, const char* en, int parent, double radiu
     d.inheritPole = true; d.rotPeriod = 0;
     d.kind = kind; d.c1 = c1; d.c2 = c2; d.bands = bands; d.atm = atm; d.atmStrength = atmS;
     return d;
+}
+
+// 天球の (赤経, 赤緯) [deg] にある星のまわりの軌道（傾斜角・昇交点 [deg]、天球の北・東・奥の基底）の極 → 赤経・赤緯 [deg]
+inline void OrbitPole(double raDeg, double decDeg, double inc, double node, double* poleRA, double* poleDec) {
+    const double R = 3.14159265358979323846 / 180;
+    double ra = raDeg * R, dec = decDeg * R, I = inc * R, O = node * R;
+    double nN = std::sin(I) * std::sin(O), nE = -std::sin(I) * std::cos(O), nZ = std::cos(I);
+    // 北 = (-sinδ cosα, -sinδ sinα, cosδ), 東 = (-sinα, cosα, 0), 奥 = (cosδ cosα, cosδ sinα, sinδ)
+    double x = nN * -std::sin(dec) * std::cos(ra) + nE * -std::sin(ra) + nZ * std::cos(dec) * std::cos(ra);
+    double y = nN * -std::sin(dec) * std::sin(ra) + nE * std::cos(ra) + nZ * std::cos(dec) * std::sin(ra);
+    double z = nN * std::cos(dec) + nZ * std::sin(dec);
+    *poleRA = std::fmod(std::atan2(y, x) / R + 360, 360);
+    *poleDec = std::asin(std::max(-1.0, std::min(1.0, z))) / R;
 }
 
 // 表面温度 K → 色（黒体の色を RGB にした近似。明るい方の成分を 1 に）
@@ -473,18 +487,35 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         float hot = (float)std::max(0.0, std::min(1.0, (ns.teff - 5772) / 3000.0)) * 0.85f;
         d.c1 = c1;
         d.c2 = {(c2.r + (c1.r - c2.r) * hot) * 0.9f, (c2.g + (c1.g - c2.g) * hot) * 0.9f, (c2.b + (c1.b - c2.b) * hot) * 0.9f};
-        if (ns.P > 0) {
-            // 軌道の極（天球の北・東・奥の基底で、軌道面の法線）を赤経・赤緯に
-            const double R = 3.14159265358979323846 / 180;
-            double ra = ns.ra * R, dec = ns.dec * R, I = ns.i * R, O = ns.node * R;
-            double nN = std::sin(I) * std::sin(O), nE = -std::sin(I) * std::cos(O), nZ = std::cos(I);
-            // 北 = (-sinδ cosα, -sinδ sinα, cosδ), 東 = (-sinα, cosα, 0), 奥 = (cosδ cosα, cosδ sinα, sinδ)
-            double x = nN * -std::sin(dec) * std::cos(ra) + nE * -std::sin(ra) + nZ * std::cos(dec) * std::cos(ra);
-            double y = nN * -std::sin(dec) * std::sin(ra) + nE * std::cos(ra) + nZ * std::cos(dec) * std::sin(ra);
-            double z = nN * std::cos(dec) + nZ * std::sin(dec);
-            d.poleRA = std::fmod(std::atan2(y, x) / R + 360, 360);
-            d.poleDec = std::asin(std::max(-1.0, std::min(1.0, z))) / R;
-        }
+        if (ns.P > 0) OrbitPole(ns.ra, ns.dec, ns.i, ns.node, &d.poleRA, &d.poleDec);
+        v.push_back(d);
+    }
+
+    // その惑星（恒星の後）。表面は分からないので、種類と温度で塗り分け、恒星の光の色で少し染める。
+    // 近い軌道の惑星は潮汐で自転と公転が同期しているとし、遠い軌道の惑星の自転周期は推定。自転軸は軌道面に垂直
+    for (size_t k = 0; k < sizeof NEARBY_PLANETS / sizeof NEARBY_PLANETS[0]; k++) {
+        const NearbyPlanet& np = NEARBY_PLANETS[k];
+        int host = -1;
+        for (size_t j = 0; j < v.size(); j++)
+            if (v[j].star >= 0 && std::strcmp(v[j].en, np.host) == 0) host = (int)j;
+        if (host < 0) continue;
+        const NearbyStar& ns = NEARBY_STARS[v[host].star];
+        BodyDef d{};
+        d.jp = np.jp; d.en = np.en; d.parent = host;
+        d.radius = np.radius; d.mass = np.mass * 5.9722e24;
+        d.moonA = np.a * 149597870.7; d.moonPeriod = np.P;
+        d.rotPeriod = np.P < 30 ? 0 : np.kind == 0 ? 1.0 : 0.45;
+        d.exo = (int)k;
+        OrbitPole(ns.ra, ns.dec, np.i, np.node, &d.poleRA, &d.poleDec);
+        Col3 c1, c2;
+        float bands = 0;
+        if (np.kind == 2) { d.kind = KIND_GAS; c1 = {0.88f, 0.84f, 0.76f}; c2 = {0.70f, 0.60f, 0.50f}; bands = 14; }
+        else if (np.kind == 1) { d.kind = KIND_GAS; d.style = S_URANUS; c1 = {0.62f, 0.72f, 0.80f}; c2 = {0.48f, 0.58f, 0.68f}; bands = 6; }
+        else if (np.teq > 350) { d.kind = KIND_ROCKY; c1 = {0.56f, 0.49f, 0.43f}; c2 = {0.34f, 0.30f, 0.27f}; }   // 熱い岩石（玄武岩のような暗い色）
+        else { d.kind = KIND_ROCKY; c1 = {0.64f, 0.58f, 0.52f}; c2 = {0.40f, 0.36f, 0.33f}; }
+        const Col3& sc = v[host].c1;   // 恒星の光の色で 4 割ほど染める
+        auto tint = [&](Col3 c) { return Col3{c.r * (0.6f + 0.4f * sc.r), c.g * (0.6f + 0.4f * sc.g), c.b * (0.6f + 0.4f * sc.b)}; };
+        d.c1 = tint(c1); d.c2 = tint(c2); d.bands = bands;
         v.push_back(d);
     }
     return v;

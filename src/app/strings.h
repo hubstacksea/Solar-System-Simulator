@@ -203,6 +203,11 @@
     X(INFO_ESTIMATED, "推定の値", "Estimated") \
     X(INFO_ESTIMATED_V, "質量・半径・自転周期などは推定", "mass, radius, rotation period, etc.") \
     X(LY, "光年", "ly") \
+    X(INFO_PLANET_OF, "%s の惑星", "Planet of %s") \
+    X(INFO_EXOPLANET, "系外惑星", "Exoplanet") \
+    X(INFO_TEQ, "平衡温度（推定）", "Equilibrium temp. (est.)") \
+    X(INFO_EST_ORBIT, "軌道の傾き・質量・半径・表面", "orbit tilt, mass, radius, surface") \
+    X(INFO_EST_SURFACE, "半径・自転・表面", "radius, rotation, surface") \
     X(WARP_STAR, "恒星間ワープ", "Interstellar warp") \
     X(TB_INFO, "情報", "Info") \
     X(TB_SEARCH, "検索", "Search") \
@@ -265,7 +270,7 @@
     X(SEARCH_MOONS, "衛星", "Moons") \
     X(SEARCH_SMALL, "小天体", "Small bodies") \
     X(SEARCH_PROBES, "探査機", "Spacecraft") \
-    X(SEARCH_STARS, "恒星", "Stars") \
+    X(SEARCH_STARS, "恒星系", "Stars") \
     X(SEARCH_CITIES, "地上", "On Earth") \
     X(SEARCH_GOTO, "%s の名場面へ移る", "go to %s") \
     X(SEARCH_JUMPED, "日時を %s に移して %s へ", "Moved to %s for %s") \

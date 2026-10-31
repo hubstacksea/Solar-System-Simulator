@@ -43,7 +43,7 @@ static void DrawOrbits(App& app) {
         rlBegin(RL_LINES);
         rlColor4ub(col.r, col.g, col.b, col.a);
         for (size_t k = 0; k + 1 < b.orbit.size(); k++) {
-            Vector3 p0 = ToF(center + b.orbit[k] - c.pos), p1 = ToF(center + b.orbit[k + 1] - c.pos);
+            Vector3 p0 = ToF(CamRel(c, center) + b.orbit[k]), p1 = ToF(CamRel(c, center) + b.orbit[k + 1]);
             rlVertex3f(p0.x, p0.y, p0.z);
             rlVertex3f(p1.x, p1.y, p1.z);
         }
@@ -583,13 +583,14 @@ static void SetOccluders(App& app, int i, double s) {
     float data[16] = {0};
     int n = 0;
     if (b.d.kind != KIND_STAR) {
-        V3 L = Norm(app.B[B_SUN].pos - b.pos);
-        double sunAng = app.B[B_SUN].d.radius / Len(app.B[B_SUN].pos - b.pos);
+        const Body& star = app.B[HostStar(app.B, i)];
+        V3 L = Norm(star.pos - b.pos);
+        double sunAng = star.d.radius / Len(star.pos - b.pos);
         struct Cand { int j; double k; };
         std::vector<Cand> cands;
         for (size_t j = 1; j < app.B.size(); j++) {
             const Body& o = app.B[j];
-            if ((int)j == i) continue;
+            if ((int)j == i || o.d.kind == KIND_STAR) continue;   // 太陽系の外の惑星の母天体は恒星（影を落とさない）
             bool related = o.d.parent == i || (b.d.parent > 0 && ((int)j == b.d.parent || o.d.parent == b.d.parent));
             if (!related) continue;
             V3 v = o.pos - b.pos;
@@ -644,7 +645,7 @@ static void DrawBodies(App& app) {
         SetPassProjection(c, nearKm * s, (dist + b.outer) * s * 1.01);
         ClearDepth();
 
-        V3 L = d.kind == KIND_STAR ? V3(0, 1, 0) : Norm(-b.pos);
+        V3 L = d.kind == KIND_STAR ? V3(0, 1, 0) : Norm(app.B[HostStar(app.B, it.i)].pos - b.pos);
         V3 Lobj(Dot(L, b.ex), Dot(L, b.pole), Dot(L, b.ez));
         Vector3 lf = ToF(L), lo = ToF(Lobj);
         Vector3 c1 = {d.c1.r, d.c1.g, d.c1.b}, c2 = {d.c2.r, d.c2.g, d.c2.b}, atm = {d.atm.r, d.atm.g, d.atm.b};
@@ -797,7 +798,7 @@ static void SetShipLighting(App& app, V3 shipWorld) {
         const Body& b = app.B[best];
         V3 toBody = Norm(b.pos - shipWorld);
         // 天体の昼側がこちらを向いているほど明るい
-        double phase = 0.5 * (1 + Dot(Norm(app.B[B_SUN].pos - b.pos), -toBody));
+        double phase = 0.5 * (1 + Dot(Norm(app.B[HostStar(app.B, best)].pos - b.pos), -toBody));
         double k = std::min(0.45, bestK * bestK * 1.5) * phase;
         fillDir = ToF(toBody);
         fillColor = {(float)(b.d.c1.r * k), (float)(b.d.c1.g * k), (float)(b.d.c1.b * k)};

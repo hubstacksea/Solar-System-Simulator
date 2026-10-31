@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.17.0 (2026-10-31)
+
+- Nine planets of other stars (Proxima Centauri b and d, Barnard's Star b to e, Lalande 21185 b and c, Epsilon Eridani b) orbit at their current positions from the NASA Exoplanet Archive orbital elements, lit by their own star. Estimated orbital tilts, masses, radii and surfaces are marked on the info card, which also shows the equilibrium temperature. They are in the "Stars" tab of the search and on the system map centered on their star
+
 ## 2.16.0 (2026-10-31)
 
 - The 15 stars and brown dwarfs within about 10 light-years of the Sun (Alpha Centauri A and B, Proxima Centauri, Barnard's Star, Luhman 16 A and B, WISE 0855−0714, Wolf 359, Lalande 21185, Sirius A and B, BL Ceti and UV Ceti, Ross 154, Epsilon Eridani) at their real positions, sizes and colors. They move with their proper motions from Gaia and other sources, and the binaries follow published orbits. From afar they are stars in the sky, up close they are glowing spheres; from Alpha Centauri the Sun is a magnitude 0.5 star in Cassiopeia. A "Stars" tab in the search, an info card with the type, spectral type, surface temperature and binary companion (estimated values are marked), and distances beyond 0.1 light-years in light-years

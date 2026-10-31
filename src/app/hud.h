@@ -310,10 +310,11 @@ static void DrawMarkers(const App& app) {
     }
     if (app.B[app.target].active) DrawMarker(app, app.target);  // ターゲットを優先して配置
     bool farAway = Len(c.pos) > 0.05 * LY_KM;   // 太陽系から遠く離れていると、太陽系の天体は太陽しか出さない（みな同じ所に重なる）
+    auto solar = [&](int i) { return HostStar(app.B, i) == B_SUN; };
     for (size_t i = 0; i < app.B.size(); i++) {
         const BodyDef& d = app.B[i].d;
         if ((int)i == app.target || !app.B[i].active) continue;
-        if (farAway && d.kind != KIND_STAR) continue;
+        if (farAway && d.kind != KIND_STAR && solar((int)i)) continue;
         if (d.probe >= 0) {
             // 探査機: 衛星マーカーと一緒に切り替え。近く（1,000 万 km 以内）か画面内に見える時だけ
             if (!app.showMoonMarkers) continue;
@@ -609,7 +610,7 @@ static Appearance SeenFrom(const App& app, int i) {
     V3 O = a.here ? ShipWorld(app) : app.B[B_EARTH].pos;
     const Body& b = app.B[i];
     if (i == g || (!a.here && i == B_EARTH) || b.d.kind == KIND_PROBE) return a;
-    V3 T = b.pos, S = app.B[B_SUN].pos;
+    V3 T = b.pos, S = app.B[HostStar(app.B, i)].pos;   // 太陽系の外の惑星はその恒星に照らされる
     double delta = Len(T - O), r = Len(T - S);
     if (delta <= b.d.radius) return a;
     a.ok = true;
@@ -667,7 +668,8 @@ static std::string FmtAngle(double rad) {
     if (d >= 1) snprintf(b, sizeof b, "%.2f°", d);
     else if (d * 60 >= 1) snprintf(b, sizeof b, "%.1f′", d * 60);
     else if (d * 3600 >= 0.1) snprintf(b, sizeof b, "%.1f″", d * 3600);
-    else snprintf(b, sizeof b, "%.4f″", d * 3600);   // 恒星（ケンタウルス座アルファ星 A は 0.0085″）
+    else if (d * 3600 >= 0.001) snprintf(b, sizeof b, "%.4f″", d * 3600);   // 恒星（ケンタウルス座アルファ星 A は 0.0085″）
+    else snprintf(b, sizeof b, "%.1e″", d * 3600);                         // 太陽系の外の惑星
     return b;
 }
 
@@ -697,7 +699,7 @@ static std::vector<InfoLine> InfoLines(const App& app) {
     else if (ns) kind = std::string(T(ns->kind == 1 ? UI_INFO_WHITE_DWARF : ns->kind == 2 ? UI_INFO_BROWN_DWARF : UI_INFO_STAR)) + "  (" + ns->spec + ")";
     else if (d.kind == KIND_PROBE) kind = T(d.tleN > 0 ? UI_INFO_SAT : UI_INFO_PROBE);
     else if (d.parent > 0) {
-        snprintf(v, sizeof v, T(UI_INFO_MOON_OF), TR(app.B[d.parent].d.jp, app.B[d.parent].d.en));
+        snprintf(v, sizeof v, T(d.exo >= 0 ? UI_INFO_PLANET_OF : UI_INFO_MOON_OF), TR(app.B[d.parent].d.jp, app.B[d.parent].d.en));
         kind = v;
     } else if (i <= B_NEPTUNE) kind = T(UI_INFO_PLANET);
     else if (i == B_PLUTO || en == "Ceres" || en == "Eris") kind = T(UI_INFO_DWARF);
@@ -746,6 +748,16 @@ static std::vector<InfoLine> InfoLines(const App& app) {
             L.push_back({T(UI_INFO_SMA), v});
             snprintf(v, sizeof v, "%.3f / %.2f°", d.e, d.inc);
             L.push_back({T(UI_INFO_ECC), v});
+        } else if (d.exo >= 0) {   // 太陽系の外の惑星: 公転周期・軌道長半径・離心率と傾斜角（天球に対して）・平衡温度
+            const NearbyPlanet& np = NEARBY_PLANETS[d.exo];
+            L.push_back({T(UI_INFO_YEAR), FmtDuration(np.P * 86400)});
+            snprintf(v, sizeof v, "%.4g AU", np.a);
+            L.push_back({T(UI_INFO_SMA), v});
+            snprintf(v, sizeof v, "%.3f / %.0f°", np.e, np.i);
+            L.push_back({T(UI_INFO_ECC), v});
+            snprintf(v, sizeof v, "%.0f K", np.teq);
+            L.push_back({T(UI_INFO_TEQ), v});
+            L.push_back({T(UI_INFO_ESTIMATED), T(np.orbitKnown ? UI_INFO_EST_SURFACE : UI_INFO_EST_ORBIT)});
         } else if (d.parent > 0 && d.moonPeriod > 0) {
             L.push_back({T(UI_INFO_YEAR), FmtDuration(std::fabs(d.moonPeriod) * 86400)});
             snprintf(v, sizeof v, "%s km", Grouped(d.moonA, 0).c_str());

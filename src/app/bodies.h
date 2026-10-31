@@ -192,24 +192,34 @@ static V3 StarBarycenter(const NearbyStar& s, double tDays) {
     return u * dist + vel * ((tDays - (s.epoch - 2000.0) * 365.25) * 86400.0);
 }
 
-// 連星: 伴星の主星に対する位置 km（年は J2000 からの日数で）
-static V3 BinaryRelative(const NearbyStar& s, double tDays) {
-    V3 u, n, e;
-    StarBasis(s, &u, &n, &e);
-    double year = 2000.0 + tDays / 365.25;
-    double M = std::remainder(2 * PI * (year - s.T) / s.P, 2 * PI);
-    double E = M + 0.85 * s.e * (M >= 0 ? 1 : -1);
+// 星のまわりの軌道の上の位置 km（天球の北・東・奥の基底の要素。周期・近点通過は日、傾斜角などは deg）。奥行きは太陽から遠ざかる向きが正
+static V3 SkyOrbit(const NearbyStar& s, double P, double tp, double e, double a, double inc, double node, double peri, double tDays) {
+    V3 u, n, ea;
+    StarBasis(s, &u, &n, &ea);
+    double M = std::remainder(2 * PI * (tDays - tp) / P, 2 * PI);
+    double E = M + 0.85 * e * (M >= 0 ? 1 : -1);
     for (int it = 0; it < 50; it++) {
-        double dE = (E - s.e * std::sin(E) - M) / (1 - s.e * std::cos(E));
+        double dE = (E - e * std::sin(E) - M) / (1 - e * std::cos(E));
         E -= dE;
         if (std::fabs(dE) < 1e-12) break;
     }
-    double nu = 2 * std::atan2(std::sqrt(1 + s.e) * std::sin(E / 2), std::sqrt(1 - s.e) * std::cos(E / 2));
-    double r = s.a * ARCSEC * StarDistance(s) * (1 - s.e * std::cos(E)), w = s.peri * DEG + nu;
-    double O = s.node * DEG, ci = std::cos(s.i * DEG), si = std::sin(s.i * DEG);
+    double nu = 2 * std::atan2(std::sqrt(1 + e) * std::sin(E / 2), std::sqrt(1 - e) * std::cos(E / 2));
+    double r = a * (1 - e * std::cos(E)), w = peri * DEG + nu;
+    double O = node * DEG, ci = std::cos(inc * DEG), si = std::sin(inc * DEG);
     double north = r * (std::cos(w) * std::cos(O) - std::sin(w) * std::sin(O) * ci);
     double east = r * (std::cos(w) * std::sin(O) + std::sin(w) * std::cos(O) * ci);
-    return n * north + e * east + u * (r * std::sin(w) * si);   // 奥行きは太陽から遠ざかる向きが正
+    return n * north + ea * east + u * (r * std::sin(w) * si);
+}
+
+// 連星: 伴星の主星に対する位置 km
+static V3 BinaryRelative(const NearbyStar& s, double tDays) {
+    return SkyOrbit(s, s.P * 365.25, (s.T - 2000.0) * 365.25, s.e, s.a * ARCSEC * StarDistance(s), s.i, s.node, s.peri, tDays);
+}
+
+// 太陽系の外の惑星: 恒星に対する位置 km（host は恒星の BodyDef）
+static V3 ExoRelative(const BodyDef& d, const BodyDef& host, double tDays) {
+    const NearbyPlanet& p = NEARBY_PLANETS[d.exo];
+    return SkyOrbit(NEARBY_STARS[host.star], p.P, p.tp, p.e, p.a * AU_KM, p.i, p.node, p.peri, tDays);
 }
 
 static V3 StarPos(const BodyDef& d, double tDays) {
@@ -432,6 +442,9 @@ static std::vector<Body> InitBodies() {
                 }
             std::sort(Es.begin(), Es.end());
             for (double E : Es) b.orbit.push_back(PlanetOrbitPoint(d, E));
+        } else if (d.exo >= 0) {
+            b.soi = d.moonA * std::pow(d.mass / B[d.parent].d.mass, 0.4);
+            for (int k = 0; k <= 360; k++) b.orbit.push_back(ExoRelative(d, B[d.parent].d, d.moonPeriod * k / 360.0));
         } else if (d.parent > 0) {
             b.soi = d.moonA * std::pow(d.mass / B[d.parent].d.mass, 0.4);
             V3 ref = d.eclipticRef ? Y_UP : B[d.parent].pole;
@@ -522,6 +535,8 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
         } else if (d.probe >= 0) {
             // 惑星は先に更新済み（探査機は配列の最後）
             b.pos = ProbePosAt(d, t, [&](int i) { return B[i].pos; }, &b.active);
+        } else if (d.exo >= 0) {
+            b.pos = B[d.parent].pos + ExoRelative(d, B[d.parent].d, t);   // 恒星は先に更新済み（惑星は配列の最後）
         } else if (d.parent == 0) {
             b.pos = &b == &B[B_EARTH] ? EarthPos(d, t) : PlanetPos(d, t);
         } else if (&b == &B[B_MOON]) {
@@ -588,6 +603,7 @@ static V3 PosAt(const std::vector<Body>& B, int i, double t) {
         bool act;
         return ProbePosAt(d, t, [&](int k) { return PosAt(B, k, t); }, &act);
     }
+    if (d.exo >= 0) return PosAt(B, d.parent, t) + ExoRelative(d, B[d.parent].d, t);
     if (d.parent == 0) return i == B_EARTH ? EarthPos(d, t) : PlanetPos(d, t);
     if (i == B_MOON) return PosAt(B, B_EARTH, t) + MoonGeoPos(t);
     double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
@@ -623,6 +639,12 @@ static void AltAz(const std::vector<Body>& B, int g, V3 f, int target, double t,
     V3 east = Cross(north, up);
     *alt = std::asin(std::max(-1.0, std::min(1.0, Dot(v, up))));
     *az = std::fmod(std::atan2(Dot(v, east), Dot(v, north)) + 2 * PI, 2 * PI);
+}
+
+// 天体を照らす恒星（太陽系の天体は太陽、恒星はその星自身）
+static int HostStar(const std::vector<Body>& B, int i) {
+    while (B[i].d.parent > 0) i = B[i].d.parent;
+    return B[i].d.kind == KIND_STAR ? i : B_SUN;
 }
 
 static double MinAltitude(const Body& b) { return std::max(0.03, b.d.radius * 1e-5); }

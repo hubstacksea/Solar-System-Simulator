@@ -20,6 +20,16 @@
     質量・半径・自転周期は推定
   - 半径・表面温度・自転周期は各星の文献値（Kervella et al. 2017、Ribas et al. 2018 など）。分からない値は推定
 
+惑星（NASA Exoplanet Archive の標準の値、2026 年 10 月に取得）:
+  - プロキシマ b・d: Suárez Mascareño et al. 2025 (A&A 700, A11)
+  - バーナード星 b〜e: Basant et al. 2025 (ApJL 982, L1)
+  - ラランド 21185 b・c: Hurt et al. 2022 (AJ 163, 218)
+  - エリダヌス座イプシロン星 b: Thompson et al. 2025 (AJ 170, 301)。視線速度と位置天文で傾斜角 40°・昇交点 186° が分かっている
+  視線速度だけで見つかった惑星は、軌道の傾き（下限の質量 m sin i しか分からない）と昇交点が分からないので、傾斜角 60°・
+  昇交点 0° とし（同じ星の惑星は同じ面）、質量は m sin i / sin 60°、半径は質量から Chen & Kipping 2017 の関係で推定する。
+  視線速度の近点引数は星のものなので、惑星の近点引数は 180° 足す。円軌道で近点引数のないものは、基準の時刻を合
+  （惑星が星の手前を通る時）とみなす。平衡温度は反射率 0.3 として星の温度・半径と軌道長半径から求める
+
 軌道要素は (周期 [年], 近点通過 [年], 離心率, 軌道長半径 [秒角], 傾斜角, 昇交点, 近点引数 [deg])。
 伴星の主星に対する相対位置は 北 = r(cos(ω+ν)cosΩ − sin(ω+ν)sinΩ cos i), 東 = r(cos(ω+ν)sinΩ + sin(ω+ν)cosΩ cos i),
 奥行き（太陽から遠ざかる向き）= r sin(ω+ν) sin i。
@@ -163,6 +173,52 @@ STARS = [
 ]
 
 
+# ---------------------------------------------------------------- 惑星
+JD2000 = 2451545.0
+# 星の英語名, 日本語名, 英語名, 周期 [日], 軌道長半径 [AU], 離心率, 星の近点引数 [deg]（None: 円軌道）, 近点通過の時刻 [JD],
+# 質量 [地球]（下限 m sin i か、真の質量）, 真の質量か, 傾斜角, 昇交点 [deg]（None: 分からない）, 惑星の近点引数か
+PLANETS = [
+    ("Proxima Centauri", "プロキシマ・ケンタウリ d", "Proxima Centauri d", 5.12338, 0.02881, 0.0, None, 2460557.55, 0.26, False, None, None, False),
+    ("Proxima Centauri", "プロキシマ・ケンタウリ b", "Proxima Centauri b", 11.18465, 0.04848, 0.0, None, 2460548.59, 1.055, False, None, None, False),
+    ("Barnard's Star", "バーナード星 d", "Barnard's Star d", 2.3402, 0.0188, 0.04, -51.8, 2460243.70, 0.263, False, None, None, False),
+    ("Barnard's Star", "バーナード星 b", "Barnard's Star b", 3.1542, 0.0229, 0.03, 3.8, 2460243.38, 0.299, False, None, None, False),
+    ("Barnard's Star", "バーナード星 c", "Barnard's Star c", 4.1244, 0.0274, 0.08, 90.8, 2460242.92, 0.335, False, None, None, False),
+    ("Barnard's Star", "バーナード星 e", "Barnard's Star e", 6.7392, 0.0381, 0.04, -27.5, 2460245.30, 0.193, False, None, None, False),
+    ("Lalande 21185", "ラランド 21185 b", "Lalande 21185 b", 12.9394, 0.07879, 0.063, -30.0, 2456307.8, 2.69, False, None, None, False),
+    ("Lalande 21185", "ラランド 21185 c", "Lalande 21185 c", 2946.0, 2.94, 0.132, 63.0, 2457250.0, 13.6, False, None, None, False),
+    ("Epsilon Eridani", "エリダヌス座イプシロン星 b", "Epsilon Eridani b", 2680.0, 3.53, 0.06, 268.0, 2458017.5, 317.83, True, 40.0, 186.0, True),
+]
+ASSUMED_I = 60.0
+
+
+def planet_radius(m):
+    """質量 [地球] → 半径 [地球]（Chen & Kipping 2017。木星くらいより重いものは木星の半径）"""
+    if m < 2.04:
+        return 1.008 * m ** 0.279
+    if m < 132:
+        return 0.808 * m ** 0.589
+    return 10.97
+
+
+def planet_rows():
+    rows = []
+    for host, jp, en, P, a, e, w, tp, m, true_mass, inc, node, wplanet in PLANETS:
+        star = [x for x in STARS if x[3] == host][0]
+        teff, rstar = star[8], star[7]
+        known = inc is not None
+        i = inc if known else ASSUMED_I
+        mass = m if true_mass else m / math.sin(i * D)
+        wp = (w if wplanet else (90.0 if w is None else w) + 180.0) % 360.0
+        rad = planet_radius(mass) * 6371.0
+        teq = teff * math.sqrt(rstar * 695700.0 / (2 * a * 1.495978707e8)) * 0.7 ** 0.25
+        kind = 0 if mass < 5 else 2 if mass > 100 else 1
+        rows.append('    {"%s", "%s", "%s", %d, %.6f, %.6f, %.4f, %.2f, %.2f, %.2f, %.4f, %.5g, %.0f, %.0f, %s},'
+                    % (jp, en, host, kind, P, a, e, i, node if node is not None else 0.0, wp, tp - JD2000, mass, rad, teq,
+                       "true" if known else "false"))
+        report("%-26s %6.2f d  %.4f AU  %.3g Earth masses  R %.0f km  Teq %.0f K" % (en, P, a, mass, rad, teq))
+    return rows
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "src/nearby_stars.h"
     rows = []
@@ -203,7 +259,25 @@ struct NearbyStar {
 static const NearbyStar NEARBY_STARS[] = {
 %s
 };
-""" % "\n".join(rows)
+
+// 惑星。軌道は恒星から見た相対位置で、恒星の連星の軌道と同じ形の要素（天球の北・東・奥の向き）。
+// orbitKnown が false の惑星は、傾斜角・昇交点（と質量・半径）が推定
+struct NearbyPlanet {
+    const char* jp;
+    const char* en;
+    const char* host;    // 恒星の英語名
+    int kind;            // 0: 岩石惑星, 1: 海王星くらい, 2: 木星くらい
+    double P, a, e;      // 周期 [日], 軌道長半径 [AU], 離心率
+    double i, node, peri;  // 傾斜角・昇交点・惑星の近点引数 [deg]
+    double tp;           // 近点通過の時刻 [J2000 からの日数]
+    double mass, radius, teq;  // [地球], [km], 平衡温度 [K]
+    bool orbitKnown;
+};
+
+static const NearbyPlanet NEARBY_PLANETS[] = {
+%s
+};
+""" % ("\n".join(rows), "\n".join(planet_rows()))
     with open(out, "w", encoding="utf-8") as f:
         f.write(text)
 

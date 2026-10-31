@@ -181,6 +181,10 @@ that script.
 - Binary orbits and masses: Akeson et al. 2021, AJ 162, 14 (Alpha Centauri); Bond et al. 2017, ApJ 840, 70 (Sirius);
   Kervella et al. 2016, A&A 593, A127 (GJ 65); Lazorenko & Sahlmann 2018, A&A 618, A111 (Luhman 16)
 - WISE 0855−0714: Kirkpatrick et al. 2021, ApJS 253, 7
+- Planets: NASA Exoplanet Archive (https://exoplanetarchive.ipac.caltech.edu/), operated by the California Institute of
+  Technology under contract with NASA. Suárez Mascareño et al. 2025, A&A 700, A11 (Proxima Centauri b, d); Basant et
+  al. 2025, ApJL 982, L1 (Barnard's Star b–e); Hurt et al. 2022, AJ 163, 218 (Lalande 21185 b, c); Thompson et al.
+  2025, AJ 170, 301 (Epsilon Eridani b)
 
 ## Starry sky (assets/stars.bin, assets/sky.txt)
 
