@@ -434,19 +434,13 @@ static V3 Aberrate(const Relativity& r, V3 dir, double* D) {
     *D = 1 / (r.gamma * (1 - r.beta * ct2));
     return pl > 1e-12 ? r.v * ct2 + perp * (std::sqrt(std::max(0.0, 1 - ct2 * ct2)) / pl) : dir;
 }
-// 自機から見た天体の位置（カメラからの差）。光速に近い時は光行差で見える向きを前方へ寄せる（距離と形はそのまま）。
-// 天体全体を平行に動かすので、大きく見える天体（すぐ近くの惑星など）に掛けると表面が何千 km も動いて自機から離れたり
-// 自機を飲み込んだりする。見かけの半径 radius km が 0.5° までの天体だけ寄せ、2° 以上は元の位置のまま（間はなめらかに）
-static V3 ViewRel(const App& app, V3 world, double radius = 0) {
+// 自機から見た天体の位置（カメラからの差）。光速に近い時は光行差で見える向きを前方へ寄せる（距離はそのまま）。
+// 点・名前の印・探査機の模型に使う。惑星などの本体はシェーダで頂点ごとに寄せるので、本体の中心もこの位置に描かれる
+static V3 ViewRel(const App& app, V3 world) {
     V3 r = CamRel(app.cam, world);
     Relativity rv = GetRelativity(app);
     double L = Len(r), D;
-    if (!rv.on || L <= 1e-9) return r;
-    double ang = radius > 0 ? std::asin(std::min(1.0, radius / L)) / DEG : 0;
-    double k = std::max(0.0, std::min(1.0, (2.0 - ang) / 1.5));
-    if (k <= 0) return r;
-    V3 a = Aberrate(rv, r * (1 / L), &D);
-    return Norm(r * (1 / L) * (1 - k) + a * k) * L;
+    return rv.on && L > 1e-9 ? Aberrate(rv, r * (1 / L), &D) * L : r;
 }
 static Color DopplerColor(Color col, double D) {
     double kb = std::min(0.85, std::max(0.0, (D - 1) * 0.5)), kr = std::min(1.0, std::max(0.0, (1 - D) * 1.5));
@@ -676,7 +670,7 @@ static void SetOccluders(App& app, int i, double s) {
         for (const Cand& cd : cands) {
             if (n == 4) break;
             const Body& o = app.B[cd.j];
-            V3 cp = ViewRel(app, o.pos, o.outer) * s;
+            V3 cp = CamRel(app.cam, o.pos) * s;   // 陰影は元の位置で計算する（光行差はシェーダで頂点にだけ掛ける）
             bool atm = o.d.kind == KIND_EARTH;   // 大気で赤い光が回り込む（月食）
             data[n * 4 + 0] = (float)cp.x; data[n * 4 + 1] = (float)cp.y; data[n * 4 + 2] = (float)cp.z;
             data[n * 4 + 3] = (float)(o.d.radius * s) * (atm ? -1.0f : 1.0f);
@@ -691,14 +685,20 @@ static void SetOccluders(App& app, int i, double s) {
 
 static void DrawBodies(App& app) {
     const Cam& c = app.cam;
+    // 光速に近い時は、天体の頂点ごとに光行差を掛ける（シェーダ）。天体全体を動かさないので、近くの大きな天体も正しく歪む
+    Relativity rv = GetRelativity(app);
+    float rb = rv.on ? (float)rv.beta : 0.0f;
+    Vector3 rd = ToF(rv.on ? rv.v : V3(0, 0, -1));
+    SetShaderValue(app.shader, app.locRelBeta, &rb, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(app.shader, app.locRelDir, &rd, SHADER_UNIFORM_VEC3);
     struct Item { int i; double dist; };
     std::vector<Item> items;
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        V3 rel = ViewRel(app, b.pos, b.outer);
+        V3 rel = CamRel(c, b.pos);
         double dist = Len(rel);
         if (b.d.probe >= 0) continue;  // 探査機は DrawProbes で描く
-        if (Dot(rel, c.fwd) < -b.outer) continue;
+        if (!rv.on && Dot(rel, c.fwd) < -b.outer) continue;   // 光速に近いと後ろの天体も前方に見えるので省かない
         if (b.outer / dist * c.focal < 0.8) continue;  // サブピクセルは 2D の点で描く
         items.push_back({(int)i, dist});
     }
@@ -707,7 +707,7 @@ static void DrawBodies(App& app) {
     for (const Item& it : items) {
         const Body& b = app.B[it.i];
         const BodyDef& d = b.d;
-        V3 rel = ViewRel(app, b.pos, b.outer);
+        V3 rel = CamRel(c, b.pos);
         double dist = it.dist;
         double s = 100.0 / dist;
         double rPol = d.radius * (1 - d.flattening);
@@ -949,7 +949,7 @@ static void DrawProbes(App& app) {
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         if (b.d.probe < 0 || !b.active) continue;
-        V3 rel = ViewRel(app, b.pos, b.outer);
+        V3 rel = ViewRel(app, b.pos);
         double dist = Len(rel);
         if (0.015 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -0.02) continue;
         if (Occluded(app, c.pos, b.pos, (int)i)) continue;

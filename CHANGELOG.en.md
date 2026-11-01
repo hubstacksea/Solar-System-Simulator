@@ -4,6 +4,14 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.22.0 (2026-11-01)
+
+- Ancient eclipse times fixed: the Moon is corrected to JPL Horizons (DE441) and ΔT now uses the expressions of NASA's eclipse catalog; solar eclipses from 763 BC to AD 2950 agree with NASA within 4 minutes and 2°
+- 16 historic sky events: supernovae (1006, 1054, 1572, 1604; they shine in the sky for that time), returns of Halley's Comet (240 BC, 1066, 1301) and transits of Venus (1639, 1769, 1882)
+- Halley's past returns: before 1948 the comet follows JPL Horizons' orbit for each return
+- Near the speed of light, a large planet close by is distorted and shifted forward as a whole (per-vertex aberration in the shader)
+- A check script for releases, `tools/run_checks.py` (data, eclipses against NASA, warps to every body, light-speed flights just above the surface)
+
 ## 2.21.2 (2026-11-01)
 
 - Fixed the surface of Jupiter, Saturn, Uranus, Neptune and Mars sometimes vanishing when flying just above it with the light-speed engine (since 2.21.0; the near-light-speed view also shifted bodies that look large)

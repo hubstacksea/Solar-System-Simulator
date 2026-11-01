@@ -13,6 +13,10 @@ in vec3 vertexNormal;
 uniform mat4 mvp;
 uniform mat4 matModel;
 uniform mat4 matNormal;
+uniform mat4 matView;
+uniform mat4 matProjection;
+uniform float relBeta;   // 光速に近い時の見え方の β（0 なら何もしない）
+uniform vec3 relDir;     // 進む向き（カメラからの相対座標）
 out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
@@ -20,7 +24,20 @@ void main() {
     fragObj = vertexPosition;
     fragWorld = vec3(matModel * vec4(vertexPosition, 1.0));
     fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));
-    gl_Position = mvp * vec4(vertexPosition, 1.0);
+    if (relBeta <= 0.0) {
+        gl_Position = mvp * vec4(vertexPosition, 1.0);
+        return;
+    }
+    // 光行差: カメラから見た頂点の向きを、距離はそのままで進む向きへ寄せる（cos θ′ = (cos θ + β) / (1 + β cos θ)）。
+    // 陰影は元の位置（fragWorld）で計算する
+    vec3 w = fragWorld;
+    float L = length(w);
+    vec3 d = w / max(L, 1e-30);
+    float ct = dot(d, relDir), ct2 = (ct + relBeta) / (1.0 + relBeta * ct);
+    vec3 perp = d - relDir * ct;
+    float pl = length(perp);
+    if (pl > 1e-7) d = relDir * ct2 + perp * (sqrt(max(0.0, 1.0 - ct2 * ct2)) / pl);
+    gl_Position = matProjection * matView * vec4(d * L, 1.0);
 }
 )";
 

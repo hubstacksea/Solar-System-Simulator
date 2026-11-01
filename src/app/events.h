@@ -210,25 +210,51 @@ static std::vector<AstroEvent> FindCometEvents(const App& app) {
     return out;
 }
 
-// ---------------------------------------------------------------- 歴史上の日食・月食
+// ---------------------------------------------------------------- 歴史上の日食・月食・ハレー彗星
 // 史実の日付（1582 年 10 月 15 日より前はユリウス暦）の前後 2 日で食を探し、日食は史実の場所から見て太陽と月が最も近づく
-// 時刻にする（その場所の地上から見る）。紀元前は計算の時刻が NASA の日食表より 30〜40 分遅れ、食の帯も少しずれる
+// 時刻にする（その場所の地上から見る）。ハレー彗星は前後 80 日で近日点通過を探す
 struct HistoricEclipse {
     const char* date;      // "YYYYMMDD"（紀元前は先頭に -）
-    bool solar;
+    int kind;              // 0: 日食, 1: 月食, 2: ハレー彗星の近日点通過, 3: 超新星（SUPERNOVAE と同じ日付）, 4: 金星の太陽面通過
     double lat, lon;       // 史実の場所
     const char* jp; const char* en;          // 名前
     const char* placeJp; const char* placeEn;
 };
 static const HistoricEclipse HISTORY[] = {
-    {"-07620615", true, 36.36, 43.15, "アッシリアの日食", "Assyrian eclipse", "ニネヴェ（イラク北部）", "Nineveh (northern Iraq)"},
-    {"-05840528", true, 39.5, 34.0, "タレスの日食", "Eclipse of Thales", "ハリュス川（トルコ中部）", "Halys River (central Turkey)"},
-    {"11831117", true, 34.53, 133.73, "水島の戦いの金環日食", "Annular eclipse at the Battle of Mizushima", "水島（岡山県倉敷市）",
+    {"-07620615", 0, 36.36, 43.15, "アッシリアの日食", "Assyrian eclipse", "ニネヴェ（イラク北部）", "Nineveh (northern Iraq)"},
+    {"-05840528", 0, 39.5, 34.0, "タレスの日食", "Eclipse of Thales", "ハリュス川（トルコ中部）", "Halys River (central Turkey)"},
+    {"11831117", 0, 34.53, 133.73, "水島の戦いの金環日食", "Annular eclipse at the Battle of Mizushima", "水島（岡山県倉敷市）",
      "Mizushima (Okayama, Japan)"},
-    {"15040229", false, 18.44, -77.20, "コロンブスの月食", "Columbus's lunar eclipse", "ジャマイカ北岸", "north coast of Jamaica"},
-    {"19190529", true, 1.62, 7.40, "エディントンの日食観測", "Eddington's eclipse expedition", "プリンシペ島", "Principe"},
-    {"20090722", true, 29.47, 129.60, "21 世紀最長の皆既日食", "Longest total eclipse of the 21st century", "トカラ列島 悪石島", "Akusekijima, Tokara Islands"},
+    {"15040229", 1, 18.44, -77.20, "コロンブスの月食", "Columbus's lunar eclipse", "ジャマイカ北岸", "north coast of Jamaica"},
+    {"19190529", 0, 1.62, 7.40, "エディントンの日食観測", "Eddington's eclipse expedition", "プリンシペ島", "Principe"},
+    {"20090722", 0, 29.47, 129.60, "21 世紀最長の皆既日食", "Longest total eclipse of the 21st century", "トカラ列島 悪石島", "Akusekijima, Tokara Islands"},
+    // ハレー彗星（回帰ごとの軌道。場所の代わりに記録の名前）
+    {"-02390525", 2, 0, 0, "最古の確かなハレー彗星の記録", "Earliest sure record of Halley's Comet", "『史記』秦始皇本紀",
+     "Records of the Grand Historian"},
+    {"10660320", 2, 0, 0, "ノルマン・コンクエストのハレー彗星", "Halley's Comet of the Norman Conquest", "バイユーのタペストリー",
+     "Bayeux Tapestry"},
+    {"13011025", 2, 0, 0, "ジョットが描いたハレー彗星", "Halley's Comet painted by Giotto", "「東方三博士の礼拝」", "Adoration of the Magi"},
+    // 超新星（記録した人がいた場所の、その夜の空。日付は最初に見つかった日）
+    {"10060501", 3, 30.04, 31.24, "超新星 1006（おおかみ座）", "SN 1006 (Lupus)", "カイロ（イブン・リドワーンの記録）", "Cairo (recorded by Ibn Ridwan)"},
+    {"10540704", 3, 34.80, 114.31, "超新星 1054（かに星雲のもと）", "SN 1054 (the Crab Nebula)", "開封（宋の都。『宋史』）", "Kaifeng (Song capital)"},
+    {"15721111", 3, 56.08, 13.05, "ティコの超新星（1572 年）", "Tycho's supernova (1572)", "ヘレヴァド修道院（デンマーク）", "Herrevad Abbey (Denmark)"},
+    {"16041009", 3, 50.09, 14.42, "ケプラーの超新星（1604 年）", "Kepler's supernova (1604)", "プラハ", "Prague"},
+    // 金星の太陽面通過（地球と金星を結ぶ線の上から、ズームして太陽を見る）
+    {"16391204", 4, 53.70, -2.80, "ホロックスの金星の太陽面通過", "Horrocks's transit of Venus", "マッチ・フール（イングランド）", "Much Hoole (England)"},
+    {"17690603", 4, -17.50, -149.50, "クックの金星の太陽面通過観測", "Cook's transit of Venus", "タヒチ（ポイント・ビーナス）", "Tahiti (Point Venus)"},
+    {"18821206", 4, 0, 0, "19 世紀最後の金星の太陽面通過", "Last transit of Venus of the 19th century", "世界各地の観測隊", "expeditions worldwide"},
 };
+
+// 歴史上の超新星（肉眼で見えたもの）。位置は残骸の J2000 赤経・赤緯、最大の明るさ（等級）、最初に見つかった日（最大のころ）、
+// 肉眼で見えた日数。明るさは 15 日で最大になり、記録で見えなくなった日に 6 等になるよう直線で暗くなるとする（目安）
+struct Supernova { double ra, dec, peak; const char* date; double days; };
+static const Supernova SUPERNOVAE[] = {
+    {225.70, -41.93, -7.5, "10060501", 900},   // SN 1006
+    {83.633, 22.015, -6.0, "10540704", 653},   // SN 1054（『宋史』: 昼に 23 日、夜に 653 日見えた）
+    {6.32, 64.14, -4.0, "15721111", 480},      // ティコ
+    {262.675, -21.48, -2.5, "16041009", 365},  // ケプラー
+};
+static const int SUPERNOVA_COUNT = sizeof SUPERNOVAE / sizeof SUPERNOVAE[0];
 // ---------------------------------------------------------------- 流星群
 // 主な流星群（IMO の資料による極大の太陽黄経・放射点・ZHR。幅は活動の広がり（太陽黄経の標準偏差 deg）の目安）
 struct MeteorShower {
@@ -485,7 +511,20 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_IMPACT: return T(UI_EV_IMPACT_D);
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
         case EV_PERIASTRON: snprintf(b, sizeof b, T(UI_EV_SEPARATION), FmtDist(ev.dist).c_str()); return b;
-        case EV_HISTORY: {   // 食の種類と史実の場所
+        case EV_HISTORY: {   // 食の種類と史実の場所（ハレー彗星は近日点の距離と記録の名前）
+            if (ev.body2 == -2 || ev.body2 == EV_TRANSIT) {   // 超新星はその時の明るさ、太陽面通過は太陽の中心からの距離
+                char d[64];
+                if (ev.body2 == -2) snprintf(d, sizeof d, T(UI_INFO_MAG_UNIT), ev.dist);
+                else snprintf(d, sizeof d, T(UI_EV_TRANSIT_D), ev.dist);
+                snprintf(b, sizeof b, "%s / %s", d, TR(HISTORY[ev.moon].placeJp, HISTORY[ev.moon].placeEn));
+                return b;
+            }
+            if (ev.body2 == EV_PERIHELION) {
+                char d[64];
+                snprintf(d, sizeof d, T(UI_EV_FROM_SUN), FmtDist(ev.dist).c_str());
+                snprintf(b, sizeof b, "%s / %s", d, TR(HISTORY[ev.moon].placeJp, HISTORY[ev.moon].placeEn));
+                return b;
+            }
             UiId k = ev.body2 == EV_SOLAR_TOTAL ? UI_EV_SOLAR_TOTAL : ev.body2 == EV_SOLAR_ANNULAR ? UI_EV_SOLAR_ANNULAR
                    : ev.body2 == EV_SOLAR_PARTIAL ? UI_EV_SOLAR_PARTIAL : ev.body2 == EV_LUNAR_TOTAL ? UI_EV_LUNAR_TOTAL : UI_EV_LUNAR_PARTIAL;
             snprintf(b, sizeof b, "%s / %s", T(k), TR(HISTORY[ev.moon].placeJp, HISTORY[ev.moon].placeEn));
@@ -586,6 +625,22 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         V3 aim = m.pos + (host.pos - m.pos) * 0.3;
         app.ship.q = QuatFromBasis(aim - (m.pos + app.ship.local), host.pole);
         app.target = ev.body;
+    } else if (ev.kind == EV_HISTORY && ev.body2 == EV_TRANSIT) {
+        AstroEvent p = ev;   // 金星の太陽面通過: 太陽面通過の場面と同じく、地球と金星を結ぶ線の上からズームして見る
+        p.kind = EV_TRANSIT;
+        ApplyEvent(app, p);
+        return;
+    } else if (ev.kind == EV_HISTORY && ev.body2 == -2) {
+        // 超新星: 記録した人がいた場所の地上から、超新星の方角の夜空を見上げる
+        PlaceAt(app, B_EARTH, ev.lat, ev.lon, 0.3);
+        V3 sw = ShipWorld(app), up = Norm(sw - earth.pos);
+        app.ship.q = QuatFromBasis(EquToRender(SUPERNOVAE[ev.body].ra, SUPERNOVAE[ev.body].dec), up);
+        app.target = B_MOON;
+    } else if (ev.kind == EV_HISTORY && ev.body2 == EV_PERIHELION) {
+        AstroEvent p = ev;   // ハレー彗星: 近日点の場面と同じく、軌道面の上方から尾を見る
+        p.kind = EV_PERIHELION;
+        ApplyEvent(app, p);
+        return;
     } else if (ev.kind == EV_HISTORY) {
         // 史実の場所の地上（高度 300 m）から、日食は太陽を（ズームして）、月食は月を見上げる
         bool solar = ev.body2 <= EV_SOLAR_PARTIAL;
@@ -722,9 +777,24 @@ static void StartWarp(App& app, int ti, bool land);
 static int EventBody(const AstroEvent& ev) {
     if (ev.kind == EV_IMPACT || ev.kind == EV_PERIASTRON || ev.kind == EV_VIEW) return ev.body;
     if (ev.kind >= EV_FLYBY) return ev.probe;
-    if (ev.kind == EV_ECLIPSE_GROUND || ev.kind == EV_HISTORY) return B_EARTH;
+    if (ev.kind == EV_HISTORY) return ev.body2 == EV_PERIHELION ? ev.body : ev.body2 == EV_TRANSIT ? B_VENUS : B_EARTH;
+    if (ev.kind == EV_ECLIPSE_GROUND) return B_EARTH;
     if (ev.kind >= EV_TRANSIT) return ev.body;
     return ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER;
+}
+
+// 時刻 t の超新星 k の等級（見えない時は NaN）
+static double SupernovaMag(int k, double t) {
+    static double tp[SUPERNOVA_COUNT];
+    static bool init = false;
+    if (!init) {
+        for (int i = 0; i < SUPERNOVA_COUNT; i++) tp[i] = ParseDateDigits(SUPERNOVAE[i].date);
+        init = true;
+    }
+    const Supernova& s = SUPERNOVAE[k];
+    double dt = t - tp[k];
+    if (dt < -15 || dt > s.days) return NAN;
+    return dt < 0 ? s.peak + (6 - s.peak) * (-dt / 15) : s.peak + (6 - s.peak) * (dt / s.days);
 }
 
 // 地球の緯度・経度 deg の地上の位置（太陽中心の描画座標。B は時刻 t に更新済み）
@@ -743,9 +813,78 @@ static std::vector<AstroEvent> FindHistoryEvents(const App& app) {
         const HistoricEclipse& h = HISTORY[k];
         double t0 = ParseDateDigits(h.date);
         if (std::isnan(t0)) continue;
+        if (h.kind == 3) {   // 超新星: 記録の日から 4 日のうち、太陽が地平線の 12° より下で超新星が一番高い時刻
+            int sn = -1;
+            for (int i = 0; i < SUPERNOVA_COUNT; i++)
+                if (std::strcmp(SUPERNOVAE[i].date, h.date) == 0) sn = i;
+            if (sn < 0) continue;
+            V3 dir = EquToRender(SUPERNOVAE[sn].ra, SUPERNOVAE[sn].dec);
+            double bestAlt = -1, bt = t0;
+            for (double t = t0 - 0.5; t <= t0 + 3.5; t += 1.0 / 96) {
+                UpdateBodies(B, t);
+                V3 o = EarthSite(B, h.lat, h.lon), up = Norm(o - B[B_EARTH].pos);
+                if (Dot(Norm(B[B_SUN].pos - o), up) > std::sin(-12 * DEG)) continue;
+                double a = Dot(dir, up);
+                if (a > bestAlt) { bestAlt = a; bt = t; }
+            }
+            AstroEvent ev;
+            ev.kind = EV_HISTORY;
+            ev.body2 = -2;   // 超新星
+            ev.body = sn;
+            ev.moon = k;
+            ev.lat = h.lat;
+            ev.lon = h.lon;
+            ev.t = bt;
+            ev.dist = SupernovaMag(sn, bt);
+            out.push_back(ev);
+            continue;
+        }
+        if (h.kind == 4) {   // 金星の太陽面通過: 地球の中心から見て金星が太陽の中心に一番近づく時刻
+            auto sep = [&](double t) {
+                UpdateBodies(B, t);
+                V3 e = B[B_EARTH].pos;
+                return std::acos(std::max(-1.0, std::min(1.0, Dot(Norm(B[B_SUN].pos - e), Norm(B[B_VENUS].pos - e)))));
+            };
+            double best = 1e9, bt = t0;
+            for (double t = t0 - 2; t <= t0 + 3; t += 0.02)
+                if (sep(t) < best) { best = sep(t); bt = t; }
+            bt = MinimizeT(sep, bt - 0.02, bt + 0.02);
+            UpdateBodies(B, bt);
+            double rs = std::asin(B[B_SUN].d.radius / Len(B[B_SUN].pos - B[B_EARTH].pos));
+            if (sep(bt) > rs) continue;   // 太陽の円盤にかからなければ入れない
+            AstroEvent ev;
+            ev.kind = EV_HISTORY;
+            ev.body2 = EV_TRANSIT;
+            ev.body = B_VENUS;
+            ev.moon = k;
+            ev.t = bt;
+            ev.dist = sep(bt) / rs;   // 太陽の中心からの距離（太陽の半径が 1）
+            out.push_back(ev);
+            continue;
+        }
+        if (h.kind == 2) {   // ハレー彗星の近日点通過
+            int hb = -1;
+            for (size_t i = 0; i < B.size(); i++)
+                if (B[i].d.halley) hb = (int)i;
+            if (hb < 0) continue;
+            auto r = [&](double t) { return Len(PlanetPos(B[hb].d, t)); };
+            double best = 1e300, bt = t0;
+            for (double t = t0 - 80; t <= t0 + 80; t += 0.5)
+                if (r(t) < best) { best = r(t); bt = t; }
+            AstroEvent ev;
+            ev.kind = EV_HISTORY;
+            ev.body2 = EV_PERIHELION;
+            ev.body = hb;
+            ev.moon = k;
+            ev.t = MinimizeT(r, bt - 0.5, bt + 0.5);
+            ev.dist = r(ev.t);
+            out.push_back(ev);
+            continue;
+        }
+        bool solar = h.kind == 0;
         auto f = [&](double t) {
             EclipseGeom g = EclipseAt(B, t);
-            return h.solar ? (g.newSide ? g.solarPerp : 1e12) : (g.newSide ? 1e12 : g.lunarPerp);
+            return solar ? (g.newSide ? g.solarPerp : 1e12) : (g.newSide ? 1e12 : g.lunarPerp);
         };
         double best = 1e300, bt = t0;
         for (double t = t0 - 2; t <= t0 + 3; t += 0.05) {
@@ -754,13 +893,13 @@ static std::vector<AstroEvent> FindHistoryEvents(const App& app) {
         }
         bt = MinimizeT(f, bt - 0.05, bt + 0.05);
         AstroEvent ev;
-        if (!(h.solar ? ClassifySolar(B, bt, &ev) : ClassifyLunar(B, bt, &ev))) continue;
+        if (!(solar ? ClassifySolar(B, bt, &ev) : ClassifyLunar(B, bt, &ev))) continue;
         ev.body2 = ev.kind;
         ev.kind = EV_HISTORY;
         ev.moon = k;
         ev.lat = h.lat;
         ev.lon = h.lon;
-        if (h.solar) {   // 史実の場所から見て太陽と月の中心が最も近づく時刻（地上の場面はこの時刻に移る）
+        if (solar) {   // 史実の場所から見て太陽と月の中心が最も近づく時刻（地上の場面はこの時刻に移る）
             auto sep = [&](double t) {
                 UpdateBodies(B, t);
                 V3 o = EarthSite(B, h.lat, h.lon);
@@ -773,6 +912,7 @@ static std::vector<AstroEvent> FindHistoryEvents(const App& app) {
         }
         out.push_back(ev);
     }
+    std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
     return out;
 }
 

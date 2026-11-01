@@ -32,6 +32,27 @@ static void DrawStars(const App& app) {
         if (p.x < -4 || p.y < -4 || p.x >= c.W + 4 || p.y >= c.H + 4) continue;
         DrawStarDot(p, st.size, col);
     }
+    // 歴史上の超新星（その時期だけ光る。明るい時は光がにじむ）
+    for (int k = 0; k < SUPERNOVA_COUNT; k++) {
+        double mag = SupernovaMag(k, app.tDays);
+        if (std::isnan(mag) || mag > 6.5) continue;
+        V3 dir = EquToRender(SUPERNOVAE[k].ra, SUPERNOVAE[k].dec);
+        Color col = StarColor(0.1, (unsigned char)StarDotAlpha((float)mag));
+        if (rel.on) {
+            double D;
+            dir = Aberrate(rel, dir, &D);
+            col = DopplerColor(col, D);
+        }
+        Vector2 p;
+        if (!Project(c, dir, &p)) continue;
+        if (mag < 0) {
+            BeginBlendMode(BLEND_ADDITIVE);
+            float r = (float)(6 - mag * 3) * g_dpiScale;
+            DrawCircleGradient((int)p.x, (int)p.y, r, {235, 240, 255, (unsigned char)std::min(200.0, 40 - mag * 20)}, {200, 215, 255, 0});
+            EndBlendMode();
+        }
+        DrawStarDot(p, std::max(StarDotSize((float)mag), mag < 0 ? 3.6f : 0.0f), col);
+    }
 }
 
 // 小惑星帯などの粒: 1 ピクセルの点。種類ごとに色を変える（地表近くでは軌道線と同じく描かない）
@@ -176,7 +197,7 @@ static void DrawSunGlowAndDots(const App& app) {
     double day = SkyDaylight(app);
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        V3 rel = ViewRel(app, b.pos, b.outer);   // 光速に近いと天体も背景の星と同じく前方へ集まる（小さく見えるものだけ）
+        V3 rel = ViewRel(app, b.pos);   // 光速に近いと天体も背景の星と同じく前方へ集まる
         Vector2 p;
         if (!Project(c, rel, &p)) continue;
         double dist = Len(rel), px = b.d.radius / dist * c.focal;
@@ -253,7 +274,7 @@ static void PlaceLabel(float* x, float* y, float w, float h, float screenH) {
 static void DrawMarker(const App& app, int idx) {
     const Cam& c = app.cam;
     const Body& b = app.B[idx];
-    V3 rel = ViewRel(app, b.pos, b.outer);
+    V3 rel = ViewRel(app, b.pos);
     double dist = Len(rel);
     double surf = SurfaceDist(b, c.pos);
     bool isTarget = idx == app.target;

@@ -63,6 +63,7 @@ struct BodyDef {
     float atmStrength = 0;
     bool rings = false;
     bool comet = false;        // 太陽に近づくとコマと尾が出る
+    bool halley = false;       // ハレー彗星: 1948 年より前は回帰ごとの軌道（HALLEY_APPS）を使う
     float cometScale = 1;      // 彗星: コマと尾の大きさ・活動を始める距離の倍率（ハレー彗星 = 1）
     int probe = -1;            // 探査機: assets/probes.bin の番号（位置は記録された軌跡から求める）
     bool probeCoast = false;   // 探査機: データの終わりより後も等速直線運動で外へ進む（太陽系を脱出する機体）
@@ -283,6 +284,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                                 270.0, 66.56, 2.2,
                                 KIND_ROCKY, {0.24f, 0.22f, 0.20f}, {0.12f, 0.11f, 0.10f});
     halley.comet = true;
+    halley.halley = true;
     v.push_back(halley);
     // ヘール・ボップ彗星（1997 年の大彗星、核の半径 約 30 km）と百武彗星（1996 年に地球から 0.1 AU を通過）
     BodyDef haleBopp = MakePlanet("ヘール・ボップ彗星", "Hale-Bopp", 30, 0.0, 1.3e16, 0, 0, 0, 0, 0, 0,

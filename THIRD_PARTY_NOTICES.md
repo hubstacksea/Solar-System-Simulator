@@ -199,7 +199,12 @@ Published formulas and coefficients, written into the code:
 
 - Planets: E.M. Standish and J.G. Williams, "Approximate Positions of the Planets" (JPL Solar System Dynamics,
   https://ssd.jpl.nasa.gov/planets/approx_pos.html), Tables 1, 2a and 2b
-- ΔT outside 1800–2200: Morrison & Stephenson 2004, Journal for the History of Astronomy 35, 327
+- ΔT: F. Espenak and J. Meeus, polynomial expressions for Delta T (NASA, https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html),
+  500 BC – AD 2150; outside that range Morrison & Stephenson 2004, Journal for the History of Astronomy 35, 327
+- Long-term correction of the Moon's longitude and the orbits of Halley's Comet for each return from 240 BC to 1910:
+  JPL Horizons (https://ssd.jpl.nasa.gov/horizons/, ephemeris DE441 and the 1P/Halley solutions of each apparition)
+- Historic supernovae (dates, peak brightness, duration of visibility, remnant positions): historical records as compiled
+  by F.R. Stephenson and D.A. Green, *Historical Supernovae and their Remnants* (2002); the light curves are approximations
 - Precession of Earth's axis: Lieske et al. 1977, A&A 58, 1 (IAU 1976)
 - Moon: J. Meeus, *Astronomical Algorithms*, 2nd ed. (1998), chapter 47 (and the obliquity of the ecliptic). The periodic
   terms were transcribed from the tables of the soniakeys/meeus library (https://github.com/soniakeys/meeus,

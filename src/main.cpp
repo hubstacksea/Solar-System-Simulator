@@ -156,6 +156,20 @@ int main(int argc, char** argv) {
             printf("%s  %-34s %s\n", FmtDate(ev.t).c_str(), EventTitle(tmp, ev).c_str(), EventDetail(tmp, ev).c_str());
         return 0;
     }
+    if (!std::isnan(opt.ephemJd)) {
+        // 地球時のユリウス日 → 世界時の J2000 からの日数（ΔT を差し引く）。月と太陽の地心の J2000 黄経・黄緯 deg と距離 km
+        std::vector<Body> B = InitBodies();
+        double tt = opt.ephemJd - 2451545.0, t = tt;
+        for (int k = 0; k < 5; k++) t = tt - DeltaTDays(t);
+        UpdateBodies(B, t);
+        auto pr = [](const char* name, V3 r) {
+            double x = r.x, y = -r.z, z = r.y, d = Len(r);
+            printf("%s lon %.5f lat %.5f dist %.1f\n", name, std::fmod(std::atan2(y, x) / DEG + 360, 360), std::asin(z / d) / DEG, d);
+        };
+        pr("MOON", B[B_MOON].pos - B[B_EARTH].pos);
+        pr("SUN", B[B_SUN].pos - B[B_EARTH].pos);
+        return 0;
+    }
     if (opt.dumpMoons) {
         // 描画座標（黄道系を並べ替えたもの）のまま、時刻 = 現在 + --hours
         std::vector<Body> B = InitBodies();
@@ -310,6 +324,8 @@ int main(int argc, char** argv) {
 
     app.shader = LoadShaderFromMemory(GlslForPlatform(PLANET_VS).c_str(), GlslForPlatform(PLANET_FS).c_str());
     app.locLight = GetShaderLocation(app.shader, "lightDir");
+    app.locRelBeta = GetShaderLocation(app.shader, "relBeta");
+    app.locRelDir = GetShaderLocation(app.shader, "relDir");
     app.locLightObj = GetShaderLocation(app.shader, "lightDirObj");
     app.locC1 = GetShaderLocation(app.shader, "color1");
     app.locC2 = GetShaderLocation(app.shader, "color2");
