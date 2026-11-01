@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.23.0 (2026-11-01)
+
+- Comet Shoemaker-Levy 9 hits Jupiter (July 1994): scars appear at the times and places computed from JPL Horizons' orbits of the 20 fragments and fade over months; also on the history page
+- Lunar libration: the Moon's orientation follows the IAU model, so seen from Earth it nods by about ±8° in longitude and ±7° in latitude
+- Near the speed of light, the colors of planets and moons also change with the Doppler effect (blue ahead, red and dark behind)
+- Historic supernova values checked against the literature and corrected (the position and visibility of SN 1006, the visibility of SN 1054, the peak date of Tycho's supernova)
+
 ## 2.22.0 (2026-11-01)
 
 - Ancient eclipse times fixed: the Moon is corrected to JPL Horizons (DE441) and ΔT now uses the expressions of NASA's eclipse catalog; solar eclipses from 763 BC to AD 2950 agree with NASA within 4 minutes and 2°

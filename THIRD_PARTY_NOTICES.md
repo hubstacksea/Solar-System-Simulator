@@ -204,7 +204,11 @@ Published formulas and coefficients, written into the code:
 - Long-term correction of the Moon's longitude and the orbits of Halley's Comet for each return from 240 BC to 1910:
   JPL Horizons (https://ssd.jpl.nasa.gov/horizons/, ephemeris DE441 and the 1P/Halley solutions of each apparition)
 - Historic supernovae (dates, peak brightness, duration of visibility, remnant positions): historical records as compiled
-  by F.R. Stephenson and D.A. Green, *Historical Supernovae and their Remnants* (2002); the light curves are approximations
+  by F.R. Stephenson and D.A. Green, *Historical Supernovae and their Remnants* (2002), checked against the Wikipedia
+  articles on each supernova and their sources; the light curves are approximations
+- Comet Shoemaker-Levy 9: the orbits of the 20 fragments in JPL Horizons (D/1993 F2-A to W); the impact times and places
+  are computed from them, and the size and fading of the scars are approximate
+- Orientation of the Moon: Archinal et al. 2011, Celestial Mechanics and Dynamical Astronomy 109, 101 (IAU WGCCRE 2009)
 - Precession of Earth's axis: Lieske et al. 1977, A&A 58, 1 (IAU 1976)
 - Moon: J. Meeus, *Astronomical Algorithms*, 2nd ed. (1998), chapter 47 (and the obliquity of the ecliptic). The periodic
   terms were transcribed from the tables of the soniakeys/meeus library (https://github.com/soniakeys/meeus,

@@ -82,6 +82,8 @@ struct App {
     int resumeMode = 1;                   // 起動時に前回の続きから 0: しない, 1: 場所だけ, 2: 場所と日時
     int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星・連星, 2: 探査機のできごと, 3: 歴史（Tab で切り替え）
     std::vector<AstroEvent> historyEvents;   // 歴史上の日食・月食（起動時に求める）
+    std::vector<V3> sl9Dirs;                 // シューメーカー・レビー第 9 彗星の衝突痕の木星に固定した向き（起動時に求める）
+    int locScars = -1, locScarCount = -1;   // シェーダの scars / scarInfo
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）
     std::vector<AstroEvent> cometEvents;  // 彗星の近日点と地球への最接近（起動時に求める）
     std::vector<AstroEvent> events;

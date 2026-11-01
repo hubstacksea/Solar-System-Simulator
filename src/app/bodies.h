@@ -616,6 +616,34 @@ static void EquatorBasis(V3 pole, V3* e1, V3* e2) {
     *e2 = Cross(*e1, pole);
 }
 
+// 月の向き（IAU WGCCRE 2009 の月の自転の式）: 自転軸の赤経・赤緯と本初子午線の角度 W [deg]。ほぼ一定の速さで自転し、
+// 公転は楕円で傾いているので、地球から見て経度方向に ±8°、緯度方向に ±7° ほど首を振る（光学的秤動）
+static void MoonOrientation(double tDays, double* ra, double* dec, double* W) {
+    double d = tDays + DeltaTDays(tDays), T = d / 36525.0;
+    auto E = [&](double a, double b) { return (a + b * d) * DEG; };
+    double E1 = E(125.045, -0.0529921), E2 = E(250.089, -0.1059842), E3 = E(260.008, 13.0120009), E4 = E(176.625, 13.3407154),
+           E5 = E(357.529, 0.9856003), E6 = E(311.589, 26.4057084), E7 = E(134.963, 13.0649930), E8 = E(276.617, 0.3287146),
+           E9 = E(34.226, 1.7484877), E10 = E(15.134, -0.1589763), E11 = E(119.743, 0.0036096), E12 = E(239.961, 0.1643573),
+           E13 = E(25.053, 12.9590088);
+    *ra = 269.9949 + 0.0031 * T - 3.8787 * std::sin(E1) - 0.1204 * std::sin(E2) + 0.0700 * std::sin(E3) - 0.0172 * std::sin(E4) +
+          0.0072 * std::sin(E6) - 0.0052 * std::sin(E10) + 0.0043 * std::sin(E13);
+    *dec = 66.5392 + 0.0130 * T + 1.5419 * std::cos(E1) + 0.0239 * std::cos(E2) - 0.0278 * std::cos(E3) + 0.0068 * std::cos(E4) -
+           0.0029 * std::cos(E6) + 0.0009 * std::cos(E7) + 0.0008 * std::cos(E10) - 0.0009 * std::cos(E13);
+    *W = 38.3213 + 13.17635815 * d - 1.4e-12 * d * d + 3.5610 * std::sin(E1) + 0.1208 * std::sin(E2) - 0.0642 * std::sin(E3) +
+         0.0158 * std::sin(E4) + 0.0252 * std::sin(E5) - 0.0066 * std::sin(E6) - 0.0047 * std::sin(E7) - 0.0046 * std::sin(E8) +
+         0.0028 * std::sin(E9) + 0.0052 * std::sin(E10) + 0.0040 * std::sin(E11) + 0.0019 * std::sin(E12) - 0.0044 * std::sin(E13);
+}
+// 月の自転軸・赤道の基底・自転角を時刻 t の値にする（W は赤道と ICRF の赤道の昇交点から測る）
+static void SetMoonOrientation(Body& b, double t) {
+    double ra, dec, W;
+    MoonOrientation(t, &ra, &dec, &W);
+    b.pole = EquToRender(ra, dec);
+    EquatorBasis(b.pole, &b.ex, &b.ez);
+    V3 Q = Norm(Cross(EquToRender(0, 90), b.pole));
+    b.primeOffset = std::atan2(-Dot(Q, b.ez), Dot(Q, b.ex));
+    b.spin = std::fmod(b.primeOffset + W * DEG, 2 * PI);
+}
+
 // 惑星のシミュレータ上の位置（任意の時刻）
 static V3 SimPlanetPos(const std::vector<Body>& B, int i, double t) { return i == B_EARTH ? EarthPos(B[i].d, t) : PlanetPos(B[i].d, t); }
 
@@ -821,7 +849,9 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
         double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod;
         b.spin = std::fmod(d.spin0 * DEG + 2 * PI * t / rp, 2 * PI);
         if (!std::isnan(d.w0)) b.spin = std::fmod(b.primeOffset + d.w0 * DEG + 2 * PI * t / rp, 2 * PI);
-        if (d.parent > 0 && d.rotPeriod == 0) {
+        if (&b == &B[B_MOON]) {
+            SetMoonOrientation(b, t);   // 月は IAU の式（秤動で首を振る）
+        } else if (d.parent > 0 && d.rotPeriod == 0) {
             // 衛星の自転は公転と同期: 経度 0°（本体 X 軸）を常に母天体へ向ける
             V3 u = B[d.parent].pos - b.pos;
             b.spin = std::atan2(-Dot(u, b.ez), Dot(u, b.ex));
@@ -879,6 +909,11 @@ static V3 PosAt(const std::vector<Body>& B, int i, double t) {
 static double SpinAt(const std::vector<Body>& B, int i, double t) {
     const Body& b = B[i];
     const BodyDef& d = b.d;
+    if (i == B_MOON) {   // 月は IAU の式（自転軸の向きは今の値のまま）
+        double ra, dec, W;
+        MoonOrientation(t, &ra, &dec, &W);
+        return std::fmod(b.primeOffset + W * DEG, 2 * PI);
+    }
     if (d.parent > 0 && d.rotPeriod == 0) {
         V3 u = PosAt(B, d.parent, t) - PosAt(B, i, t);
         return std::atan2(-Dot(u, b.ez), Dot(u, b.ex));

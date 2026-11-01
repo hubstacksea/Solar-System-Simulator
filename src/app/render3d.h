@@ -740,6 +740,27 @@ static void DrawBodies(App& app) {
             SetShaderValue(app.shader, app.locLightObj, &ls, SHADER_UNIFORM_VEC3);
         }
         SetOccluders(app, it.i, s);
+        {   // 木星の衝突痕（シューメーカー・レビー第 9 彗星。1994 年 7 月）: 衝突から 1 時間で広がり、2 か月ほどで横に広がりながら
+            // 数か月かけて薄れる（見た目の目安）
+            float sc[80] = {0}, info[4] = {0, 0, 0, 0};
+            int n = 0;
+            if (it.i == B_JUPITER && (int)app.sl9Dirs.size() == SL9_COUNT)
+                for (int k = 0; k < SL9_COUNT && n < 20; k++) {
+                    double age = app.tDays - SL9[k].t;
+                    if (age < 0 || age > 400) continue;
+                    double r = SL9[k].size * std::min(1.0, age * 24 + 0.05) * (1 + age / 60);
+                    sc[n * 4 + 0] = (float)app.sl9Dirs[k].x; sc[n * 4 + 1] = (float)app.sl9Dirs[k].y;
+                    sc[n * 4 + 2] = (float)app.sl9Dirs[k].z; sc[n * 4 + 3] = (float)r;
+                    n++;
+                }
+            if (n > 0) {
+                double age0 = app.tDays - SL9[0].t;
+                info[0] = (float)n;
+                info[1] = (float)(0.85 * std::exp(-std::max(0.0, age0) / 120));
+                SetShaderValueV(app.shader, app.locScars, sc, SHADER_UNIFORM_VEC4, 20);
+            }
+            SetShaderValue(app.shader, app.locScarCount, info, SHADER_UNIFORM_VEC4);
+        }
         SetShaderValue(app.shader, app.locC1, &c1, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locAtm, &atm, SHADER_UNIFORM_VEC3);

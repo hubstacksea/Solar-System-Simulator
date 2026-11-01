@@ -48,6 +48,10 @@ in vec3 fragNormal;
 in vec3 fragWorld;
 uniform vec3 lightDir;     // ワールド空間（カメラ相対）での太陽方向
 uniform vec3 lightDirObj;  // 本体（自転込み）/ 環の座標系での太陽方向
+uniform float relBeta;     // 光速に近い時の見え方の β と進む向き（頂点シェーダと同じ。色のドップラー効果に使う）
+uniform vec3 relDir;
+uniform vec4 scars[20];    // 木星の衝突痕（シューメーカー・レビー第 9 彗星）: xyz 本体座標の向き, w 半径 rad
+uniform vec4 scarInfo;     // x 衝突痕の数, y 濃さ
 uniform vec4 occ[4];       // 影を落とす天体: xyz 中心（fragWorld と同じ座標）, w 半径（負なら大気あり）
 uniform int occN;
 uniform float sunAng;      // 太陽の視半径 rad
@@ -678,6 +682,16 @@ vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
     return c;
 }
 
+// ドップラー効果（光速に近い時）: 進む向きの前方は青く明るく、後方は赤く暗く（背景の星と同じ見た目の近似）
+vec3 doppler(vec3 c) {
+    if (relBeta <= 0.0) return c;
+    float ct = dot(normalize(fragWorld), relDir), ct2 = (ct + relBeta) / (1.0 + relBeta * ct);
+    float D = sqrt(1.0 - relBeta * relBeta) / (1.0 - relBeta * ct2);
+    float kb = clamp((D - 1.0) * 0.5, 0.0, 0.85), kr = clamp((1.0 - D) * 1.5, 0.0, 1.0);
+    vec3 blue = mix(c, vec3(0.59, 0.75, 1.0) * max(max(c.r, c.g), c.b), kb);
+    return mix(blue, vec3(1.0, 0.35, 0.24) * dot(c, vec3(0.333)), kr) * min(1.0, D * D * D);
+}
+
 void main() {
     int kind = int(params.x + 0.5);
     int style = int(detail.x + 0.5);
@@ -689,7 +703,7 @@ void main() {
         float litH = clamp(dot(Nh, normalize(lightDir)) + 0.35, 0.0, 1.0);
         float aH = pow(1.0 - muH, 6.0) * params.w * litH;
         if (aH <= 0.003) discard;
-        finalColor = vec4(color1 * (0.4 + 0.6 * litH), clamp(aH, 0.0, 1.0));
+        finalColor = vec4(doppler(color1 * (0.4 + 0.6 * litH)), clamp(aH, 0.0, 1.0));
         return;
     }
 
@@ -726,7 +740,7 @@ void main() {
         float shadow = (h > 0.0 && (-b - sqrt(h)) > 0.0) ? 0.06 : 1.0;
         float lit = 0.2 + 0.8 * pow(abs(Lo.y), 0.35);
         vec3 col = mix(color2, color1, clamp(d, 0.0, 1.0)) * lit * shadow;
-        finalColor = vec4(col, clamp(alpha, 0.0, 1.0) * 0.97);
+        finalColor = vec4(doppler(col), clamp(alpha, 0.0, 1.0) * 0.97);
         return;
     }
 
@@ -737,7 +751,7 @@ void main() {
     fw = max(length(fragWorld) * detail.y / max(mu, 0.25), 1e-8);
 
     if (kind == 0) {
-        finalColor = vec4(sun(p, mu, o, int(params.y + 0.5), params.w), 1.0);
+        finalColor = vec4(doppler(sun(p, mu, o, int(params.y + 0.5), params.w)), 1.0);
         return;
     }
 
@@ -756,7 +770,18 @@ void main() {
     vec4 hgt = vec4(0.0);
     float specMask = 0.0, lights = 0.0, cloud = 0.0;
     if (kind == 1) hgt = style == 13 ? moonTex(p, o, base) : style == 14 ? mapTex(p, o, base) : rocky(p, style, o, base);
-    else if (kind == 2) base = style == 14 ? gasMap(p, o) : gas(p, style, o);
+    else if (kind == 2) {
+        base = style == 14 ? gasMap(p, o) : gas(p, style, o);
+        // 衝突痕: 黒っぽい芯と、そのまわりの暗い輪（大きな破片の痕で見られた形）
+        for (int i = 0; i < 20; i++) {
+            if (float(i) >= scarInfo.x) break;
+            float r = scars[i].w;
+            float a = acos(clamp(dot(p, scars[i].xyz), -1.0, 1.0)) / max(r, 1e-4);
+            float core = 1.0 - smoothstep(0.35, 0.6, a), ring = exp(-pow((a - 0.95) / 0.12, 2.0)) * 0.6;
+            float dk = clamp(core + ring, 0.0, 1.0) * scarInfo.y * (0.8 + 0.2 * fbmL(p, 40.0, 4, 0.5, o + float(i)));
+            base = mix(base, vec3(0.16, 0.12, 0.10), dk);
+        }
+    }
     else if (style == 31) hgt = earthTex(p, o, ndlG, base, specMask, lights, cloud);
     else hgt = earth(p, o, ndlG, base, specMask, lights, cloud);
 
@@ -812,7 +837,7 @@ void main() {
         vec3 ins = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * atmHaze.w);
         col = col * exp(-(atmBeta + 0.02) * air) + ins;
     }
-    finalColor = vec4(col, 1.0);
+    finalColor = vec4(doppler(col), 1.0);
 }
 )";
 

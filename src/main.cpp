@@ -168,6 +168,12 @@ int main(int argc, char** argv) {
         };
         pr("MOON", B[B_MOON].pos - B[B_EARTH].pos);
         pr("SUN", B[B_SUN].pos - B[B_EARTH].pos);
+        {   // 月から見た地球の向き（月面の経度・緯度 deg。秤動）
+            const Body& m = B[B_MOON];
+            V3 X, Z, u = Norm(B[B_EARTH].pos - m.pos);
+            BodyFixedAxes(m, &X, &Z);
+            printf("LIBR lon %.3f lat %.3f\n", std::atan2(-Dot(u, Z), Dot(u, X)) / DEG, std::asin(Dot(u, m.pole)) / DEG);
+        }
         return 0;
     }
     if (opt.dumpMoons) {
@@ -325,6 +331,8 @@ int main(int argc, char** argv) {
     app.shader = LoadShaderFromMemory(GlslForPlatform(PLANET_VS).c_str(), GlslForPlatform(PLANET_FS).c_str());
     app.locLight = GetShaderLocation(app.shader, "lightDir");
     app.locRelBeta = GetShaderLocation(app.shader, "relBeta");
+    app.locScars = GetShaderLocation(app.shader, "scars");
+    app.locScarCount = GetShaderLocation(app.shader, "scarInfo");
     app.locRelDir = GetShaderLocation(app.shader, "relDir");
     app.locLightObj = GetShaderLocation(app.shader, "lightDirObj");
     app.locC1 = GetShaderLocation(app.shader, "color1");
@@ -453,6 +461,7 @@ int main(int argc, char** argv) {
     app.probeEvents = FindProbeEvents(app);
     app.cometEvents = FindCometEvents(app);
     app.historyEvents = FindHistoryEvents(app);
+    app.sl9Dirs = Sl9FixedDirs(app.B);
     app.eventsPage = std::max(0, std::min(3, opt.eventsPage));
     if (opt.showEvents) {
         OpenEventsPage(app);

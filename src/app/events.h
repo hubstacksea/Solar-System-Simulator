@@ -215,7 +215,8 @@ static std::vector<AstroEvent> FindCometEvents(const App& app) {
 // 時刻にする（その場所の地上から見る）。ハレー彗星は前後 80 日で近日点通過を探す
 struct HistoricEclipse {
     const char* date;      // "YYYYMMDD"（紀元前は先頭に -）
-    int kind;              // 0: 日食, 1: 月食, 2: ハレー彗星の近日点通過, 3: 超新星（SUPERNOVAE と同じ日付）, 4: 金星の太陽面通過
+    int kind;              // 0: 日食, 1: 月食, 2: ハレー彗星の近日点通過, 3: 超新星（SUPERNOVAE と同じ日付）, 4: 金星の太陽面通過,
+                           // 5: シューメーカー・レビー第 9 彗星の木星衝突（破片 G の衝突痕が昼側に来た時、その上空から）
     double lat, lon;       // 史実の場所
     const char* jp; const char* en;          // 名前
     const char* placeJp; const char* placeEn;
@@ -237,22 +238,74 @@ static const HistoricEclipse HISTORY[] = {
     // 超新星（記録した人がいた場所の、その夜の空。日付は最初に見つかった日）
     {"10060501", 3, 30.04, 31.24, "超新星 1006（おおかみ座）", "SN 1006 (Lupus)", "カイロ（イブン・リドワーンの記録）", "Cairo (recorded by Ibn Ridwan)"},
     {"10540704", 3, 34.80, 114.31, "超新星 1054（かに星雲のもと）", "SN 1054 (the Crab Nebula)", "開封（宋の都。『宋史』）", "Kaifeng (Song capital)"},
-    {"15721111", 3, 56.08, 13.05, "ティコの超新星（1572 年）", "Tycho's supernova (1572)", "ヘレヴァド修道院（デンマーク）", "Herrevad Abbey (Denmark)"},
+    {"15721116", 3, 56.08, 13.05, "ティコの超新星（1572 年）", "Tycho's supernova (1572)", "ヘレヴァド修道院（デンマーク）", "Herrevad Abbey (Denmark)"},
     {"16041009", 3, 50.09, 14.42, "ケプラーの超新星（1604 年）", "Kepler's supernova (1604)", "プラハ", "Prague"},
     // 金星の太陽面通過（地球と金星を結ぶ線の上から、ズームして太陽を見る）
     {"16391204", 4, 53.70, -2.80, "ホロックスの金星の太陽面通過", "Horrocks's transit of Venus", "マッチ・フール（イングランド）", "Much Hoole (England)"},
     {"17690603", 4, -17.50, -149.50, "クックの金星の太陽面通過観測", "Cook's transit of Venus", "タヒチ（ポイント・ビーナス）", "Tahiti (Point Venus)"},
     {"18821206", 4, 0, 0, "19 世紀最後の金星の太陽面通過", "Last transit of Venus of the 19th century", "世界各地の観測隊", "expeditions worldwide"},
+    {"19940718", 5, 0, 0, "シューメーカー・レビー第 9 彗星の木星衝突", "Comet Shoemaker-Levy 9 hits Jupiter", "破片 G の衝突痕",
+     "the scar of fragment G"},
 };
 
-// 歴史上の超新星（肉眼で見えたもの）。位置は残骸の J2000 赤経・赤緯、最大の明るさ（等級）、最初に見つかった日（最大のころ）、
-// 肉眼で見えた日数。明るさは 15 日で最大になり、記録で見えなくなった日に 6 等になるよう直線で暗くなるとする（目安）
+// 歴史上の超新星（肉眼で見えたもの）。位置は残骸の J2000 赤経・赤緯、最大の明るさ（等級）、最大のころの日（ユリウス暦）、
+// 肉眼で見えた日数（記録の最後まで）。明るさは 15 日で最大になり、記録で見えなくなった日に 6 等になるよう直線で暗くなる
+// とする（目安）。値は各超新星の記録をまとめた文献（Stephenson & Green 2002 など。Wikipedia の各記事で照合）による
+// シューメーカー・レビー第 9 彗星の破片の木星への衝突（1994 年 7 月）。JPL Horizons の各破片の軌道から、木星の 1 気圧の面
+// （扁平な楕円体）に入った時刻 [J2000 からの日数（世界時）] と、その時の木星中心からの位置 [km, J2000 黄道]。
+// 衝突痕の大きさ（木星の中心から見た半径 rad）は、大きな痕を残した破片（G・K・L）・中くらい・小さいの 3 段階の目安
+struct Sl9Impact { const char* name; double t, x, y, z, size; };
+static const Sl9Impact SL9[] = {
+    {"A", -1994.688377, 18749, -45132, -48940, 0.050},
+    {"B", -1994.410992, 17618, -45692, -48863, 0.025},
+    {"C", -1994.229951, 19387, -44782, -49012, 0.050},
+    {"D", -1994.034323, 19410, -44705, -49047, 0.050},
+    {"E", -1993.896175, 19616, -44607, -49052, 0.050},
+    {"F", -1993.504325, 18719, -44799, -49218, 0.025},
+    {"G", -1993.214215, 20177, -44215, -49161, 0.090},
+    {"H", -1992.715342, 20475, -43958, -49276, 0.050},
+    {"K", -1992.095795, 21177, -43563, -49324, 0.090},
+    {"L", -1991.601005, 21574, -43246, -49390, 0.090},
+    {"N", -1991.092377, 21326, -43005, -49697, 0.025},
+    {"P2", -1990.889681, 20352, -43058, -50003, 0.025},
+    {"Q2", -1990.706915, 21802, -42781, -49681, 0.025},
+    {"Q1", -1990.686447, 22375, -42815, -49402, 0.050},
+    {"R", -1990.296806, 22637, -42575, -49480, 0.050},
+    {"S", -1989.893112, 22710, -42414, -49593, 0.050},
+    {"T", -1989.772596, 20400, -42680, -50251, 0.025},
+    {"U", -1989.612820, 21986, -42488, -49801, 0.025},
+    {"V", -1989.346573, 22336, -42354, -49789, 0.025},
+    {"W", -1989.191881, 23412, -42158, -49477, 0.025},
+};
+static const int SL9_COUNT = sizeof SL9 / sizeof SL9[0];
+
+// 衝突痕の木星に固定した向き（本体座標の単位ベクトル。衝突の時刻の木星の自転で求める）
+static std::vector<V3> Sl9FixedDirs(const std::vector<Body>& B0) {
+    std::vector<Body> B = B0;
+    std::vector<V3> out;
+    for (const Sl9Impact& s : SL9) {
+        UpdateBodies(B, s.t);
+        const Body& j = B[B_JUPITER];
+        V3 X, Z, v = Norm(EclToRender(s.x, s.y, s.z));
+        BodyFixedAxes(j, &X, &Z);
+        out.push_back(Norm(V3(Dot(v, X), Dot(v, j.pole), Dot(v, Z))));
+    }
+    return out;
+}
+// 本体座標の向き f → 今の木星の自転での向き（描画座標）
+static V3 JupiterFixedToWorld(const Body& j, V3 f) {
+    V3 X, Z;
+    BodyFixedAxes(j, &X, &Z);
+    return X * f.x + j.pole * f.y + Z * f.z;
+}
+
+
 struct Supernova { double ra, dec, peak; const char* date; double days; };
 static const Supernova SUPERNOVAE[] = {
-    {225.70, -41.93, -7.5, "10060501", 900},   // SN 1006
-    {83.633, 22.015, -6.0, "10540704", 653},   // SN 1054（『宋史』: 昼に 23 日、夜に 653 日見えた）
-    {6.32, 64.14, -4.0, "15721111", 480},      // ティコ
-    {262.675, -21.48, -2.5, "16041009", 365},  // ケプラー
+    {225.53, -41.95, -7.5, "10060501", 640},   // SN 1006（明るい 3 か月の後、さらに約 18 か月見えた）
+    {83.633, 22.015, -6.0, "10540704", 642},   // SN 1054（昼に 23 日。最後の記録は 1056 年 4 月 6 日）
+    {6.32, 64.14, -4.0, "15721116", 480},      // ティコ（11 月初めに現れ、16 日ごろ最大。1574 年初めまで）
+    {262.675, -21.48, -2.5, "16041009", 365},  // ケプラー（10 月 9 日に最初の記録。ケプラーが 1 年追った）
 };
 static const int SUPERNOVA_COUNT = sizeof SUPERNOVAE / sizeof SUPERNOVAE[0];
 // ---------------------------------------------------------------- 流星群
@@ -512,6 +565,10 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
         case EV_PERIASTRON: snprintf(b, sizeof b, T(UI_EV_SEPARATION), FmtDist(ev.dist).c_str()); return b;
         case EV_HISTORY: {   // 食の種類と史実の場所（ハレー彗星は近日点の距離と記録の名前）
+            if (ev.body2 == -3) {   // 衝突から何時間後か
+                snprintf(b, sizeof b, "%.1f h / %s", (ev.t - SL9[ev.body].t) * 24, TR(HISTORY[ev.moon].placeJp, HISTORY[ev.moon].placeEn));
+                return b;
+            }
             if (ev.body2 == -2 || ev.body2 == EV_TRANSIT) {   // 超新星はその時の明るさ、太陽面通過は太陽の中心からの距離
                 char d[64];
                 if (ev.body2 == -2) snprintf(d, sizeof d, T(UI_INFO_MAG_UNIT), ev.dist);
@@ -630,6 +687,14 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         p.kind = EV_TRANSIT;
         ApplyEvent(app, p);
         return;
+    } else if (ev.kind == EV_HISTORY && ev.body2 == -3) {
+        // シューメーカー・レビー第 9 彗星: 破片の衝突痕の上空（木星の半径の 1.2 倍の高さ）から、衝突痕を見下ろす
+        const Body& j = app.B[B_JUPITER];
+        V3 dir = JupiterFixedToWorld(j, app.sl9Dirs[ev.body]);
+        app.ship.ref = B_JUPITER;
+        app.ship.local = dir * (j.d.radius * 2.2);
+        app.ship.q = QuatFromBasis(dir * -1.0, j.pole);
+        app.target = B_JUPITER;
     } else if (ev.kind == EV_HISTORY && ev.body2 == -2) {
         // 超新星: 記録した人がいた場所の地上から、超新星の方角の夜空を見上げる
         PlaceAt(app, B_EARTH, ev.lat, ev.lon, 0.3);
@@ -777,7 +842,8 @@ static void StartWarp(App& app, int ti, bool land);
 static int EventBody(const AstroEvent& ev) {
     if (ev.kind == EV_IMPACT || ev.kind == EV_PERIASTRON || ev.kind == EV_VIEW) return ev.body;
     if (ev.kind >= EV_FLYBY) return ev.probe;
-    if (ev.kind == EV_HISTORY) return ev.body2 == EV_PERIHELION ? ev.body : ev.body2 == EV_TRANSIT ? B_VENUS : B_EARTH;
+    if (ev.kind == EV_HISTORY)
+        return ev.body2 == EV_PERIHELION ? ev.body : ev.body2 == EV_TRANSIT ? B_VENUS : ev.body2 == -3 ? B_JUPITER : B_EARTH;
     if (ev.kind == EV_ECLIPSE_GROUND) return B_EARTH;
     if (ev.kind >= EV_TRANSIT) return ev.body;
     return ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER;
@@ -836,6 +902,26 @@ static std::vector<AstroEvent> FindHistoryEvents(const App& app) {
             ev.lon = h.lon;
             ev.t = bt;
             ev.dist = SupernovaMag(sn, bt);
+            out.push_back(ev);
+            continue;
+        }
+        if (h.kind == 5) {   // シューメーカー・レビー第 9 彗星: 破片 G の衝突から 12 時間のうち、衝突痕が太陽に一番向く時刻
+            int g = 0;
+            for (int i = 0; i < SL9_COUNT; i++)
+                if (std::strcmp(SL9[i].name, "G") == 0) g = i;
+            V3 f = Sl9FixedDirs(B)[g];
+            double best = -2, bt = SL9[g].t;
+            for (double t = SL9[g].t + 0.05; t <= SL9[g].t + 0.5; t += 1.0 / 288) {
+                UpdateBodies(B, t);
+                double v = Dot(JupiterFixedToWorld(B[B_JUPITER], f), Norm(B[B_SUN].pos - B[B_JUPITER].pos));
+                if (v > best) { best = v; bt = t; }
+            }
+            AstroEvent ev;
+            ev.kind = EV_HISTORY;
+            ev.body2 = -3;   // シューメーカー・レビー第 9 彗星
+            ev.body = g;
+            ev.moon = k;
+            ev.t = bt;
             out.push_back(ev);
             continue;
         }
