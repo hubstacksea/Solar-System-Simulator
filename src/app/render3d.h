@@ -398,7 +398,7 @@ static void LoadMoonTextures(App& app) {
 struct Relativity { bool on = false; V3 v; double beta = 0, gamma = 1; };
 
 // 見え方の強さ relU を、今の速さ / 光速へ時間をかけて近づける。急停止（X）や下のエンジンへの切り替えで速さが一気に 0 に
-// なっても、集まった星がゆっくりほどけ始め、約 2 秒で元に戻る（臨界減衰のばね。動き出しも収まりも滑らか）。
+// なっても、集まった星がゆっくりほどけ始め、約 1 秒で元に戻る（臨界減衰のばね。動き出しも収まりも滑らか）。
 // 加速は滑らかなので、強まる側は少し遅れて追うだけ。超光速エンジン（架空）では 0 へ向かい、ワープ中は消す
 static void UpdateRelativityView(App& app, double dt) {
     const Ship& s = app.ship;
@@ -406,7 +406,7 @@ static void UpdateRelativityView(App& app, double dt) {
     double target = app.warpT >= 0 || sp > C_KMS * 1.0001 ? 0.0 : std::min(1.0, sp / C_KMS);
     if (target > 0.005 && app.warpT < 0)
         app.relDir = app.physics ? s.vel * (1 / sp) : ShipFwd(s) * (s.speed >= 0 ? 1.0 : -1.0);
-    const double w = 3.0;   // 固有角振動数 /秒（臨界減衰で 2 秒ほどで収まる）
+    const double w = 6.0;   // 固有角振動数 /秒（臨界減衰で 1 秒ほどで収まる）
     for (double left = dt; left > 0; left -= 1.0 / 240) {   // 長いフレームでも安定するよう細かく刻む
         double h = std::min(left, 1.0 / 240);
         app.relUV += (w * w * (target - app.relU) - 2 * w * app.relUV) * h;

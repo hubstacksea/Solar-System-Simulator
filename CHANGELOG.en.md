@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.21.1 (2026-11-01)
+
+- After a sudden stop near the speed of light, the crowded stars now ease away in about 1 second instead of 2
+
 ## 2.21.0 (2026-11-01)
 
 - The Moon uses Meeus's full series (a truncated ELP-2000/82); modern solar eclipses agree with NASA's catalog within 2 minutes
