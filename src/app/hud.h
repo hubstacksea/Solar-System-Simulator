@@ -83,7 +83,7 @@ static bool DrawAsteroidsGPU(App& app) {
 }
 
 static void DrawAsteroids(App& app) {
-    if (!app.showOrbits || !app.showAsteroids || app.belt.a.empty()) return;
+    if (!app.showOrbits || !app.showAsteroids || app.belt.a.empty() || app.relU > 0.02) return;   // 光速に近い時は描かない
     const Cam& c = app.cam;
     for (const Body& b : app.B)
         if (Len(c.pos - b.pos) < b.d.radius * 1.3) return;
@@ -174,14 +174,9 @@ static void DrawCorona(Vector2 c, float rs, float k) {
 static void DrawSunGlowAndDots(const App& app) {
     const Cam& c = app.cam;
     double day = SkyDaylight(app);
-    Relativity rv = GetRelativity(app);
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        V3 rel = CamRel(c, b.pos);
-        if (rv.on && b.d.kind == KIND_STAR) {   // 光速に近いと恒星も背景の星と同じく前方へ集まる
-            double D, L = Len(rel);
-            rel = Aberrate(rv, rel * (1 / L), &D) * L;
-        }
+        V3 rel = ViewRel(app, b.pos);   // 光速に近いと天体も背景の星と同じく前方へ集まる
         Vector2 p;
         if (!Project(c, rel, &p)) continue;
         double dist = Len(rel), px = b.d.radius / dist * c.focal;
@@ -258,7 +253,7 @@ static void PlaceLabel(float* x, float* y, float w, float h, float screenH) {
 static void DrawMarker(const App& app, int idx) {
     const Cam& c = app.cam;
     const Body& b = app.B[idx];
-    V3 rel = CamRel(c, b.pos);
+    V3 rel = ViewRel(app, b.pos);
     double dist = Len(rel);
     double surf = SurfaceDist(b, c.pos);
     bool isTarget = idx == app.target;

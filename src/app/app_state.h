@@ -8,6 +8,7 @@
 enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TOTAL, EV_LUNAR_PARTIAL, EV_SHADOW,
                  EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH, EV_ECLIPSE_GROUND, EV_METEOR,
                  EV_PERIASTRON, EV_VIEW,   // 連星の近星点通過（body: 主星, body2: 伴星）、ツアーの眺め（body の近くから body2 の方を見る）
+                 EV_HISTORY,               // 歴史上の日食・月食（moon: HISTORY の番号、body2: 食の種類、lat・lon: 史実の場所）
                  EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT };
 struct AstroEvent {
     int kind = 0;
@@ -79,7 +80,8 @@ struct App {
     };
     std::vector<Meteor> meteors;
     int resumeMode = 1;                   // 起動時に前回の続きから 0: しない, 1: 場所だけ, 2: 場所と日時
-    int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星, 2: 探査機のできごと（Tab で切り替え）
+    int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星・連星, 2: 探査機のできごと, 3: 歴史（Tab で切り替え）
+    std::vector<AstroEvent> historyEvents;   // 歴史上の日食・月食（起動時に求める）
     std::vector<AstroEvent> probeEvents;  // 探査機のできごと（起動時に軌跡から求める）
     std::vector<AstroEvent> cometEvents;  // 彗星の近日点と地球への最接近（起動時に求める）
     std::vector<AstroEvent> events;

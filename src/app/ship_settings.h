@@ -189,7 +189,7 @@ struct Options {
     bool intro = false;         // 初回の案内を出して始める（確認用）
     bool touch = false;         // 画面のボタンを出して始める（確認用）
     bool showEvents = false, showDate = false;  // 一覧・日時入力を開いた状態で始める（確認用）
-    int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星, 2: 探査機（確認用）
+    int eventsPage = 0;                         // 一覧のページ 0: 天文, 1: 彗星・連星, 2: 探査機, 3: 歴史（確認用）
     double timeScale = 1;
     const char* lang = nullptr;  // "ja" / "en"
     int quality = -1;            // 0〜2（確認用）

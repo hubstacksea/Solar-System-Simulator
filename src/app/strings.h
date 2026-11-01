@@ -95,9 +95,11 @@
     X(MUSIC_8, "♪ ベートーヴェン 交響曲第6番「田園」第1楽章 Skidmore College Orchestra (Musopen)", "Now playing: Beethoven, Symphony No. 6 \"Pastoral\", I - Skidmore College Orchestra (Musopen)") \
     X(MUSIC_9, "♪ ドビュッシー「月の光」 ピアノ: Laurens Goedhart (2011, CC BY 3.0)", "Now playing: Debussy, Clair de lune - Laurens Goedhart, piano (2011, CC BY 3.0)") \
     X(EV_TITLE, "天文イベント", "Astronomical events") \
-    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 彗星・連星 / 探査機    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / comets and binaries / spacecraft    Esc / K : close") \
+    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 彗星・連星 / 探査機 / 歴史    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / comets and binaries / spacecraft / history    Esc / K : close") \
     X(EV_PROBE_TITLE, "探査機のできごと", "Spacecraft events") \
     X(EV_COMET_TITLE, "彗星・連星", "Comets and binary stars") \
+    X(EV_HISTORY_TITLE, "歴史上の日食・月食", "Historic eclipses") \
+    X(EV_HISTORY_NOTE, "史実の場所の地上へ（日時は計算で食が最も深い時刻。紀元前は計算の時刻が 30〜40 分ずれ、食の帯も少しずれる）", "To the ground at the historic site (at the computed deepest eclipse; for BC dates the computed times are 30-40 minutes off and the eclipse path shifts a little)") \
     X(EV_COMET_NOTE, "1980〜2070 年の彗星の近日点と地球への最接近、連星の近星点。尾の長さは見た目の演出です", "Comet perihelia and closest approaches to Earth, and binary-star periastra, 1980-2070. Tail lengths are illustrative") \
     X(EV_PERIHELION, "%sが近日点を通過", "%s at perihelion") \
     X(EV_COMET_EARTH, "%sが地球に最接近", "%s: closest approach to Earth") \

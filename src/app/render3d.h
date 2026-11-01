@@ -5,6 +5,7 @@
 
 // ---------------------------------------------------------------- 描画: 3D
 static void DrawOrbits(App& app) {
+    if (app.relU > 0.02) return;   // 光速に近い時は天体が光行差でずれて見え、軌道の線と合わなくなるので描かない
     const Cam& c = app.cam;
     // 地表近くでは軌道線が視界を横切って邪魔なので描かない
     for (const Body& b : app.B)
@@ -433,6 +434,13 @@ static V3 Aberrate(const Relativity& r, V3 dir, double* D) {
     *D = 1 / (r.gamma * (1 - r.beta * ct2));
     return pl > 1e-12 ? r.v * ct2 + perp * (std::sqrt(std::max(0.0, 1 - ct2 * ct2)) / pl) : dir;
 }
+// 自機から見た天体の位置（カメラからの差）。光速に近い時は光行差で見える向きを前方へ寄せる（距離と形はそのまま）
+static V3 ViewRel(const App& app, V3 world) {
+    V3 r = CamRel(app.cam, world);
+    Relativity rv = GetRelativity(app);
+    double L = Len(r), D;
+    return rv.on && L > 1e-9 ? Aberrate(rv, r * (1 / L), &D) * L : r;
+}
 static Color DopplerColor(Color col, double D) {
     double kb = std::min(0.85, std::max(0.0, (D - 1) * 0.5)), kr = std::min(1.0, std::max(0.0, (1 - D) * 1.5));
     auto mix = [](unsigned char a, double b, double k) { return (unsigned char)(a + (b - a) * k); };
@@ -661,7 +669,7 @@ static void SetOccluders(App& app, int i, double s) {
         for (const Cand& cd : cands) {
             if (n == 4) break;
             const Body& o = app.B[cd.j];
-            V3 cp = CamRel(app.cam, o.pos) * s;
+            V3 cp = ViewRel(app, o.pos) * s;
             bool atm = o.d.kind == KIND_EARTH;   // 大気で赤い光が回り込む（月食）
             data[n * 4 + 0] = (float)cp.x; data[n * 4 + 1] = (float)cp.y; data[n * 4 + 2] = (float)cp.z;
             data[n * 4 + 3] = (float)(o.d.radius * s) * (atm ? -1.0f : 1.0f);
@@ -680,7 +688,7 @@ static void DrawBodies(App& app) {
     std::vector<Item> items;
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        V3 rel = CamRel(c, b.pos);
+        V3 rel = ViewRel(app, b.pos);
         double dist = Len(rel);
         if (b.d.probe >= 0) continue;  // 探査機は DrawProbes で描く
         if (Dot(rel, c.fwd) < -b.outer) continue;
@@ -692,7 +700,7 @@ static void DrawBodies(App& app) {
     for (const Item& it : items) {
         const Body& b = app.B[it.i];
         const BodyDef& d = b.d;
-        V3 rel = CamRel(c, b.pos);
+        V3 rel = ViewRel(app, b.pos);
         double dist = it.dist;
         double s = 100.0 / dist;
         double rPol = d.radius * (1 - d.flattening);
@@ -934,7 +942,7 @@ static void DrawProbes(App& app) {
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         if (b.d.probe < 0 || !b.active) continue;
-        V3 rel = CamRel(c, b.pos);
+        V3 rel = ViewRel(app, b.pos);
         double dist = Len(rel);
         if (0.015 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -0.02) continue;
         if (Occluded(app, c.pos, b.pos, (int)i)) continue;

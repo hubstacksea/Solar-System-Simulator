@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.21.0 (2026-11-01)
+
+- The Moon uses Meeus's full series (a truncated ELP-2000/82); modern solar eclipses agree with NASA's catalog within 2 minutes
+- Historic eclipses: the 4th page of the event list has the Assyrian eclipse, the eclipse of Thales, the annular eclipse at the Battle of Mizushima, Columbus's lunar eclipse, Eddington's eclipse expedition and the 2009 total eclipse, taking you to the ground at the historic site; the tour adds Thales's and Eddington's eclipses
+- Near the speed of light, the Sun, planets and other Solar System bodies shift forward like the stars
+- 61 Cygni A and B orbit each other (Shakht et al. 2017)
+
 ## 2.20.1 (2026-11-01)
 
 - The crowding of the stars near the speed of light (aberration) now changes gradually with speed, and after a sudden stop it eases away over about 2 seconds instead of vanishing at once

@@ -151,7 +151,8 @@ int main(int argc, char** argv) {
         tmp.B = InitBodies();
         double t = (std::time(nullptr) - J2000_UNIX) / 86400.0 + opt.hours / 24.0;
         UpdateBodies(tmp.B, t);
-        for (const AstroEvent& ev : opt.eventsPage == 2 ? FindProbeEvents(tmp) : opt.eventsPage == 1 ? FindCometEvents(tmp) : FindEvents(tmp, t))
+        for (const AstroEvent& ev : opt.eventsPage == 3 ? FindHistoryEvents(tmp) : opt.eventsPage == 2 ? FindProbeEvents(tmp)
+                                    : opt.eventsPage == 1 ? FindCometEvents(tmp) : FindEvents(tmp, t))
             printf("%s  %-34s %s\n", FmtDate(ev.t).c_str(), EventTitle(tmp, ev).c_str(), EventDetail(tmp, ev).c_str());
         return 0;
     }
@@ -283,6 +284,7 @@ int main(int argc, char** argv) {
     for (const City& c : CITIES) allText += c.jp;
     for (const StarName& n : app.sky.names) allText += n.jp;
     for (const TourStop& st : TOUR) allText += st.jp;
+    for (const HistoricEclipse& h : HISTORY) allText += std::string(h.jp) + h.placeJp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
     // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）
@@ -434,7 +436,8 @@ int main(int argc, char** argv) {
     }
     app.probeEvents = FindProbeEvents(app);
     app.cometEvents = FindCometEvents(app);
-    app.eventsPage = std::max(0, std::min(2, opt.eventsPage));
+    app.historyEvents = FindHistoryEvents(app);
+    app.eventsPage = std::max(0, std::min(3, opt.eventsPage));
     if (opt.showEvents) {
         OpenEventsPage(app);
         if (app.eventsPage == 0) app.eventSel = 5;
@@ -468,7 +471,8 @@ int main(int argc, char** argv) {
         if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) WarpToTarget(app, opt.land);
         if (opt.saveBookmark && frame == 1) SaveBookmark(app);
         if (opt.gotoEvent > 0 && frame == 60) {
-            app.events = app.eventsPage == 0 ? FindEvents(app, app.tDays) : app.eventsPage == 1 ? app.cometEvents : app.probeEvents;
+            app.events = app.eventsPage == 0 ? FindEvents(app, app.tDays) : app.eventsPage == 1 ? app.cometEvents
+                       : app.eventsPage == 3 ? app.historyEvents : app.probeEvents;
             if (opt.gotoEvent <= (int)app.events.size()) {
                 const AstroEvent& ev = app.events[opt.gotoEvent - 1];
                 StartWarp(app, EventBody(ev), false);

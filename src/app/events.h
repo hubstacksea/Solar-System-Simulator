@@ -210,6 +210,25 @@ static std::vector<AstroEvent> FindCometEvents(const App& app) {
     return out;
 }
 
+// ---------------------------------------------------------------- 歴史上の日食・月食
+// 史実の日付（1582 年 10 月 15 日より前はユリウス暦）の前後 2 日で食を探し、日食は史実の場所から見て太陽と月が最も近づく
+// 時刻にする（その場所の地上から見る）。紀元前は計算の時刻が NASA の日食表より 30〜40 分遅れ、食の帯も少しずれる
+struct HistoricEclipse {
+    const char* date;      // "YYYYMMDD"（紀元前は先頭に -）
+    bool solar;
+    double lat, lon;       // 史実の場所
+    const char* jp; const char* en;          // 名前
+    const char* placeJp; const char* placeEn;
+};
+static const HistoricEclipse HISTORY[] = {
+    {"-07620615", true, 36.36, 43.15, "アッシリアの日食", "Assyrian eclipse", "ニネヴェ（イラク北部）", "Nineveh (northern Iraq)"},
+    {"-05840528", true, 39.5, 34.0, "タレスの日食", "Eclipse of Thales", "ハリュス川（トルコ中部）", "Halys River (central Turkey)"},
+    {"11831117", true, 34.53, 133.73, "水島の戦いの金環日食", "Annular eclipse at the Battle of Mizushima", "水島（岡山県倉敷市）",
+     "Mizushima (Okayama, Japan)"},
+    {"15040229", false, 18.44, -77.20, "コロンブスの月食", "Columbus's lunar eclipse", "ジャマイカ北岸", "north coast of Jamaica"},
+    {"19190529", true, 1.62, 7.40, "エディントンの日食観測", "Eddington's eclipse expedition", "プリンシペ島", "Principe"},
+    {"20090722", true, 29.47, 129.60, "21 世紀最長の皆既日食", "Longest total eclipse of the 21st century", "トカラ列島 悪石島", "Akusekijima, Tokara Islands"},
+};
 // ---------------------------------------------------------------- 流星群
 // 主な流星群（IMO の資料による極大の太陽黄経・放射点・ZHR。幅は活動の広がり（太陽黄経の標準偏差 deg）の目安）
 struct MeteorShower {
@@ -447,6 +466,7 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
             break;
         }
         case EV_VIEW: snprintf(b, sizeof b, T(UI_EV_VIEW), name(g_jp ? ev.body : ev.body2), name(g_jp ? ev.body2 : ev.body)); break;
+        case EV_HISTORY: return TR(HISTORY[ev.moon].jp, HISTORY[ev.moon].en);
         default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
@@ -465,6 +485,12 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_IMPACT: return T(UI_EV_IMPACT_D);
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
         case EV_PERIASTRON: snprintf(b, sizeof b, T(UI_EV_SEPARATION), FmtDist(ev.dist).c_str()); return b;
+        case EV_HISTORY: {   // 食の種類と史実の場所
+            UiId k = ev.body2 == EV_SOLAR_TOTAL ? UI_EV_SOLAR_TOTAL : ev.body2 == EV_SOLAR_ANNULAR ? UI_EV_SOLAR_ANNULAR
+                   : ev.body2 == EV_SOLAR_PARTIAL ? UI_EV_SOLAR_PARTIAL : ev.body2 == EV_LUNAR_TOTAL ? UI_EV_LUNAR_TOTAL : UI_EV_LUNAR_PARTIAL;
+            snprintf(b, sizeof b, "%s / %s", T(k), TR(HISTORY[ev.moon].placeJp, HISTORY[ev.moon].placeEn));
+            return b;
+        }
         default: break;
     }
     if (ev.kind > EV_SOLAR_PARTIAL && ev.kind != EV_ECLIPSE_GROUND) return "";
@@ -560,6 +586,14 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         V3 aim = m.pos + (host.pos - m.pos) * 0.3;
         app.ship.q = QuatFromBasis(aim - (m.pos + app.ship.local), host.pole);
         app.target = ev.body;
+    } else if (ev.kind == EV_HISTORY) {
+        // 史実の場所の地上（高度 300 m）から、日食は太陽を（ズームして）、月食は月を見上げる
+        bool solar = ev.body2 <= EV_SOLAR_PARTIAL;
+        PlaceAt(app, B_EARTH, ev.lat, ev.lon, 0.3);
+        V3 sw = ShipWorld(app);
+        app.ship.q = QuatFromBasis((solar ? sun.pos : app.B[B_MOON].pos) - sw, Norm(sw - earth.pos));
+        app.target = B_MOON;
+        app.eventZoom = solar;
     } else if (ev.kind == EV_METEOR) {
         // 東京の地上から、極大の前後 1 日で一番よく見える夜に、放射点の方角の空を見上げる
         const MeteorShower& ms = SHOWERS[ev.moon];
@@ -688,19 +722,68 @@ static void StartWarp(App& app, int ti, bool land);
 static int EventBody(const AstroEvent& ev) {
     if (ev.kind == EV_IMPACT || ev.kind == EV_PERIASTRON || ev.kind == EV_VIEW) return ev.body;
     if (ev.kind >= EV_FLYBY) return ev.probe;
-    if (ev.kind == EV_ECLIPSE_GROUND) return B_EARTH;
+    if (ev.kind == EV_ECLIPSE_GROUND || ev.kind == EV_HISTORY) return B_EARTH;
     if (ev.kind >= EV_TRANSIT) return ev.body;
     return ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER;
 }
 
-// 一覧の中身をページに合わせて用意する。彗星・探査機のページでは、今の時刻に一番近いできごとを選ぶ
+// 地球の緯度・経度 deg の地上の位置（太陽中心の描画座標。B は時刻 t に更新済み）
+static V3 EarthSite(const std::vector<Body>& B, double lat, double lon) {
+    const Body& e = B[B_EARTH];
+    double cs = std::cos(e.spin), sn = std::sin(e.spin), la = lat * DEG, lo = lon * DEG;
+    V3 X = e.ex * cs - e.ez * sn, Z = e.ex * sn + e.ez * cs;
+    return e.pos + (X * (std::cos(la) * std::cos(lo)) + e.pole * std::sin(la) - Z * (std::cos(la) * std::sin(lo))) * e.d.radius;
+}
+
+// 歴史上の日食・月食（HISTORY）を、史実の日付の前後 2 日で探す
+static std::vector<AstroEvent> FindHistoryEvents(const App& app) {
+    std::vector<AstroEvent> out;
+    std::vector<Body> B = app.B;
+    for (int k = 0; k < (int)(sizeof HISTORY / sizeof HISTORY[0]); k++) {
+        const HistoricEclipse& h = HISTORY[k];
+        double t0 = ParseDateDigits(h.date);
+        if (std::isnan(t0)) continue;
+        auto f = [&](double t) {
+            EclipseGeom g = EclipseAt(B, t);
+            return h.solar ? (g.newSide ? g.solarPerp : 1e12) : (g.newSide ? 1e12 : g.lunarPerp);
+        };
+        double best = 1e300, bt = t0;
+        for (double t = t0 - 2; t <= t0 + 3; t += 0.05) {
+            double v = f(t);
+            if (v < best) { best = v; bt = t; }
+        }
+        bt = MinimizeT(f, bt - 0.05, bt + 0.05);
+        AstroEvent ev;
+        if (!(h.solar ? ClassifySolar(B, bt, &ev) : ClassifyLunar(B, bt, &ev))) continue;
+        ev.body2 = ev.kind;
+        ev.kind = EV_HISTORY;
+        ev.moon = k;
+        ev.lat = h.lat;
+        ev.lon = h.lon;
+        if (h.solar) {   // 史実の場所から見て太陽と月の中心が最も近づく時刻（地上の場面はこの時刻に移る）
+            auto sep = [&](double t) {
+                UpdateBodies(B, t);
+                V3 o = EarthSite(B, h.lat, h.lon);
+                return std::acos(std::max(-1.0, std::min(1.0, Dot(Norm(B[B_SUN].pos - o), Norm(B[B_MOON].pos - o)))));
+            };
+            ev.t = MinimizeT(sep, bt - 0.15, bt + 0.15);
+            ev.dist = sep(ev.t) / DEG;   // 太陽と月の中心の角距離
+        } else {
+            ev.t = bt;
+        }
+        out.push_back(ev);
+    }
+    return out;
+}
+
+// 一覧の中身をページに合わせて用意する。彗星・探査機・歴史のページでは、今の時刻に一番近いできごとを選ぶ
 static void OpenEventsPage(App& app) {
     if (app.eventsPage == 0) {
         app.events = FindEvents(app, app.tDays);
         app.eventSel = 0;
         return;
     }
-    app.events = app.eventsPage == 1 ? app.cometEvents : app.probeEvents;
+    app.events = app.eventsPage == 1 ? app.cometEvents : app.eventsPage == 3 ? app.historyEvents : app.probeEvents;
     app.eventSel = 0;
     for (size_t i = 0; i < app.events.size(); i++)
         if (std::fabs(app.events[i].t - app.tDays) < std::fabs(app.events[app.eventSel].t - app.tDays)) app.eventSel = (int)i;
@@ -708,7 +791,7 @@ static void OpenEventsPage(App& app) {
 
 // ---------------------------------------------------------------- 自動ツアー（U キー）
 // イベント一覧の名場面を年代順に巡る。各場面は一覧（0: 天文, 1: 彗星・連星, 2: 探査機）の種類・天体名・日付で探す。
-// 3 は一覧にない眺め（EV_VIEW: who の近くから body の方を見る）
+// 3 は一覧にない眺め（EV_VIEW: who の近くから body の方を見る）、4 は歴史上の日食・月食（who は HISTORY の英語名）
 struct TourStop {
     int page, kind;
     const char* who;    // 探査機・彗星・連星の主星の英語名（天文イベントは nullptr）
@@ -718,6 +801,12 @@ struct TourStop {
     const char* en;     // 説明（\n で改行）
 };
 static const TourStop TOUR[] = {
+    {4, EV_HISTORY, "Eclipse of Thales", nullptr, "-05840528",
+     "ヘロドトスによれば、リュディアとメディアの戦いの最中に昼が夜になり、両軍は戦いをやめて和睦した。\nタレスが予言したと伝わる、日付が分かる最古の日食の一つ。夕暮れの空で太陽が欠ける",
+     "According to Herodotus, day turned into night during a battle between the Lydians and the Medes, and both sides made peace.\nSaid to have been predicted by Thales, it is one of the oldest eclipses with a known date. The Sun is eclipsed low in the evening sky"},
+    {4, EV_HISTORY, "Eddington's eclipse expedition", nullptr, "19190529",
+     "エディントンらがアフリカ沖のプリンシペ島で皆既中の星の位置を測り、太陽の重力で光が曲がる量が\nアインシュタインの一般相対性理論の予言と合うことを確かめた",
+     "On the island of Principe, Eddington's team measured the positions of stars during totality and found that the Sun's gravity\nbends starlight by the amount predicted by Einstein's general theory of relativity"},
     {2, EV_FLYBY, "Pioneer 10", "Jupiter", "19731204",
      "人類で初めて木星に接近した探査機。小惑星帯を越えて飛べることを確かめ、\n木星を取り巻く強い放射線帯を測った",
      "The first spacecraft to fly past Jupiter. It proved that a probe could cross the asteroid belt\nand measured Jupiter's intense radiation belts"},
@@ -806,6 +895,15 @@ static void BuildTour(App& app) {
                 app.tourEvents.push_back(ev);
                 app.tourStops.push_back(i);
             }
+            continue;
+        }
+        if (st.page == 4) {
+            for (const AstroEvent& ev : app.historyEvents)
+                if (std::fabs(ev.t - t) <= 2 && std::strcmp(HISTORY[ev.moon].en, st.who) == 0) {
+                    app.tourEvents.push_back(ev);
+                    app.tourStops.push_back(i);
+                    break;
+                }
             continue;
         }
         std::vector<AstroEvent> list = st.page == 0 ? FindEvents(app, t - 3) : st.page == 1 ? app.cometEvents : app.probeEvents;
