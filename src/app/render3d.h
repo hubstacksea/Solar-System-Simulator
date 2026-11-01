@@ -391,18 +391,38 @@ static void LoadMoonTextures(App& app) {
 
 // 天の川の光: 赤道座標の全天画像を、カメラを中心とする球の内側に薄く貼る（星より先に描く）。
 // 画像は中央が赤経 0h で、左へ行くほど赤経が増える
-// 光速に近い速さで動く自機から見た星（特殊相対論）。v は進む向き、beta は速さ / 光速。
+// 光速に近い速さで動く自機から見た星（特殊相対論）。v は進む向き、beta は見え方に使う速さ / 光速。
 // 光行差で星は前方へ集まり（cos θ′ = (cos θ + β) / (1 + β cos θ)）、ドップラー係数 D = 1 / (γ(1 − β cos θ′)) が 1 より大きい
 // 前方は青く明るく、小さい後方は赤く暗くなる（明るさは D³ に比例。色は青・赤へ寄せる見た目の近似）
 struct Relativity { bool on = false; V3 v; double beta = 0, gamma = 1; };
-static Relativity GetRelativity(const App& app) {
-    Relativity r;
+
+// 見え方の強さ relU を、今の速さ / 光速へ時間をかけて近づける。急停止（X）や下のエンジンへの切り替えで速さが一気に 0 に
+// なっても、集まった星がゆっくりほどけ始め、約 2 秒で元に戻る（臨界減衰のばね。動き出しも収まりも滑らか）。
+// 加速は滑らかなので、強まる側は少し遅れて追うだけ。超光速エンジン（架空）では 0 へ向かい、ワープ中は消す
+static void UpdateRelativityView(App& app, double dt) {
     const Ship& s = app.ship;
     double sp = app.physics ? Len(s.vel) : std::fabs(s.speed);
-    if (app.warpT >= 0 || sp < C_KMS * 0.01 || sp > C_KMS * 1.0001) return r;   // 超光速エンジンは架空なので入れない
+    double target = app.warpT >= 0 || sp > C_KMS * 1.0001 ? 0.0 : std::min(1.0, sp / C_KMS);
+    if (target > 0.005 && app.warpT < 0)
+        app.relDir = app.physics ? s.vel * (1 / sp) : ShipFwd(s) * (s.speed >= 0 ? 1.0 : -1.0);
+    const double w = 3.0;   // 固有角振動数 /秒（臨界減衰で 2 秒ほどで収まる）
+    for (double left = dt; left > 0; left -= 1.0 / 240) {   // 長いフレームでも安定するよう細かく刻む
+        double h = std::min(left, 1.0 / 240);
+        app.relUV += (w * w * (target - app.relU) - 2 * w * app.relUV) * h;
+        app.relU = std::max(0.0, std::min(1.0, app.relU + app.relUV * h));
+    }
+    if (app.warpT >= 0) app.relU = app.relUV = 0;   // ワープは自分の演出があるので消す
+}
+
+static Relativity GetRelativity(const App& app) {
+    Relativity r;
+    if (app.relU < 0.005) return r;
     r.on = true;
-    r.v = app.physics ? s.vel * (1 / sp) : ShipFwd(s) * (s.speed >= 0 ? 1.0 : -1.0);
-    r.beta = std::min(0.995, sp / C_KMS);
+    r.v = app.relDir;
+    // 光行差は光速のすぐ近くで急に強くなり、光速からブレーキをかけると最初の 1 秒ほどで星の集まりが一気に解けてしまう。
+    // 見え方が速さに沿って少しずつ変わるよう、真横（90°）の星が見える向きが速さに比例して 90° から約 6°（光速の 99.5% の値）
+    // まで動くように β を決める（cos θ′ = β）
+    r.beta = std::cos((90.0 - (90.0 - 5.73) * app.relU) * DEG);
     r.gamma = 1 / std::sqrt(1 - r.beta * r.beta);
     return r;
 }

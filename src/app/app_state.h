@@ -50,6 +50,9 @@ struct App {
     double warpT = -1;      // 演出開始からの実時間 秒（-1: 停止中）
     int warpTarget = 0;
     bool warpLand = false, warpJumped = false;
+    double relU = 0, relUV = 0;           // 光速に近い見え方の強さ 0〜1（速さ / 光速を、時間をかけて追いかける）と、その変化の速さ /秒
+    V3 relDir = {0, 0, -1};               // その見え方の進む向き（止まった後も、ほどけ終わるまで最後の向きを使う）
+    bool testBrake = false;               // 確認用: ブレーキを押し続ける（--brake-at）
     bool warpBig = false;                 // 恒星間ワープ（遠く離れた所へ。演出を長く・大きく）
     double warpDist = 0;                  // ワープを始めた時の目標までの距離 km
     int warpBookmark = -1;                // ブックマークへのワープ中はその番号

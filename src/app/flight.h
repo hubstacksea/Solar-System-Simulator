@@ -373,7 +373,7 @@ static void HandleInput(App& app, double dt) {
     // スロットル（キーボードは全開、トリガーは押し込み量に比例）。加減速は時間倍率に従う
     double sdt = SimDt(app, dt);
     double throttle = std::max(IsKeyDown(KEY_W) ? 1.0 : 0.0, pad.throttle);
-    double brake = std::max(IsKeyDown(KEY_S) ? 1.0 : 0.0, pad.brake);
+    double brake = std::max(IsKeyDown(KEY_S) || app.testBrake ? 1.0 : 0.0, pad.brake);
     if (warping) throttle = brake = 0;
     if (throttle > 0 || brake > 0 || IsKeyPressed(KEY_X) || pad.stop) manual = true;
     if (manual && app.autopilot) {

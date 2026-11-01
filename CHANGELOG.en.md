@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.20.1 (2026-11-01)
+
+- The crowding of the stars near the speed of light (aberration) now changes gradually with speed, and after a sudden stop it eases away over about 2 seconds instead of vanishing at once
+
 ## 2.20.0 (2026-11-01)
 
 - Dates from 3000 BC to AD 2999: outside 1800-2050 the planets use JPL's long-term elements, and further out the slowing of Earth's rotation (ΔT), the precession of its axis and long-term lunar terms are included, so ancient solar eclipses (such as Thales's) fall on the same days as in NASA's catalog. Julian calendar before 15 October 1582; press - in the date entry for BC

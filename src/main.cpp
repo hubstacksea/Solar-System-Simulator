@@ -501,6 +501,8 @@ int main(int argc, char** argv) {
         UpdateWarp(app, dt);
         UpdateTour(app, dt);
         UpdateAutopilot(app, dt);
+        app.testBrake = opt.brakeAt >= 0 && frame * dt >= opt.brakeAt;
+        if (opt.stopAt >= 0 && frame == (int)(opt.stopAt * 60)) app.ship.speed = 0;
         if (opt.shot && frame * dt < opt.throttleSec) {
             const Engine& e = ENGINES[app.ship.engine];
             app.ship.speed = std::min(e.vmax / 1000.0, app.ship.speed + e.accel / 1000.0 * SimDt(app, dt));
@@ -522,6 +524,7 @@ int main(int argc, char** argv) {
         CoRotateWithGround(app, spinRef, spin0);
         UpdateMeteors(app, dt, simDt);
         UpdateShip(app, simDt);
+        UpdateRelativityView(app, dt);
         sfx::Update(app.ship.engine, app.ship.thrusting && app.warpT < 0,
                     std::fabs(app.ship.speed) * 1000.0 / ENGINES[app.ship.engine].vmax);
         {
