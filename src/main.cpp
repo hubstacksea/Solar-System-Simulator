@@ -331,6 +331,7 @@ int main(int argc, char** argv) {
     app.shader = LoadShaderFromMemory(GlslForPlatform(PLANET_VS).c_str(), GlslForPlatform(PLANET_FS).c_str());
     app.locLight = GetShaderLocation(app.shader, "lightDir");
     app.locRelBeta = GetShaderLocation(app.shader, "relBeta");
+    app.locSunInfo = GetShaderLocation(app.shader, "sunInfo");
     app.locScars = GetShaderLocation(app.shader, "scars");
     app.locScarCount = GetShaderLocation(app.shader, "scarInfo");
     app.locRelDir = GetShaderLocation(app.shader, "relDir");
@@ -688,6 +689,10 @@ int main(int argc, char** argv) {
             snprintf(num, sizeof num, "_%04d", frame);
             f.insert(dot == std::string::npos ? f.size() : dot, num);
             SaveScreenshot(f.c_str());
+            if (opt.trace) {   // 確認用: 保存したフレームの、基準天体の表面からの高度 km
+                printf("FRAME %d alt %.3f\n", frame, SurfaceDist(app.B[app.ship.ref], ShipWorld(app)));
+                fflush(stdout);
+            }
         }
         if (IsKeyPressed(KEY_F12)) {
             std::time_t now = std::time(nullptr);

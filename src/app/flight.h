@@ -23,6 +23,7 @@ static void StartWarp(App& app, int ti, bool land) {
     app.ship.speed = 0;
     app.autopilot = false;
     app.eventZoom = false;
+    app.eventZoomFov = 8;
 }
 
 // 演出の強さ 0..1（光の筋の長さ・視野角の広がり）
@@ -759,7 +760,7 @@ static void UpdateCamera(App& app) {
     c.W = (float)GetScreenWidth();
     c.H = (float)GetScreenHeight();
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || (app.ship.thrusting && app.warpT < 0)) app.eventZoom = false;
-    double targetFov = (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || app.padZoom || app.eventZoom) ? 8 * DEG : 60 * DEG;
+    double targetFov = app.eventZoom ? app.eventZoomFov * DEG : (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || app.padZoom) ? 8 * DEG : 60 * DEG;
     c.fovBase += (targetFov - c.fovBase) * std::min(1.0, GetFrameTime() * 10.0);
     double wi = WarpIntensity(app);
     c.fovy = std::min(150 * DEG, c.fovBase * (1.0 + (app.warpBig ? 1.1 : 0.75) * wi));  // ワープ中は視野が広がる

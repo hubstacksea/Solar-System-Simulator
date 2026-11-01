@@ -740,6 +740,17 @@ static void DrawBodies(App& app) {
             SetShaderValue(app.shader, app.locLightObj, &ls, SHADER_UNIFORM_VEC3);
         }
         SetOccluders(app, it.i, s);
+        {   // 太陽の黒点の活動（日付ごとの黒点数と周期の中の位置。ほかの恒星は既定の模様）
+            float si[4] = {-1, 0, 0, 0};
+            if (it.i == B_SUN) {
+                double ssn, x;
+                SunspotActivity(2000 + app.tDays / 365.25, &ssn, &x);
+                si[0] = (float)(ssn / 200.0);
+                si[1] = (float)(28.0 - 20.0 * x);   // シュペーラーの法則: 周期の初めは 30° 近く、終わりは 8° 近く
+                si[2] = 7.0f;
+            }
+            SetShaderValue(app.shader, app.locSunInfo, si, SHADER_UNIFORM_VEC4);
+        }
         {   // 木星の衝突痕（シューメーカー・レビー第 9 彗星。1994 年 7 月）: 衝突から 1 時間で広がり、2 か月ほどで横に広がりながら
             // 数か月かけて薄れる（見た目の目安）
             float sc[80] = {0}, info[4] = {0, 0, 0, 0};

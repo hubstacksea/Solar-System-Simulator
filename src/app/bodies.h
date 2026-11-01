@@ -447,6 +447,32 @@ static int StarSurface(const BodyDef& d) {
     return ns.kind == 1 ? 3 : ns.kind == 2 ? 4 : ns.flattening > 0.05 ? 5 : ns.teff > 7500 ? 2 : ns.kind == 0 && ns.teff < 4000 ? 1 : 0;
 }
 
+// 太陽の黒点の活動（日付ごと）。周期の始まり（極小）の年は、観測で決まっている太陽活動周期の極小の年（第 1〜25 周期の
+// 始まりの 1755〜2020 年。1712〜1745 年もそれ以前の極小）。黒点の量は平均的な周期の形の目安で、マウンダー極小期
+// （1645〜1715 年）はほぼ 0、ダルトン極小期（1798〜1823 年）は弱く、表の前後は 11 年周期とする（各周期の強さの違いは入れない）
+static const double SUNSPOT_MINIMA[] = {1712.0, 1723.5, 1734.0, 1745.0, 1755.2, 1766.5, 1775.5, 1784.7, 1798.3, 1810.6, 1823.3,
+                                        1833.9, 1843.5, 1856.0, 1867.2, 1879.0, 1890.2, 1902.0, 1913.6, 1923.6, 1933.7, 1944.1,
+                                        1954.3, 1964.8, 1976.2, 1986.7, 1996.5, 2009.0, 2020.0};
+// 周期の中の形: 始まりから 4 割ほどで最大になる（x は周期の中の位置 0〜1）
+static double CycleShape(double x) { double s = std::sin(PI * std::pow(std::max(0.0, std::min(1.0, x)), 0.75)); return s * s; }
+// 年 y の黒点数の目安（年平均）と、周期の中の位置 x（0: 極小、1: 次の極小）
+static void SunspotActivity(double y, double* ssn, double* x) {
+    const int nM = sizeof SUNSPOT_MINIMA / sizeof SUNSPOT_MINIMA[0];
+    const double mEnd = SUNSPOT_MINIMA[nM - 1];
+    if (y >= SUNSPOT_MINIMA[0] && y < mEnd) {
+        int k = 0;
+        while (k + 1 < nM && SUNSPOT_MINIMA[k + 1] <= y) k++;
+        *x = (y - SUNSPOT_MINIMA[k]) / (SUNSPOT_MINIMA[k + 1] - SUNSPOT_MINIMA[k]);
+    } else {
+        double a = y >= mEnd ? mEnd : SUNSPOT_MINIMA[0];
+        *x = (y - a) / 11.0 - std::floor((y - a) / 11.0);
+    }
+    double amp = 120;                              // 平均的な周期の最大の黒点数（目安）
+    if (y >= 1645 && y < 1715) amp = 3;            // マウンダー極小期
+    else if (y >= 1798.3 && y < 1823.3) amp = 50;  // ダルトン極小期
+    *ssn = amp * CycleShape(*x);
+}
+
 // 恒星の明るさ（太陽 = 1）: 半径² × (表面温度 / 5772 K)⁴
 static double StarLuminosity(const BodyDef& d) {
     if (d.star < 0) return 1;

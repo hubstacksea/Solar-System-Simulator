@@ -216,7 +216,8 @@ static std::vector<AstroEvent> FindCometEvents(const App& app) {
 struct HistoricEclipse {
     const char* date;      // "YYYYMMDD"（紀元前は先頭に -）
     int kind;              // 0: 日食, 1: 月食, 2: ハレー彗星の近日点通過, 3: 超新星（SUPERNOVAE と同じ日付）, 4: 金星の太陽面通過,
-                           // 5: シューメーカー・レビー第 9 彗星の木星衝突（破片 G の衝突痕が昼側に来た時、その上空から）
+                           // 5: シューメーカー・レビー第 9 彗星の木星衝突（破片 G の衝突痕が昼側に来た時、その上空から）,
+                           // 6: 地上から惑星を望遠鏡のように見る（日付に時刻まで入れる。ガリレオの木星の衛星）
     double lat, lon;       // 史実の場所
     const char* jp; const char* en;          // 名前
     const char* placeJp; const char* placeEn;
@@ -244,6 +245,8 @@ static const HistoricEclipse HISTORY[] = {
     {"16391204", 4, 53.70, -2.80, "ホロックスの金星の太陽面通過", "Horrocks's transit of Venus", "マッチ・フール（イングランド）", "Much Hoole (England)"},
     {"17690603", 4, -17.50, -149.50, "クックの金星の太陽面通過観測", "Cook's transit of Venus", "タヒチ（ポイント・ビーナス）", "Tahiti (Point Venus)"},
     {"18821206", 4, 0, 0, "19 世紀最後の金星の太陽面通過", "Last transit of Venus of the 19th century", "世界各地の観測隊", "expeditions worldwide"},
+    {"161001071715", 6, 45.41, 11.88, "ガリレオが木星の衛星を見つけた夜", "Galileo discovers Jupiter's moons", "パドヴァ（東に 2 つ・西に 1 つ）",
+     "Padua (two to the east, one to the west)"},
     {"19940718", 5, 0, 0, "シューメーカー・レビー第 9 彗星の木星衝突", "Comet Shoemaker-Levy 9 hits Jupiter", "破片 G の衝突痕",
      "the scar of fragment G"},
 };
@@ -565,6 +568,7 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
         case EV_PERIASTRON: snprintf(b, sizeof b, T(UI_EV_SEPARATION), FmtDist(ev.dist).c_str()); return b;
         case EV_HISTORY: {   // 食の種類と史実の場所（ハレー彗星は近日点の距離と記録の名前）
+            if (ev.body2 == -4) return TR(HISTORY[ev.moon].placeJp, HISTORY[ev.moon].placeEn);
             if (ev.body2 == -3) {   // 衝突から何時間後か
                 snprintf(b, sizeof b, "%.1f h / %s", (ev.t - SL9[ev.body].t) * 24, TR(HISTORY[ev.moon].placeJp, HISTORY[ev.moon].placeEn));
                 return b;
@@ -687,6 +691,15 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         p.kind = EV_TRANSIT;
         ApplyEvent(app, p);
         return;
+    } else if (ev.kind == EV_HISTORY && ev.body2 == -4) {
+        // 地上から惑星を望遠鏡のように見る（視野 0.5°。ガリレオの望遠鏡は 15′ ほど）。ガリレオのスケッチと同じく、
+        // 黄道の北を上にして衛星の並びを横に（東が左、西が右）
+        PlaceAt(app, B_EARTH, ev.lat, ev.lon, 0.3);
+        V3 sw = ShipWorld(app);
+        app.ship.q = QuatFromBasis(app.B[ev.body].pos - sw, Y_UP);
+        app.target = ev.body;
+        app.eventZoom = true;
+        app.eventZoomFov = 0.5;
     } else if (ev.kind == EV_HISTORY && ev.body2 == -3) {
         // シューメーカー・レビー第 9 彗星: 破片の衝突痕の上空（木星の半径の 1.2 倍の高さ）から、衝突痕を見下ろす
         const Body& j = app.B[B_JUPITER];
@@ -843,7 +856,7 @@ static int EventBody(const AstroEvent& ev) {
     if (ev.kind == EV_IMPACT || ev.kind == EV_PERIASTRON || ev.kind == EV_VIEW) return ev.body;
     if (ev.kind >= EV_FLYBY) return ev.probe;
     if (ev.kind == EV_HISTORY)
-        return ev.body2 == EV_PERIHELION ? ev.body : ev.body2 == EV_TRANSIT ? B_VENUS : ev.body2 == -3 ? B_JUPITER : B_EARTH;
+        return ev.body2 == EV_PERIHELION ? ev.body : ev.body2 == EV_TRANSIT ? B_VENUS : ev.body2 == -3 ? B_JUPITER : B_EARTH;   // -4 は地上へ
     if (ev.kind == EV_ECLIPSE_GROUND) return B_EARTH;
     if (ev.kind >= EV_TRANSIT) return ev.body;
     return ev.kind <= EV_SOLAR_PARTIAL ? B_EARTH : ev.kind <= EV_LUNAR_PARTIAL ? B_MOON : B_JUPITER;
@@ -902,6 +915,18 @@ static std::vector<AstroEvent> FindHistoryEvents(const App& app) {
             ev.lon = h.lon;
             ev.t = bt;
             ev.dist = SupernovaMag(sn, bt);
+            out.push_back(ev);
+            continue;
+        }
+        if (h.kind == 6) {   // 地上から木星を望遠鏡のように見る（時刻は日付のとおり）
+            AstroEvent ev;
+            ev.kind = EV_HISTORY;
+            ev.body2 = -4;
+            ev.body = B_JUPITER;
+            ev.moon = k;
+            ev.lat = h.lat;
+            ev.lon = h.lon;
+            ev.t = t0;
             out.push_back(ev);
             continue;
         }

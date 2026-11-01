@@ -10,7 +10,8 @@
   4. ワープ（画面が要る）: すべての天体へワープ演出を通してワープし、着いた後にターゲットが正面（2.5° 以内）にあり、
      1 秒間で機首が動かず、位置が数値として壊れていないか
   5. 地表すれすれの光速飛行（画面が要る）: 扁平な惑星の北緯 45° の高度 20 km から光速エンジンで飛び出し、
-     画面の下側の明るさが急に落ちる（表面が消える）フレームがないか
+     まだ地表すれすれ（高度 30 km 以下）にいる間に、画面の下側の明るさが急に落ちる（表面が消える）フレームがないか。
+     （上昇して地平線が画面から外れたことによる暗さは数えない）
 
 使い方: python3 tools/run_checks.py [実行ファイル=build/solar_voyager] [--no-display] [--jobs N]
 画面が要る確認は DISPLAY（Linux）が必要。画面のない環境では --no-display で飛ばす。
@@ -37,7 +38,7 @@ ECLIPSES = [
     (-762.3, "-0762-06-15", "08:14", 39, 54),
     (2950.0, "2950-01-09", "13:57", -13, -28),
 ]
-HISTORY_COUNT = 17
+HISTORY_COUNT = 18
 OBLATE = [4, 5, 6, 7, 8]   # 火星・木星・土星・天王星・海王星
 
 
@@ -151,11 +152,14 @@ def png_lower_mean(path):
 
 def skim_one(exe, t, tmp):
     base = os.path.join(tmp, "s%d.png" % t)
-    run(exe, ["--shot", base, "--shot-every", "6", "--frames", "120", "--target", str(t), "--at", "45", "0", "20",
-              "--engine", "6", "--throttle", "0.15"], timeout=240)
+    out = run(exe, ["--shot", base, "--shot-every", "6", "--frames", "120", "--target", str(t), "--at", "45", "0", "20",
+                    "--engine", "6", "--throttle", "0.15", "--trace"], timeout=240)
+    alt = {int(m.group(1)): float(m.group(2)) for m in re.finditer(r"FRAME (\d+) alt ([-\d.]+)", out)}
     files = sorted(f for f in os.listdir(tmp) if f.startswith("s%d_" % t))
+    frames = [int(re.search(r"_(\d+)\.png$", f).group(1)) for f in files]
     v = [png_lower_mean(os.path.join(tmp, f)) for f in files]
-    drops = [i for i in range(1, len(v)) if v[i] < v[i - 1] * 0.6 and v[i - 1] > 25]
+    low = lambda i: alt.get(frames[i], 1e9) <= 30
+    drops = [frames[i] for i in range(1, len(v)) if v[i] < v[i - 1] * 0.6 and v[i - 1] > 25 and low(i) and low(i - 1)]
     return t, not drops and len(v) > 5, "body %d: %d frames, drops at %s" % (t, len(v), drops)
 
 

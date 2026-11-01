@@ -208,6 +208,9 @@ Published formulas and coefficients, written into the code:
   articles on each supernova and their sources; the light curves are approximations
 - Comet Shoemaker-Levy 9: the orbits of the 20 fragments in JPL Horizons (D/1993 F2-A to W); the impact times and places
   are computed from them, and the size and fading of the scars are approximate
+- Sunspot cycle: only the years of the observed minima of solar cycles 1–25 (and of the minima 1712–1745) are used, with
+  an approximate average cycle shape; no sunspot-number data tables are included
+- Galileo's 1610 observation is checked against JPL Horizons positions of the Galilean moons
 - Orientation of the Moon: Archinal et al. 2011, Celestial Mechanics and Dynamical Astronomy 109, 101 (IAU WGCCRE 2009)
 - Precession of Earth's axis: Lieske et al. 1977, A&A 58, 1 (IAU 1976)
 - Moon: J. Meeus, *Astronomical Algorithms*, 2nd ed. (1998), chapter 47 (and the obliquity of the ecliptic). The periodic

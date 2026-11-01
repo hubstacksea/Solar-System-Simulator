@@ -50,6 +50,7 @@ uniform vec3 lightDir;     // ワールド空間（カメラ相対）での太�
 uniform vec3 lightDirObj;  // 本体（自転込み）/ 環の座標系での太陽方向
 uniform float relBeta;     // 光速に近い時の見え方の β と進む向き（頂点シェーダと同じ。色のドップラー効果に使う）
 uniform vec3 relDir;
+uniform vec4 sunInfo;      // 太陽の黒点: x 活動の強さ（負なら既定の模様）, y 黒点の平均の緯度 deg, z 緯度の広がり deg
 uniform vec4 scars[20];    // 木星の衝突痕（シューメーカー・レビー第 9 彗星）: xyz 本体座標の向き, w 半径 rad
 uniform vec4 scarInfo;     // x 衝突痕の数, y 濃さ
 uniform vec4 occ[4];       // 影を落とす天体: xyz 中心（fragWorld と同じ座標）, w 半径（負なら大気あり）
@@ -651,18 +652,22 @@ vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
         float cap = smoothstep(0.78, 0.9, abs(p.y) + 0.06 * fbmL(p, 8.0, 3, 0.5, o + 9.0));
         c = mix(c, c * 0.45, cap);
     }
-    // 黒点（低緯度帯）
-    for (int k = 0; k < (surf == 1 ? 0 : 2); k++) {
+    // 黒点（低緯度帯）。太陽は活動周期に合わせて数と緯度が変わる（周期の初めは高い緯度、終わりは赤道近く）
+    bool cyc = sunInfo.x >= 0.0;
+    float dens = cyc ? 0.5 * sunInfo.x : 0.35;
+    for (int k = 0; k < (surf == 1 || dens < 0.003 ? 0 : 2); k++) {
         vec3 d; float r, rnd;
-        if (cellSpot(p, 9.0 * float(k + 1), 0.35, o + float(k) * 5.3, 0.06, 0.2, d, r, rnd)) {
+        if (cellSpot(p, 9.0 * float(k + 1), dens, o + float(k) * 5.3, 0.06, 0.2, d, r, rnd)) {
             float x = length(d) / r;
-            float belt = smoothstep(0.08, 0.15, abs(p.y)) * (1.0 - smoothstep(0.45, 0.55, abs(p.y)));
+            float lat = degrees(asin(clamp(abs(p.y), 0.0, 1.0)));
+            float belt = cyc ? exp(-pow((lat - sunInfo.y) / sunInfo.z, 2.0))
+                             : smoothstep(0.08, 0.15, abs(p.y)) * (1.0 - smoothstep(0.45, 0.55, abs(p.y)));
             c = mix(c, c * 0.55, (1.0 - smoothstep(0.8, 1.0, x)) * belt);
             c = mix(c, vec3(0.25, 0.10, 0.03), (1.0 - smoothstep(0.35, 0.5, x)) * belt);
         }
     }
     // 白斑（周辺部で目立つ）
-    float fac = smoothstep(0.2, 0.55, fbmL(p, 18.0, 5, 0.5, o + 7.0)) * pow(1.0 - mu, 2.0);
+    float fac = smoothstep(0.2, 0.55, fbmL(p, 18.0, 5, 0.5, o + 7.0)) * pow(1.0 - mu, 2.0) * (cyc ? 0.3 + 0.7 * min(1.0, sunInfo.x) : 1.0);
     c *= 1.0 + fac * 0.5;
     c *= 0.42 + 0.58 * pow(mu, 0.5);                       // 周辺減光
     c *= vec3(1.0, 0.94 + 0.06 * mu, 0.82 + 0.18 * mu);    // 縁ほど赤い

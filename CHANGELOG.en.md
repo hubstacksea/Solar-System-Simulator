@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.24.0 (2026-11-02)
+
+- Sunspots wax and wane with the 11-year activity cycle and appear at lower latitudes as a cycle goes on (including the Maunder and Dalton minima)
+- The history page adds the night Galileo discovered Jupiter's moons (7 January 1610, Padua), in a telescope-like 0.5° view with two moons to the east and one to the west, as he recorded
+- The check script counts surface loss only while still flying just above the surface
+
 ## 2.23.0 (2026-11-01)
 
 - Comet Shoemaker-Levy 9 hits Jupiter (July 1994): scars appear at the times and places computed from JPL Horizons' orbits of the 20 fragments and fade over months; also on the history page

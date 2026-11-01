@@ -40,6 +40,7 @@ struct App {
     bool padTrigSeen[2] = {false, false};
     bool padZoom = false;
     bool eventZoom = false;       // 太陽面通過・惑星の接近へワープした後のズーム（右クリック・移動・ワープで解除）
+    double eventZoomFov = 8;      // そのズームの視野 deg（ガリレオの木星の衛星の場面は 0.5°）
     // 自動操縦
     bool autopilot = false;
     bool apAutoEngine = false;
@@ -138,7 +139,7 @@ struct App {
     int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1, locSkySunVis = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
-    int locRelBeta = -1, locRelDir = -1;
+    int locRelBeta = -1, locRelDir = -1, locSunInfo = -1;
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
     int locOcc = -1, locOccN = -1, locSunAng = -1;
     int locAtmBeta = -1, locAtmMie = -1, locAtmOzone = -1, locAtmHaze = -1, locCamUp = -1;
