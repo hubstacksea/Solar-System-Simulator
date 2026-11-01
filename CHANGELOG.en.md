@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.21.2 (2026-11-01)
+
+- Fixed the surface of Jupiter, Saturn, Uranus, Neptune and Mars sometimes vanishing when flying just above it with the light-speed engine (since 2.21.0; the near-light-speed view also shifted bodies that look large)
+
 ## 2.21.1 (2026-11-01)
 
 - After a sudden stop near the speed of light, the crowded stars now ease away in about 1 second instead of 2

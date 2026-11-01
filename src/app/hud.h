@@ -176,7 +176,7 @@ static void DrawSunGlowAndDots(const App& app) {
     double day = SkyDaylight(app);
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        V3 rel = ViewRel(app, b.pos);   // 光速に近いと天体も背景の星と同じく前方へ集まる
+        V3 rel = ViewRel(app, b.pos, b.outer);   // 光速に近いと天体も背景の星と同じく前方へ集まる（小さく見えるものだけ）
         Vector2 p;
         if (!Project(c, rel, &p)) continue;
         double dist = Len(rel), px = b.d.radius / dist * c.focal;
@@ -253,7 +253,7 @@ static void PlaceLabel(float* x, float* y, float w, float h, float screenH) {
 static void DrawMarker(const App& app, int idx) {
     const Cam& c = app.cam;
     const Body& b = app.B[idx];
-    V3 rel = ViewRel(app, b.pos);
+    V3 rel = ViewRel(app, b.pos, b.outer);
     double dist = Len(rel);
     double surf = SurfaceDist(b, c.pos);
     bool isTarget = idx == app.target;

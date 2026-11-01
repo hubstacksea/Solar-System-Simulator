@@ -173,6 +173,7 @@ struct Options {
     int engine = -1;
     double throttleSec = 0;
     double brakeAt = -1;                 // この秒数からブレーキを押し続ける（確認用）
+    int shotEvery = 0;                   // N フレームごとに画面を保存する（--shot の名前に番号を付けて。確認用）
     double stopAt = -1;                  // この秒数で止まる（X キーと同じ。確認用）
     double warpAnimAt = -1;  // 指定秒にワープ演出を開始（確認用）
     bool saveBookmark = false;  // 起動直後の位置をブックマーク（確認用）
@@ -249,6 +250,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--throttle") o.throttleSec = atof(next());
         else if (a == "--brake-at") o.brakeAt = atof(next());
         else if (a == "--stop-at") o.stopAt = atof(next());
+        else if (a == "--shot-every") o.shotEvery = atoi(next());
         else if (a == "--timescale") o.timeScale = atof(next());
         else if (a == "--lang") o.lang = next();
         else if (a == "--quality") o.quality = atoi(next());

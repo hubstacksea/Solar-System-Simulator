@@ -656,6 +656,14 @@ int main(int argc, char** argv) {
         }
         bool quitAfterShot = opt.shot && frame == opt.frames;
         if (quitAfterShot) SaveScreenshot(opt.shot);
+        if (opt.shot && opt.shotEvery > 0 && frame % opt.shotEvery == 0) {
+            std::string f = opt.shot;
+            size_t dot = f.rfind('.');
+            char num[16];
+            snprintf(num, sizeof num, "_%04d", frame);
+            f.insert(dot == std::string::npos ? f.size() : dot, num);
+            SaveScreenshot(f.c_str());
+        }
         if (IsKeyPressed(KEY_F12)) {
             std::time_t now = std::time(nullptr);
             char name[64];
