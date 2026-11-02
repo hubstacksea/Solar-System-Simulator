@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.25.2 (2026-11-02)
+
+- Fixed small bodies with real shape models, such as Didymos, losing their near surface and showing the background when off-center on screen (ringed planets use the same calculation)
+
 ## 2.25.1 (2026-11-02)
 
 - Fixed share links and "Resume the last session" silently opening at the current time for scenes before 1600 or after 2400 (they now accept 3000 BC to AD 2999, the same range as date entry)

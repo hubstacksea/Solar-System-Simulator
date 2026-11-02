@@ -711,9 +711,10 @@ static void DrawBodies(App& app) {
         double dist = it.dist;
         double s = 100.0 / dist;
         double rPol = d.radius * (1 - d.flattening);
-        // near: 最も近い表面（環があればその外縁）より手前
+        // near: 最も近い表面（環があればその外縁）より手前。near は視線方向の奥行きなので、画面の隅では距離の cos 倍になる分も見込む
         double alt = dist - SurfaceRadius(b, rel * (-1.0 / dist));
-        double nearKm = (dist > b.outer && b.outer > d.radius) ? std::min(alt, dist - b.outer) * 0.9 : alt * 0.5;
+        double nearK = 0.9 * c.focal / std::sqrt(c.focal * c.focal + 0.25 * (c.W * c.W + c.H * c.H));
+        double nearKm = (dist > b.outer && b.outer > d.radius) ? std::min(alt, dist - b.outer) * nearK : alt * std::min(0.5, nearK);
         nearKm = std::max(nearKm, dist * 1e-7);
         SetPassProjection(c, nearKm * s, (dist + b.outer) * s * 1.01);
         ClearDepth();
