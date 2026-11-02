@@ -29,9 +29,19 @@ static bool ParseBookmark(const App& app, const std::string& v, Bookmark* bm) {
     if (bm->body < 0 || sscanf(v.c_str() + c + 1, "%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &a[0], &a[1], &a[2], &a[3], &a[4], &a[5],
                                &a[6], &a[7], &a[8]) != 9)
         return false;
+    for (double x : a)
+        if (!std::isfinite(x)) return false;
     bm->pos = V3(a[0], a[1], a[2]);
     bm->fwd = V3(a[3], a[4], a[5]);
     bm->up = V3(a[6], a[7], a[8]);
+    // 向きは直交する単位ベクトルに直す（手で書き換えたリンクでも姿勢が壊れないように）。位置が中心・向きが平行なら読まない
+    double r = Len(bm->pos), f = Len(bm->fwd);
+    if (r < 1e-3 || f < 1e-9) return false;
+    bm->fwd = bm->fwd * (1.0 / f);
+    bm->up = bm->up - bm->fwd * Dot(bm->up, bm->fwd);
+    double u = Len(bm->up);
+    if (u < 1e-9) return false;
+    bm->up = bm->up * (1.0 / u);
     return true;
 }
 
@@ -203,7 +213,7 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
     if (!kv.count("t") && !kv.count("at")) return false;
     if (kv.count("t")) {
         double t = atof(kv["t"].c_str());
-        if (std::isfinite(t) && std::fabs(t) < 365.25 * 400) app.tDays = t;
+        if (InDateRange(t)) app.tDays = t;
         UpdateBodies(app.B, app.tDays);
     }
     if (kv.count("ts")) app.timeIdx = std::max(0, std::min(TIME_SCALE_COUNT - 1, atoi(kv["ts"].c_str())));

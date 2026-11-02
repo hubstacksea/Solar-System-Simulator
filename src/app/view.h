@@ -224,6 +224,13 @@ static long long JdnFromDate(long long y, int m, int d) {
     long long g = JdnFromCivil(y, m, d, true);
     return g >= GREGORIAN_START_JDN ? g : JdnFromCivil(y, m, d, false);
 }
+// 入力できる年（惑星の位置の計算が使える範囲。JPL の長い期間用の表が紀元前 3000 年〜西暦 3000 年）
+static const int DATE_YEAR_MIN = -2999, DATE_YEAR_MAX = 2999;
+// その範囲の J2000 からの日数（共有リンク・前回の続きで受け付ける時刻）
+static bool InDateRange(double tDays) {
+    return std::isfinite(tDays) && tDays >= JdnFromDate(DATE_YEAR_MIN, 1, 1) - 2451545.5 &&
+           tDays < JdnFromDate(DATE_YEAR_MAX + 1, 1, 1) - 2451545.5;
+}
 static void CivilFromJdn(long long jdn, long long* y, int* m, int* d) {
     long long b = 0, c;
     if (jdn >= GREGORIAN_START_JDN) {

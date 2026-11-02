@@ -824,9 +824,6 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
 }
 
 // ---------------------------------------------------------------- 日時の指定
-// 入力できる年（惑星の位置の計算が使える範囲。JPL の長い期間用の表が紀元前 3000 年〜西暦 3000 年）
-static const int DATE_YEAR_MIN = -2999, DATE_YEAR_MAX = 2999;
-
 // "YYYYMMDD" または "YYYYMMDDhhmm"（UTC。先頭に - で紀元前、天文学的な年）→ J2000 からの日数。不正なら NaN。
 // 1582 年 10 月 15 日より前はユリウス暦
 static double ParseDateDigits(const std::string& s0) {

@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.25.1 (2026-11-02)
+
+- Fixed share links and "Resume the last session" silently opening at the current time for scenes before 1600 or after 2400 (they now accept 3000 BC to AD 2999, the same range as date entry)
+- Share links and bookmarks with broken positions or orientations (non-numbers, parallel directions and so on) are ignored, and orientations are re-orthonormalized before use
+
 ## 2.25.0 (2026-11-02)
 
 - Planet positions now use VSOP87: Mercury to Saturn within 1.5″ of JPL Horizons in 1500–2500 (previously up to 17′), and within 4.4′ over 3000 BC to AD 3000 (previously up to 22′). Orbit lines are ellipses that pass exactly through the planets
