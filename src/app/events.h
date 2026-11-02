@@ -105,28 +105,42 @@ template <class F> static std::vector<double> FindMinima(F f, double a, double b
 //  - 惑星どうしの接近: 3 年分。角距離 1° 未満で、どちらも太陽から 15° 以上離れているもの
 //  - 衝（地球をはさんで太陽の反対側）: 火星〜海王星の 3 年分
 static void FindPlanetEvents(const std::vector<Body>& B, double t0, std::vector<AstroEvent>* out) {
-    auto pos = [&](int i, double t) { return SimPlanetPos(B, i, t); };
+    // 3 年分の位置は 0.25 日ごとに先に表にしておく（VSOP87 の級数は項が多いので、組ごとに計算し直さない）。
+    // 表の時刻から外れた時刻（極小を細かく求める時）はその都度計算する
+    const double span = 3 * 365.25, h = 0.25;
+    std::vector<V3> tab[B_NEPTUNE + 1];
+    for (int i = B_MERCURY; i <= B_NEPTUNE; i++)
+        for (double k = -1; k <= span / h + 1; k++) tab[i].push_back(SimPlanetPos(B, i, t0 + k * h));
+    auto pos = [&](int i, double t) {
+        double f = (t - t0) / h + 1;
+        long k = std::lround(f);
+        if (k >= 0 && k < (long)tab[i].size() && std::fabs(f - k) < 1e-6) return tab[i][k];
+        return SimPlanetPos(B, i, t);
+    };
+    // 太陽面通過: 10 年ずつ調べ、2 回見つかったら止める。内合の前後で太陽との角度は 1 日に水星 2.3°、金星 1.6° ほど
+    // 変わるので、水星は 1 日、金星は 2 日ごとに調べる
     for (int p : {B_MERCURY, B_VENUS}) {
         auto f = [&](double t) {
-            V3 e = pos(B_EARTH, t), q = pos(p, t) - e;
+            V3 e = SimPlanetPos(B, B_EARTH, t), q = SimPlanetPos(B, p, t) - e;
             return Len(q) < Len(e) && Dot(q, e) < 0 ? AngleBetween(q, e * -1.0) : 1e9;
         };
+        const double st = p == B_MERCURY ? 1.0 : 2.0, chunk = 10 * 365.25;
         int found = 0;
-        for (double tm : FindMinima(f, t0, t0 + 150 * 365.25, 1.0, 0.02)) {
-            V3 e = pos(B_EARTH, tm), q = pos(p, tm) - e;
-            double sunR = std::asin(B[B_SUN].d.radius / Len(e)), plR = std::asin(B[p].d.radius / Len(q));
-            if (f(tm) >= sunR + plR) continue;
-            AstroEvent ev;
-            ev.kind = EV_TRANSIT;
-            ev.t = tm;
-            ev.body = p;
-            ev.dist = f(tm) / sunR;
-            out->push_back(ev);
-            if (++found == 2) break;
-        }
+        for (double a = t0; a < t0 + 150 * 365.25 && found < 2; a += chunk)
+            for (double tm : FindMinima(f, a, a + chunk, st, 0.06)) {
+                V3 e = SimPlanetPos(B, B_EARTH, tm), q = SimPlanetPos(B, p, tm) - e;
+                double sunR = std::asin(B[B_SUN].d.radius / Len(e)), plR = std::asin(B[p].d.radius / Len(q));
+                if (f(tm) >= sunR + plR) continue;
+                AstroEvent ev;
+                ev.kind = EV_TRANSIT;
+                ev.t = tm;
+                ev.body = p;
+                ev.dist = f(tm) / sunR;
+                out->push_back(ev);
+                if (++found == 2) break;
+            }
     }
     const int P[] = {B_MERCURY, B_VENUS, B_MARS, B_JUPITER, B_SATURN, B_URANUS, B_NEPTUNE};
-    const double span = 3 * 365.25;
     for (int i = 0; i < 7; i++)
         for (int j = i + 1; j < 7; j++) {
             auto sep = [&](double t) {

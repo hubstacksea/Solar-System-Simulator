@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.25.0 (2026-11-02)
+
+- Planet positions now use VSOP87: Mercury to Saturn within 1.5″ of JPL Horizons in 1500–2500 (previously up to 17′), and within 4.4′ over 3000 BC to AD 3000 (previously up to 22′). Orbit lines are ellipses that pass exactly through the planets
+- 35 nebulae, galaxies and star clusters (the Andromeda Galaxy, the Magellanic Clouds, the Orion Nebula, the Carina Nebula, the Veil Nebula, Omega Centauri and more). Zoom in to see their shapes; their names appear with the C key labels. The Crab Nebula appears only after 1054 and keeps expanding
+- The "Milky Way" setting is now "Milky Way & nebulae" (it hides the nebulae and galaxies too)
+
 ## 2.24.0 (2026-11-02)
 
 - Sunspots wax and wane with the 11-year activity cycle and appear at lower latitudes as a cycle goes on (including the Maunder and Dalton minima)

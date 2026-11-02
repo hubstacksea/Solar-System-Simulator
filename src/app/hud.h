@@ -4,6 +4,75 @@
 // main.cpp の一部で、main.cpp が決まった順に読み込む（単体ではコンパイルしない）
 
 // ---------------------------------------------------------------- 描画: 2D
+// 星雲・銀河・星団: 天の川と同じく設定で消せる。昼の空では見えない。とても遠いので、自分が動いても向きはほとんど変わらない
+// （すばるだけは 444 光年なので、近くの恒星まで飛ぶと少しずれる）
+struct DeepSkyQuad { Vector2 p[4], center; float major; };
+static bool DeepSkyPlace(const App& app, int i, DeepSkyQuad* q, double* D) {
+    const DeepSky& o = DEEP_SKY[i];
+    double year = 2000 + app.tDays / 365.25 + g_skyEpochYears, grow = 1;
+    if (!std::isnan(o.born)) {
+        if (year < o.born) return false;
+        grow = std::min(1.6, (year - o.born) / (2000 - o.born));   // 1054 年から一定の速さで広がる（今の大きさが 2000 年）
+    }
+    double pc = o.ly / 3.26156;
+    V3 d0 = EquToRender(o.ra, o.dec), d = d0 * pc - app.sky.obs;
+    double L = Len(d), sc = pc / L * grow;
+    V3 dir = d * (1 / L);
+    V3 north = Norm(EquToRender(o.ra, std::min(89.99, o.dec + 0.01)) - d0), east = Norm(EquToRender(o.ra + 0.01, o.dec) - d0);
+    double pa = o.pa * DEG, ha = o.a / 2 / 60 * DEG * 1.25 * sc, hb = o.b / 2 / 60 * DEG * 1.25 * sc;
+    V3 ma = (north * std::cos(pa) + east * std::sin(pa)) * ha, mi = (north * -std::sin(pa) + east * std::cos(pa)) * hb;
+    Relativity rel = GetRelativity(app);
+    *D = 1;
+    auto proj = [&](V3 v, Vector2* p) {
+        double Dk;
+        v = Norm(v);
+        if (rel.on) v = Aberrate(rel, v, &Dk);
+        return Project(app.cam, v, p);
+    };
+    if (rel.on) Aberrate(rel, dir, D);
+    const V3 corners[4] = {dir - ma - mi, dir - ma + mi, dir + ma + mi, dir + ma - mi};
+    for (int k = 0; k < 4; k++)
+        if (!proj(corners[k], &q->p[k])) return false;
+    if (!proj(dir, &q->center)) return false;
+    q->major = std::hypot(q->p[2].x - q->p[0].x, q->p[2].y - q->p[0].y);
+    return true;
+}
+
+static void DrawDeepSky(const App& app) {
+    if (!app.showMilkyWay || app.deepSkyTex.empty()) return;
+    double vis = 1 - SkyDaylight(app);
+    if (vis < 0.02) return;
+    const Cam& c = app.cam;
+    rlDrawRenderBatchActive();
+    rlDisableBackfaceCulling();
+    BeginBlendMode(BLEND_ADDITIVE);
+    for (int i = 0; i < DEEP_SKY_COUNT; i++) {
+        DeepSkyQuad q;
+        double D;
+        if (!DeepSkyPlace(app, i, &q, &D) || q.major < 4) continue;
+        float x0 = c.W, x1 = 0, y0 = c.H, y1 = 0;
+        for (const Vector2& p : q.p) {
+            x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); y1 = std::max(y1, p.y);
+        }
+        if (x1 < 0 || y1 < 0 || x0 > c.W || y0 > c.H || x1 - x0 > c.W * 20) continue;
+        // 小さく写る時は明るさを抑える（点のようなにじみが星より目立たないように）
+        double k = DeepSkyBrightness(DEEP_SKY[i]) * vis * std::min(1.0, q.major / 24.0);
+        Color col = DopplerColor({255, 255, 255, (unsigned char)(255 * k)}, D);
+        rlSetTexture(app.deepSkyTex[i].id);
+        rlBegin(RL_QUADS);
+        rlColor4ub(col.r, col.g, col.b, col.a);
+        const float uv[4][2] = {{0, 0}, {0, 1}, {1, 1}, {1, 0}};
+        for (int k2 = 0; k2 < 4; k2++) {
+            rlTexCoord2f(uv[k2][0], uv[k2][1]);
+            rlVertex2f(q.p[k2].x, q.p[k2].y);
+        }
+        rlEnd();
+        rlSetTexture(0);
+    }
+    EndBlendMode();
+    rlEnableBackfaceCulling();
+}
+
 static void DrawStars(const App& app) {
     const Cam& c = app.cam;
     Relativity rel = GetRelativity(app);
@@ -158,6 +227,19 @@ static void DrawSkyLabels(const App& app) {
         if (Project(c, n.dir, &p) && p.x > -100 && p.x < c.W && p.y > 0 && p.y < c.H && !hidden(n.dir))
             Txt(TR(n.jp.c_str(), n.en.c_str()), p.x + 6, p.y - 6, 13, {225, 215, 180, 190});
     }
+    // 星雲・銀河・星団の名前（天の川を消している時と、小さすぎて見えない時は出さない）
+    if (app.showMilkyWay && !app.deepSkyTex.empty())
+        for (int i = 0; i < DEEP_SKY_COUNT; i++) {
+            DeepSkyQuad q;
+            double D;
+            const DeepSky& o = DEEP_SKY[i];
+            if (!DeepSkyPlace(app, i, &q, &D) || q.major < 10 || GetRelativity(app).on) continue;
+            Vector2 p = q.center;
+            if (p.x < -100 || p.x > c.W || p.y < 0 || p.y > c.H || hidden(EquToRender(o.ra, o.dec))) continue;
+            std::string name = TR(o.jp, o.en);
+            if (*o.id && name != o.id) name += std::string(" ") + o.id;
+            TxtC(name.c_str(), p.x, p.y + std::min(60.0f, q.major * 0.25f) + 4, 13, {215, 175, 235, 180});
+        }
 }
 
 // 皆既日食のコロナ: 太陽の縁から放射状に伸びる淡い光の筋（赤道方向に長い流線、極の方向に短い羽毛状の筋）

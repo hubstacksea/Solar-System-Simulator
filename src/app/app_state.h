@@ -127,6 +127,7 @@ struct App {
     Texture2D moonColor{}, moonData{};    // 月の実データ
     bool moonTex = false;
     Texture2D milkyWay{};                 // 天の川の光（赤道座標の全天画像）
+    std::vector<Texture2D> deepSkyTex;    // 星雲・銀河・星団の絵（DEEP_SKY の順）
     std::vector<Texture2D> ringTex;       // 環の半径方向の不透明度（RingSets() と同じ並び）
     int locRingInfo = -1;
     Shader beltShader{};                  // 小惑星などの粒を GPU で計算して描く

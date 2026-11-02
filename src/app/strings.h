@@ -152,7 +152,7 @@
     X(SET_INVERT, "マウス上下反転", "Invert mouse") \
     X(SET_FULLSCREEN, "フルスクリーン", "Fullscreen") \
     X(SET_TEXTSIZE, "文字の大きさ（計器・マーカーも）", "Text size (HUD and markers too)") \
-    X(SET_MILKYWAY, "天の川", "Milky Way") \
+    X(SET_MILKYWAY, "天の川・星雲", "Milky Way & nebulae") \
     X(SET_SKYEPOCH, "星空の年代（恒星だけ動かす）", "Star epoch (moves the stars only)") \
     X(SKY_EPOCH_SHORT, "星空", "Stars") \
     X(SET_EPOCH_NOW, "今の日時どおり", "As the date") \

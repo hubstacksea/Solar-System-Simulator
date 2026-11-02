@@ -173,7 +173,7 @@ struct Options {
     int engine = -1;
     double throttleSec = 0;
     double brakeAt = -1;                 // この秒数からブレーキを押し続ける（確認用）
-    double ephemJd = NAN;                // 地球時のユリウス日の月と太陽の地心位置を出して終わる（確認用）
+    double ephemJd = NAN;                // 地球時のユリウス日の月と太陽の地心位置と惑星の太陽中心の位置を出して終わる（確認用）
     int shotEvery = 0;                   // N フレームごとに画面を保存する（--shot の名前に番号を付けて。確認用）
     double stopAt = -1;                  // この秒数で止まる（X キーと同じ。確認用）
     double warpAnimAt = -1;  // 指定秒にワープ演出を開始（確認用）
@@ -202,6 +202,7 @@ struct Options {
     bool mapStars = false;
     double skyEpoch = 0;                // 星空の年代（年。確認用）
     double lookRa = NAN, lookDec = NAN; // 機首を赤経・赤緯 deg の方へ向ける（確認用）
+    double zoomFov = NAN;                // 視野 deg に絞って見る（確認用）
     bool noMsaa = false;         // アンチエイリアス (MSAA) なしで始める（MSAA を使えない環境の確認用）
     bool checkAssets = false;    // データが読めるかを確かめて終了（ウィンドウを作れない CI の確認用）
     bool info = false;           // 天体の情報を開いて始める（確認用）
@@ -263,6 +264,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--map-stars") o.map = o.mapStars = true;
         else if (a == "--sky-epoch") o.skyEpoch = atof(next());
         else if (a == "--look") { o.lookRa = atof(next()); o.lookDec = atof(next()); }
+        else if (a == "--zoom") o.zoomFov = atof(next());
         else if (a == "--no-msaa") o.noMsaa = true;
         else if (a == "--check-assets") o.checkAssets = true;
         else if (a == "--info") o.info = true;

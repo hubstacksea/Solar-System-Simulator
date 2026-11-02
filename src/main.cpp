@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -32,6 +33,7 @@
 #include "shaders.h"
 #include "ship_model.h"
 #include "solar_data.h"
+#include "vsop87_data.h"
 #include "sound.h"
 
 #ifdef _WIN32
@@ -168,6 +170,11 @@ int main(int argc, char** argv) {
         };
         pr("MOON", B[B_MOON].pos - B[B_EARTH].pos);
         pr("SUN", B[B_SUN].pos - B[B_EARTH].pos);
+        for (int i = B_MERCURY; i <= B_NEPTUNE; i++) {   // 惑星の太陽中心の位置（地球は地球と月の重心）
+            char name[16];
+            snprintf(name, sizeof name, "HELIO%d", i);
+            pr(name, PlanetPos(B[i].d, t));
+        }
         {   // 月から見た地球の向き（月面の経度・緯度 deg。秤動）
             const Body& m = B[B_MOON];
             V3 X, Z, u = Norm(B[B_EARTH].pos - m.pos);
@@ -299,6 +306,7 @@ int main(int argc, char** argv) {
     }
     for (int i = 0; i < UI_COUNT; i++) allText += UI_JP[i];
     for (const Body& b : app.B) allText += b.d.jp;
+    for (const DeepSky& o : DEEP_SKY) allText += o.jp;
     for (const Engine& e : ENGINES) allText += e.jp;
     for (const Constellation& c : app.sky.cons) allText += c.jp;
     for (const City& c : CITIES) allText += c.jp;
@@ -354,6 +362,7 @@ int main(int argc, char** argv) {
     LoadEarthTextures(app);
     LoadMoonTextures(app);
     app.milkyWay = LoadEmbeddedTexture(MilkyWayJpg(), ".jpg");
+    app.deepSkyTex = MakeDeepSkyTextures();
     for (const RingSet& rs : RingSets()) {   // 環の不透明度の表と形
         app.ringTex.push_back(LoadRingTexture(rs));
         double R = app.B[rs.body].d.radius;
@@ -478,6 +487,10 @@ int main(int argc, char** argv) {
     if (opt.mapStars) app.mapStars = true;
     g_skyEpochYears = opt.skyEpoch;
     if (!std::isnan(opt.lookRa)) app.ship.q = QuatFromBasis(EquToRender(opt.lookRa, opt.lookDec), Y_UP);
+    if (!std::isnan(opt.zoomFov)) {
+        app.eventZoom = true;
+        app.eventZoomFov = opt.zoomFov;
+    }
     app.showInfo = opt.info;
     if (opt.city >= 0 && opt.city < CITY_COUNT) GoToCity(app, opt.city, std::isnan(opt.cityEl) ? 35 : opt.cityEl);
     if (opt.frameLock) SetFrameLock(app, true, true);
@@ -605,6 +618,7 @@ int main(int argc, char** argv) {
             if (lowRes) rlScalef(rk, rk, 1);   // EndMode3D で modelview が単位行列に戻るので、縮小を掛け直す
         }
         UpdateSkyParallax(app.sky, (app.cam.pos - app.B[0].pos) * (1 / PC_KM), app.tDays / 365.25 + g_skyEpochYears);
+        DrawDeepSky(app);
         DrawStars(app);
         DrawAsteroids(app);
         {
@@ -727,6 +741,7 @@ int main(int argc, char** argv) {
     if (app.earthClouds.id) UnloadTexture(app.earthClouds);
     if (app.moonTex) { UnloadTexture(app.moonColor); UnloadTexture(app.moonData); }
     if (app.milkyWay.id) UnloadTexture(app.milkyWay);
+    for (Texture2D& t : app.deepSkyTex) UnloadTexture(t);
     for (Texture2D& t : app.ringTex)
         if (t.id) UnloadTexture(t);
     for (App::BodyMap& m : app.maps) {

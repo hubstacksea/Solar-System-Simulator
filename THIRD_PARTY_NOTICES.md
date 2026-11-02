@@ -197,8 +197,11 @@ that script.
 
 Published formulas and coefficients, written into the code:
 
-- Planets: E.M. Standish and J.G. Williams, "Approximate Positions of the Planets" (JPL Solar System Dynamics,
-  https://ssd.jpl.nasa.gov/planets/approx_pos.html), Tables 1, 2a and 2b
+- Planets (Mercury to Neptune): VSOP87A, P. Bretagnon and G. Francou, A&A 202, 309 (1988), Bureau des Longitudes.
+  The coefficients in src/vsop87_data.h were truncated by `tools/make_vsop87.py` from the public-domain JSON files of
+  VSOP87-Multilang by Greg Miller (https://github.com/gmiller123456/vsop87-multilang). Checked against JPL Horizons (DE441)
+- Pluto and the starting orbit lines: E.M. Standish and J.G. Williams, "Approximate Positions of the Planets" (JPL Solar
+  System Dynamics, https://ssd.jpl.nasa.gov/planets/approx_pos.html)
 - ΔT: F. Espenak and J. Meeus, polynomial expressions for Delta T (NASA, https://eclipse.gsfc.nasa.gov/SEcat5/deltatpoly.html),
   500 BC – AD 2150; outside that range Morrison & Stephenson 2004, Journal for the History of Astronomy 35, 327
 - Long-term correction of the Moon's longitude and the orbits of Halley's Comet for each return from 240 BC to 1910:
@@ -218,6 +221,12 @@ Published formulas and coefficients, written into the code:
   Copyright 2013 Sonia Keys, MIT License)
 - Ancient eclipses were checked against F. Espenak and J. Meeus, *Five Millennium Catalog of Solar Eclipses*
   (NASA, https://eclipse.gsfc.nasa.gov/); no data from it is included
+
+## Nebulae, galaxies and star clusters (src/app/sky.h, DEEP_SKY)
+
+Positions, apparent sizes, position angles, magnitudes and distances of 35 well-known objects are rounded published
+values typed into the code (Messier, NGC and IC designations). The positions were checked for gross errors against
+OpenNGC (https://github.com/mattiaverga/OpenNGC); no data from it or any other catalog file is included. The pictures are drawn by the program and are not photographs.
 
 ## Starry sky (assets/stars.bin, assets/sky.txt)
 

@@ -74,7 +74,7 @@ struct BodyDef {
     double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
     double launch = -1e9;      // 打ち上げ（J2000 からの日数）。これより前は表示しない
     int star = -1;             // 太陽系の外の恒星: NEARBY_STARS の番号（位置は固有運動と連星の軌道から求める）
-    int longEl = -1;           // 惑星: LONG_ELEMENTS の番号（1800〜2050 年の外では長い期間用の要素を使う）
+    int vsop = -1;             // 惑星: VSOP87 の級数の番号（src/vsop87_data.h。位置は軌道要素ではなく級数で求める）
     int exo = -1;              // 太陽系の外の惑星: NEARBY_PLANETS の番号（parent はその恒星。moonA・moonPeriod も入れる）
     int style = S_GENERIC;
 };
@@ -382,27 +382,19 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                 d.da = o.da; d.de = o.de; d.dinc = o.di; d.dL = o.dL; d.dvarpi = o.dvarpi; d.dnode = o.dnode;
             }
 
-    // 惑星の軌道要素の変化率 /世紀（JPL "Approximate Positions of the Planets" 表 1、1800〜2050 年で有効。
-    // 冥王星は表から外れたため以前の版の値）。地球は地球と月の重心の値
+    // 冥王星の軌道要素の変化率 /世紀（JPL "Approximate Positions of the Planets" の以前の版の値）。
+    // 水星〜海王星の位置は軌道要素ではなく VSOP87 で求める（上の要素は軌道の大きさや影響圏などに使う）
     static const struct { const char* en; double da, de, dinc, dL, dvarpi, dnode; } RATES[] = {
-        {"Mercury", 0.00000037, 0.00001906, -0.00594749, 149472.67411175, 0.16047689, -0.12534081},
-        {"Venus", 0.00000390, -0.00004107, -0.00078890, 58517.81538729, 0.00268329, -0.27769418},
-        {"Earth", 0.00000562, -0.00004392, -0.01294668, 35999.37244981, 0.32327364, 0.0},
-        {"Mars", 0.00001847, 0.00007882, -0.00813131, 19140.30268499, 0.44441088, -0.29257343},
-        {"Jupiter", -0.00011607, -0.00013253, -0.00183714, 3034.74612775, 0.21252668, 0.20469106},
-        {"Saturn", -0.00125060, -0.00050991, 0.00193609, 1222.49362201, -0.41897216, -0.28867794},
-        {"Uranus", -0.00196176, -0.00004397, -0.00242939, 428.48202785, 0.40805281, 0.04240589},
-        {"Neptune", 0.00026291, 0.00005105, 0.00035372, 218.45945325, -0.32241464, -0.00508664},
         {"Pluto", -0.00031596, 0.00005170, 0.00004818, 145.20780515, -0.04062942, -0.01183482},
     };
-    static const char* LONG_NAMES[] = {"Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"};
+    static const char* VSOP_NAMES[] = {"Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"};
     for (BodyDef& d : v) {
         for (const auto& r : RATES)
             if (std::strcmp(d.en, r.en) == 0) {
                 d.da = r.da; d.de = r.de; d.dinc = r.dinc; d.dL = r.dL; d.dvarpi = r.dvarpi; d.dnode = r.dnode;
             }
         for (int k = 0; k < 8; k++)
-            if (std::strcmp(d.en, LONG_NAMES[k]) == 0) d.longEl = k;
+            if (std::strcmp(d.en, VSOP_NAMES[k]) == 0) d.vsop = k;
     }
 
     // 衛星の軌道（月以外）。軌道面は JPL Solar System Dynamics の平均軌道要素（https://ssd.jpl.nasa.gov/sats/elem/、

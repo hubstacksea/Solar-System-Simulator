@@ -35,7 +35,7 @@ struct Body {
     double soi = 1e300;   // 基準系切替に使う影響圏半径
     double outer = 0;     // 描画上の最大半径（環を含む）
     std::vector<V3> orbit;  // 母天体相対の軌道点
-    double orbitT = -1e9;   // 軌道線を計算した時刻（月）
+    double orbitT = -1e9;   // 軌道線を計算した時刻（月と水星〜海王星）
     bool active = true;     // 探査機: その時刻に飛んでいるか（打ち上げ前・運用終了後は false で、表示しない）
     int shape = -1;         // 実際の形（g_shapes の番号。-1 は楕円体）
     int map = -1;           // 探査機の画像による地図（App::maps の番号。-1 はなし）
@@ -173,26 +173,49 @@ static double DeltaTSeconds(double y) {
 }
 static double DeltaTDays(double tDays) { return DeltaTSeconds(2000 + tDays / 365.25) / 86400.0; }
 
-// 惑星の長い期間用の軌道要素と変化率 /世紀（JPL "Approximate Positions of the Planets" 表 2a、紀元前 3000 年〜西暦 3000 年）
-// と、木星〜海王星の平均近点角に足す項 b·T² + c·cos(f·T) + s·sin(f·T)（表 2b）。地球は地球と月の重心の値
-static const struct { double a, e, i, L, varpi, node, da, de, di, dL, dvarpi, dnode, b, c, s, f; } LONG_ELEMENTS[] = {
-    {0.38709843, 0.20563661, 7.00559432, 252.25166724, 77.45771895, 48.33961819,
-     0.00000000, 0.00002123, -0.00590158, 149472.67486623, 0.15940013, -0.12214182, 0, 0, 0, 0},
-    {0.72332102, 0.00676399, 3.39777545, 181.97970850, 131.76755713, 76.67261496,
-     -0.00000026, -0.00005107, 0.00043494, 58517.81560260, 0.05679648, -0.27274174, 0, 0, 0, 0},
-    {1.00000018, 0.01673163, -0.00054346, 100.46691572, 102.93005885, -5.11260389,
-     -0.00000003, -0.00003661, -0.01337178, 35999.37306329, 0.31795260, -0.24123856, 0, 0, 0, 0},
-    {1.52371243, 0.09336511, 1.85181869, -4.56813164, -23.91744784, 49.71320984,
-     0.00000097, 0.00009149, -0.00724757, 19140.29934243, 0.45223625, -0.26852431, 0, 0, 0, 0},
-    {5.20248019, 0.04853590, 1.29861416, 34.33479152, 14.27495244, 100.29282654,
-     -0.00002864, 0.00018026, -0.00322699, 3034.90371757, 0.18199196, 0.13024619, -0.00012452, 0.06064060, -0.35635438, 38.35125000},
-    {9.54149883, 0.05550825, 2.49424102, 50.07571329, 92.86136063, 113.63998702,
-     -0.00003065, -0.00032044, 0.00451969, 1222.11494724, 0.54179478, -0.25015002, 0.00025899, -0.13434469, 0.87320147, 38.35125000},
-    {19.18797948, 0.04685740, 0.77298127, 314.20276625, 172.43404441, 73.96250215,
-     -0.00020455, -0.00001550, -0.00180155, 428.49512595, 0.09266985, 0.05739699, 0.00058331, -0.97731848, 0.17689245, 7.67025000},
-    {30.06952752, 0.00895439, 1.77005520, 304.22289287, 46.68158724, 131.78635853,
-     0.00006447, 0.00000818, 0.00022400, 218.46515314, 0.01009938, -0.00606302, -0.00041348, 0.68346318, -0.10162547, 7.67025000},
-};
+// 惑星の位置: VSOP87A（src/vsop87_data.h）。k は VSOP_NAMES（src/solar_data.h）の番号（地球は地球と月の重心）、
+// tt は地球時の J2000 からの日数。太陽中心の位置 km
+static V3 VsopSeries(int k, double tt) {
+    double t = tt / 365250.0, xyz[3];
+    for (int c = 0; c < 3; c++) {
+        double s = 0, tp = 1;
+        for (int p = 0; p < 6; p++, tp *= t) {
+            double sp = 0;
+            for (int i = VSOP_INDEX[k][c][p]; i < VSOP_INDEX[k][c][p + 1]; i++) sp += VSOP_TERMS[i].a * std::cos(VSOP_TERMS[i].b + VSOP_TERMS[i].c * t);
+            s += sp * tp;
+        }
+        xyz[c] = s * AU_KM;
+    }
+    return EclToRender(xyz[0], xyz[1], xyz[2]);
+}
+// 級数は項が多く、イベントを探す時などに近い時刻を何千回も計算するので、惑星ごとに決まった間隔の時刻（格子点）の値を
+// 覚えておき、まわりの 4 点の 3 次式で補間する。格子は時刻だけで決まるので、計算の順番で結果は変わらない（補間の誤差は 0.1 km 以下）
+static V3 VsopPos(int k, double tt) {
+    static const double STEP[8] = {0.125, 0.5, 0.5, 1, 4, 4, 8, 8};   // 日
+    struct Slot { long n; V3 p; };
+    static Slot cache[8][16];
+    static bool init = false;
+    if (!init) {
+        for (auto& row : cache)
+            for (Slot& s : row) s.n = LONG_MIN;
+        init = true;
+    }
+    double h = STEP[k], f = tt / h;
+    long n0 = (long)std::floor(f);
+    double u = f - n0;
+    V3 P[4];
+    for (int j = 0; j < 4; j++) {
+        long n = n0 - 1 + j;
+        Slot& s = cache[k][n & 15];
+        if (s.n != n) {
+            s.n = n;
+            s.p = VsopSeries(k, n * h);
+        }
+        P[j] = s.p;
+    }
+    return P[0] * (-u * (u - 1) * (u - 2) / 6) + P[1] * ((u + 1) * (u - 1) * (u - 2) / 2) + P[2] * (-(u + 1) * u * (u - 2) / 2) +
+           P[3] * ((u + 1) * u * (u - 1) / 6);
+}
 
 // 歳差（IAU 1976、Lieske et al. 1977）: J2000 の平均赤道から時刻 t の平均赤道への回転の逆 Pᵀ を、描画座標のベクトル v に
 // 掛ける。地球の向き（自転軸と赤道）を J2000 の向きから回すのに使う。何千年も離れると自転軸の向きが十数度変わる
@@ -267,24 +290,15 @@ static V3 PlanetPos(const BodyDef& d0, double tDays) {
         }
         return PlanetOrbitPoint(d, E);
     }
+    if (d0.parent == 0) tDays += DeltaTDays(tDays);
+    if (d0.vsop >= 0) return VsopPos(d0.vsop, tDays);
     // 要素を時刻 t の値へ（JPL の変化率。平均経度の変化率が公転の速さ）
-    if (d0.longEl >= 0 || d0.parent == 0) tDays += DeltaTDays(tDays);
     double T = tDays / 36525.0;
     BodyDef d = d0;
-    double L, extraM = 0;
-    double year = 2000 + tDays / 365.25;
-    if (d0.longEl >= 0 && (year < 1800 || year > 2050)) {   // 表 1 の範囲の外は、長い期間用の表 2
-        const auto& le = LONG_ELEMENTS[d0.longEl];
-        d.a_au = le.a + le.da * T; d.e = le.e + le.de * T; d.inc = le.i + le.di * T;
-        d.varpi = le.varpi + le.dvarpi * T; d.node = le.node + le.dnode * T;
-        L = le.L + le.dL * T;
-        extraM = le.b * T * T + le.c * std::cos(le.f * T * DEG) + le.s * std::sin(le.f * T * DEG);
-    } else {
-        d.a_au += d0.da * T; d.e += d0.de * T; d.inc += d0.dinc * T;
-        d.varpi += d0.dvarpi * T; d.node += d0.dnode * T;
-        L = d0.L0 + (d0.dL != 0 ? d0.dL * T : 360.0 / (365.25 * std::pow(d0.a_au, 1.5)) * tDays);
-    }
-    double M = std::remainder(L - d.varpi + extraM, 360.0) * DEG;  // -π〜π
+    d.a_au += d0.da * T; d.e += d0.de * T; d.inc += d0.dinc * T;
+    d.varpi += d0.dvarpi * T; d.node += d0.dnode * T;
+    double L = d0.L0 + (d0.dL != 0 ? d0.dL * T : 360.0 / (365.25 * std::pow(d0.a_au, 1.5)) * tDays);
+    double M = std::remainder(L - d.varpi, 360.0) * DEG;  // -π〜π
     // ケプラー方程式（ハレー彗星の e = 0.97 でも収束する初期値）
     double E = M + 0.85 * d.e * (M >= 0 ? 1 : -1);
     for (int i = 0; i < 50; i++) {
@@ -832,6 +846,21 @@ static std::vector<Body> InitBodies() {
     return B;
 }
 
+// 水星〜海王星の軌道線: 時刻 t の位置と速度から求めた接触楕円（惑星をちょうど通る。ほかの惑星に引かれて少しずつ変わる）
+static void OsculatingOrbit(Body& b, double t) {
+    const double MU = 1.32712440018e11 * 86400.0 * 86400.0;   // 太陽の重力定数 km³/日²
+    V3 r = PlanetPos(b.d, t), v = PlanetPos(b.d, t + 0.5) - PlanetPos(b.d, t - 0.5);
+    V3 h = Cross(r, v);
+    double R = Len(r), a = 1 / (2 / R - Dot(v, v) / MU);
+    V3 ev = Cross(v, h) * (1 / MU) - r * (1 / R);   // 近日点を向く離心率ベクトル
+    double e = Len(ev);
+    V3 P = e > 1e-9 ? ev * (1 / e) : r * (1 / R), Q = Norm(Cross(h, P));
+    for (size_t k = 0; k < b.orbit.size(); k++) {
+        double E = 2 * PI * k / (b.orbit.size() - 1);
+        b.orbit[k] = P * (a * (std::cos(E) - e)) + Q * (a * std::sqrt(1 - e * e) * std::sin(E));
+    }
+}
+
 static void UpdateBodies(std::vector<Body>& B, double t) {
     for (Body& b : B) {
         const BodyDef& d = b.d;
@@ -849,6 +878,10 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
             b.pos = B[d.parent].pos + ExoRelative(d, B[d.parent].d, t);   // 恒星は先に更新済み（惑星は配列の最後）
         } else if (d.parent == 0) {
             b.pos = &b == &B[B_EARTH] ? EarthPos(d, t) : PlanetPos(d, t);
+            if (d.vsop >= 0 && std::fabs(t - b.orbitT) > 1.0) {
+                b.orbitT = t;
+                OsculatingOrbit(b, t);
+            }
             if (&b == &B[B_EARTH]) {   // 地球の自転軸と赤道は歳差で回る（自転角 spin はこの赤道の上で測る）
                 b.pole = PrecessFromJ2000(b.pole0, t);
                 b.ex = PrecessFromJ2000(b.ex0, t);
