@@ -304,6 +304,30 @@ static void HandleInput(App& app, double dt) {
         if (IsKeyPressed(KEY_P)) app.paused = !app.paused;
         if (IsKeyPressed(KEY_F2)) ShareScene(app);
         if (IsKeyPressed(KEY_F3)) app.voyMap = !app.voyMap;   // 右上の小さな全体図
+        {   // 見回す: マウス（捕捉中か左ドラッグ）・タッチのドラッグ・矢印キー・スティック。離して 3 秒で自動の向きへ戻る
+            double zoomK = app.cam.fovBase / (60 * DEG), dy = 0, dp = 0;
+            Vector2 md = GetMouseDelta();
+            if (app.mouseCaptured || IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                dy += md.x * 0.0022 * zoomK;
+                dp -= md.y * 0.0022 * zoomK * (app.invertY ? -1 : 1);
+            }
+            if (app.touchUI) {
+                dy += app.touchDrag.x * 0.004 * zoomK;
+                dp -= app.touchDrag.y * 0.004 * zoomK * (app.invertY ? -1 : 1);
+            }
+            double kr = 1.1 * dt * zoomK;
+            if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) dy -= kr;
+            if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) dy += kr;
+            if (IsKeyDown(KEY_UP)) dp += kr;
+            if (IsKeyDown(KEY_DOWN)) dp -= kr;
+            dy -= pad.yaw * 1.3 * dt * zoomK;
+            dp += pad.pitch * 1.3 * dt * zoomK * (app.invertY ? -1 : 1);
+            if (dy != 0 || dp != 0) {
+                app.voyLookYaw = std::remainder(app.voyLookYaw + dy, 2 * PI);
+                app.voyLookPitch = std::max(-1.5, std::min(1.5, app.voyLookPitch + dp));
+                app.voyLookHold = 3.0;
+            }
+        }
         if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
         if (IsKeyPressed(KEY_K)) { OpenEventsPage(app); app.eventsOpen = true; }
         if (IsKeyPressed(KEY_O)) ChangeSetting(app, SET_ORBITS, 1, true);

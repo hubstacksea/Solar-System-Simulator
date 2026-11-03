@@ -601,6 +601,12 @@ int main(int argc, char** argv) {
             }
         }
         app.tDays += (app.timeReverse ? -simDt : simDt) / 86400.0;   // 逆再生は天体の時刻だけ（自機はそのまま進む）
+        if (!InDateRange(app.tDays)) {   // 惑星の位置を計算できる範囲の端で止める
+            double lo = JdnFromDate(DATE_YEAR_MIN, 1, 1) - 2451545.5, hi = JdnFromDate(DATE_YEAR_MAX + 1, 1, 1) - 2451545.5 - 1.0 / 86400;
+            app.tDays = std::max(lo, std::min(hi, app.tDays));
+            app.paused = true;
+            Toast(app, T(UI_TIME_LIMIT));
+        }
         int spinRef = app.ship.ref;
         double spin0 = app.B[spinRef].spin;
         UpdateBodies(app.B, app.tDays);

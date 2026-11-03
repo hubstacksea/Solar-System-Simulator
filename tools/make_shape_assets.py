@@ -12,7 +12,8 @@
   - ベンヌ・イトカワ・ディディモス・ディモルフォス・フォボス・ドナルドジョハンソン: NASA NAIF の SPICE 形状データ (DSK)
     （ベンヌ: OSIRIS-REx、イトカワ: Gaskell et al. の Hayabusa AMICA モデル、ディディモス・ディモルフォス: DART、
     フォボス: Gaskell のモデル、ドナルドジョハンソン: Lucy の DLR チーム。いずれも NASA の惑星データ）
-  - ガスプラ・イダ: 形状データの代わりに、JPL Small-Body Database の三軸の大きさの楕円体
+  - ガスプラ・イダ: Stooke の形状モデル（Galileo の撮影から。PDS Small Bodies Node の small_bodies.stooke.shape-models、
+    パブリックドメイン）。配布元が自動の取得を受け付けないので、ブラウザで取得して作業ディレクトリに置く
 頂点が 65,536 個を超えるもの（フォボス）は格子でまとめて間引く。座標を 16 ビットに丸め、外側の表面までの半径の表を加える。
 
 出力形式（リトルエンディアン）:
@@ -47,12 +48,15 @@ SHAPES = [
     ("Phobos", NAIF + "generic_kernels/dsk/satellites/phobos_3_3.bds"),
     # ドナルドジョハンソン: ルーシーの撮影から DLR のチームが作った DSK（NASA PDS の Lucy SPICE アーカイブ）
     ("Donaldjohanson", NAIF + "pds/pds4/lucy/lucy_spice/spice_kernels/dsk/lcy_donj_k548_iso20m_v10.bds"),
-    # ガスプラ・イダ: 形状データを自動で取得できないので、JPL SBDB の三軸の大きさ [km] の楕円体で代える
-    ("Gaspra", "ellipsoid:18.2,10.5,8.9"),
-    ("Ida", "ellipsoid:59.8,25.4,18.6"),
+    # ガスプラ・イダ: Stooke の形状モデル（Galileo の撮影から。PDS Small Bodies Node、パブリックドメイン）。
+    # 配布元が自動の取得を受け付けないので、ブラウザで STOOKE_ZIP を作業ディレクトリに置いておく
+    ("Gaspra", "stooke:951gaspra.tab"),
+    ("Ida", "stooke:243ida.tab"),
 ]
 MAX_VERTS = 60000
 NLON, NLAT = 96, 49
+STOOKE_ZIP = "small_bodies.stooke.shape-models.zip"
+STOOKE_URL = "https://sbnarchive.psi.edu/pds4/non_mission/small_bodies.stooke.shape-models.zip"
 
 
 def fetch(work, url):
@@ -80,25 +84,39 @@ def read_obj(path):
     return np.array(verts), np.array(faces, dtype=np.int64)
 
 
-def ellipsoid(spec, nlat=36, nlon=72):
-    """"ellipsoid:長さ,幅,厚さ" [km] の楕円体（緯度・経度の格子）"""
-    a, b, c = (float(x) / 2 for x in spec.split(":")[1].split(","))
-    verts = [[0, 0, -c]]
-    for i in range(1, nlat):
-        la = np.pi * i / nlat - np.pi / 2
-        for j in range(nlon):
-            lo = 2 * np.pi * j / nlon
-            verts.append([a * np.cos(la) * np.cos(lo), b * np.cos(la) * np.sin(lo), c * np.sin(la)])
-    verts.append([0, 0, c])
-    top = len(verts) - 1
+def read_stooke(work, name):
+    """Stooke の形状モデル: 緯度・経度 5° ごとの格子の半径 [km]（経度は東が正、0° と 360° は同じ点）"""
+    import zipfile
+    path = os.path.join(work, STOOKE_ZIP)
+    if not os.path.exists(path):
+        raise SystemExit("%s をブラウザで %s から取得して %s に置いてください" % (STOOKE_ZIP, STOOKE_URL, work))
+    with zipfile.ZipFile(path) as z:
+        text = z.read("small_bodies.stooke.shape-models/data/" + name).decode("ascii")
+    grid = {}
+    for line in text.splitlines():
+        p = line.split()
+        if len(p) == 3:
+            grid[(int(p[0]) % 360, int(p[1]))] = float(p[2])
+    lons = sorted({k[0] for k in grid})
+    lats = sorted({k[1] for k in grid})
+    nlon = len(lons)
+    verts, index = [], {}
+    for la in lats:
+        ring = [0] if abs(la) == 90 else lons   # 極は 1 点に
+        for lo in ring:
+            r = grid[(lo, la)] if (lo, la) in grid else np.mean([grid[(x, la)] for x in lons if (x, la) in grid])
+            a, b = np.radians(la), np.radians(lo)
+            index[(lo, la)] = len(verts)
+            verts.append([r * np.cos(a) * np.cos(b), r * np.cos(a) * np.sin(b), r * np.sin(a)])
+    vid = lambda lo, la: index[(0, la)] if abs(la) == 90 else index[(lons[lo % nlon], la)]
     faces = []
-    ring = lambda i, j: 1 + (i - 1) * nlon + j % nlon
-    for j in range(nlon):
-        faces.append([0, ring(1, j + 1), ring(1, j)])
-        faces.append([top, ring(nlat - 1, j), ring(nlat - 1, j + 1)])
-    for i in range(1, nlat - 1):
+    for i in range(len(lats) - 1):
+        a, b = lats[i], lats[i + 1]
         for j in range(nlon):
-            faces += [[ring(i, j), ring(i, j + 1), ring(i + 1, j + 1)], [ring(i, j), ring(i + 1, j + 1), ring(i + 1, j)]]
+            q = [vid(j, a), vid(j + 1, a), vid(j + 1, b), vid(j, b)]
+            for t in ([q[0], q[1], q[2]], [q[0], q[2], q[3]]):
+                if len(set(t)) == 3:
+                    faces.append(t)
     return np.array(verts, dtype=float), np.array(faces, dtype=np.int64)
 
 
@@ -163,8 +181,8 @@ def main():
     la, lo = np.meshgrid(lat, lon, indexing="ij")
     dirs = np.stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)], axis=-1).reshape(-1, 3)
     for name, url in SHAPES:
-        if url.startswith("ellipsoid:"):
-            v, f = ellipsoid(url)
+        if url.startswith("stooke:"):
+            v, f = read_stooke(work, url.split(":", 1)[1])
         else:
             path = fetch(work, url)
             v, f = read_dsk(path) if path.endswith(".bds") else read_obj(path)

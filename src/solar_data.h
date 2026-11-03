@@ -350,7 +350,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     }
     // 探査機が途中で近くを通った小惑星（並びは tools/make_probe_assets.py の番号 43〜51 と同じ）。
     // 半径・自転周期は JPL Small-Body Database。ガスプラ・イダの自転軸は IAU の値、ほかは分からないので黄道の北極に。
-    // ガスプラ・イダは三軸の楕円体、ドナルドジョハンソンは実際の形（assets/shapes.bin）。ほかは球で代える
+    // ガスプラ・イダ・ドナルドジョハンソンは実際の形（assets/shapes.bin）。ほかは球で代える
     v.push_back(MakePlanet("ガスプラ", "Gaspra", 6.1, 0.0, 2.4e15, 0, 0, 0, 0, 0, 0, 9.47, 26.70, 7.042 / 24,
                            KIND_ROCKY, {0.58f, 0.53f, 0.46f}, {0.38f, 0.34f, 0.30f}));
     v.push_back(MakePlanet("イダ", "Ida", 15.7, 0.0, 4.1e16, 0, 0, 0, 0, 0, 0, 168.76, -87.12, 4.634 / 24,

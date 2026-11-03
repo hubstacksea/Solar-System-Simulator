@@ -4,6 +4,14 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.27.0 (2026-11-03)
+
+- Spacecraft voyages: near a planet or asteroid, the map at the top right switches to a close-up centered on that body
+- Look around during a spacecraft voyage by dragging the mouse, with the arrow keys or by touch (the view returns to the automatic direction 3 seconds after you stop)
+- Gaspra and Ida now have their real shapes instead of ellipsoids (Stooke's shape models, from Galileo images)
+- Share links now include a zoomed-in view (for example Jupiter as Galileo saw it, or asteroid flybys)
+- Time now stops at the edge of the supported range (3000 BC to AD 2999) with a notice instead of running past it
+
 ## 2.26.1 (2026-11-03)
 
 - A small map at the top right during spacecraft voyages: the solar system from above with the path flown so far and ahead, the scene locations and the current position (F3 toggles it)

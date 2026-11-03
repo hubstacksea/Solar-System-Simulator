@@ -276,6 +276,13 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
     s.ref = app.voyProbe;
     s.speed = 0;
     s.thrusting = false;
+    if (app.voyLookYaw != 0 || app.voyLookPitch != 0) {   // 見回している分だけ向きを回す（探査機は画面の同じ所に残る）
+        V3 right = Cross(dir, Y_UP);
+        right = Len(right) > 1e-6 ? Norm(right) : V3(1, 0, 0);
+        V3 up = Cross(right, dir);
+        double y = app.voyLookYaw, p = app.voyLookPitch;
+        dir = Norm((dir * std::cos(y) + right * std::sin(y)) * std::cos(p) + up * std::sin(p));
+    }
     s.q = QuatFromBasis(dir, Y_UP);
     s.local = ShipFwd(s) * -0.032 - ShipRight(s) * 0.009 - ShipUp(s) * 0.005;
 }
@@ -306,6 +313,7 @@ static V3 VoyageAimDir(const App& app) {
     return Len(p.pos - app.B[B_SUN].pos) > 1e-6 ? Norm(app.voyAim) : V3(1, 0, 0);   // 目標のない巡航は今の向きのまま
 }
 
+static void PrepareVoyageLocal(App& app, int k);
 // 時刻 t に応じた時間の速さと、出す知らせを決める
 static void UpdateVoyageRate(App& app) {
     const double day = 86400.0;
@@ -317,6 +325,9 @@ static void UpdateVoyageRate(App& app) {
         if (std::fabs(delta) < VOY_CARD_LEAD_SEC) card = (int)k;
     }
     if (app.voyDone) rate = 1;
+    // 拡大図の軌跡は、場面に近づいた時に一度だけ求める（巡航の速さで 1 日以内）
+    for (size_t k = 0; k < app.voySteps.size(); k++)
+        if (!app.voyLocal[k].ready && std::fabs(app.tDays - app.voySteps[k].t) < 3.0) PrepareVoyageLocal(app, (int)k);
     if (card < 0 && app.voyDone) card = (int)app.voySteps.size() - 1;
     app.voyRate = rate;
     app.voyCard = card;
@@ -361,6 +372,8 @@ static bool StartVoyage(App& app, int i, int scene, double t) {
     app.voyProbe = i;
     app.voySteps = steps;
     app.voyLength = length;
+    app.voyLocal.assign(steps.size(), App::VoyLocal());
+    app.voyLookYaw = app.voyLookPitch = app.voyLookHold = 0;
     app.cockpit = true;       // 自機は描かない
     app.paused = false;
     app.timeIdx = 0;
@@ -425,6 +438,14 @@ static void VoyageSkip(App& app, int dir) {
 // 毎フレーム: 時間の速さを決め、カメラを探査機に付ける
 static void UpdateVoyage(App& app, double dt) {
     if (!app.voyageOn) return;
+    // 見回した向きは、操作をやめて 3 秒たつと滑らかに自動の向きへ戻る
+    if (app.voyLookHold > 0) app.voyLookHold -= dt;
+    else {
+        double k = std::exp(-dt * 2.0);
+        app.voyLookYaw *= k;
+        app.voyLookPitch *= k;
+        if (std::fabs(app.voyLookYaw) < 1e-4 && std::fabs(app.voyLookPitch) < 1e-4) app.voyLookYaw = app.voyLookPitch = 0;
+    }
     double tEnd = app.voySteps.back().t;
     if (!app.voyDone && app.tDays >= tEnd) {
         // データの終わりで探査機が消える時は、その場で時間を止める。飛び続ける時は少し見せてから完了に
@@ -550,11 +571,88 @@ static Rectangle VoyageMapRect(const Cam& c) {
     return {c.W - s - 10, 10, s, s};
 }
 
+// 天体の近くの拡大図に切り替える場面（太陽と、天体のない場面は除く）。場面の前後 span 日の間
+static int VoyageLocalStep(const App& app) {
+    for (size_t k = 0; k < app.voySteps.size(); k++) {
+        const VoyageStep& st = app.voySteps[k];
+        if (st.body <= B_SUN || !app.voyLocal[k].ready) continue;
+        if (std::fabs(app.tDays - st.t) < app.voyLocal[k].span) return (int)k;
+    }
+    return -1;
+}
+
+// 場面 k の拡大図の軌跡を求める: 最接近の距離の数倍まで離れる時間の範囲で、天体から見た探査機の位置
+static void PrepareVoyageLocal(App& app, int k) {
+    App::VoyLocal& L = app.voyLocal[k];
+    if (L.ready) return;
+    L.ready = true;
+    const VoyageStep& st = app.voySteps[k];
+    if (st.body <= B_SUN) return;
+    std::vector<Body> B = app.B;
+    for (Body& b : B) b.orbit.clear();
+    auto relAt = [&](double t) {
+        UpdateBodies(B, t);
+        return B[app.voyProbe].pos - B[st.body].pos;
+    };
+    // 最接近の距離の 4 倍（地球の出発・脱出は重力圏の半径まで）離れるまでの時間を、前後それぞれ探す
+    double d0 = std::max(Len(relAt(st.t)), app.B[st.body].d.radius * 2);
+    double reach = st.kind == VS_LAUNCH || st.kind == VS_ESCAPE ? app.B[B_EARTH].soi * 1.3 : d0 * 4;
+    double t0 = app.voySteps.front().t, t1 = app.voySteps.back().t;
+    auto edge = [&](double dir) {
+        double h = 1.0 / 1440;   // 1 分から倍々に
+        while (h < 60 && Len(relAt(std::max(t0, std::min(t1, st.t + dir * h)))) < reach) h *= 2;
+        return std::min(h, 60.0);
+    };
+    double before = std::min(edge(-1), st.t - t0), after = std::min(edge(1), t1 - st.t);
+    if (st.kind == VS_LAUNCH) before = 0;
+    L.span = std::max(before, after);
+    const int N = 400;
+    for (int j = 0; j <= N; j++) {
+        double t = st.t - before + (before + after) * j / N;
+        L.t.push_back(t);
+        L.rel.push_back(relAt(t));
+    }
+}
+
 static void DrawVoyageMap(const App& app) {
     if (!app.voyMap || app.voyTrack.empty()) return;
     const Cam& c = app.cam;
     Rectangle r = VoyageMapRect(c);
-    DrawRectangleRounded(r, 0.05f, 6, {0, 8, 20, 238});
+    int ls = VoyageLocalStep(app);
+    if (ls >= 0) {   // 天体の近く: その天体を中心にした拡大図
+        const App::VoyLocal& L = app.voyLocal[ls];
+        const Body& o = app.B[app.voySteps[ls].body];
+        DrawRectangleRounded(r, 0.05f, 6, {0, 8, 20, 250});
+        DrawRectangleRoundedLinesEx(r, 0.05f, 6, 1.2f, {90, 130, 180, 200});
+        double range = o.d.radius * 1.5;
+        for (const V3& p : L.rel) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));
+        range *= 1.08;
+        float cx = r.x + r.width * 0.5f, cy = r.y + r.height * 0.5f + 6, R = r.width * 0.5f - 10;
+        double k = R / range;
+        auto proj = [&](V3 p) { return Vector2{(float)(cx + p.x * k), (float)(cy + p.z * k)}; };
+        Rectangle in = {r.x + 2, r.y + 2, r.width - 4, r.height - 4};
+        DrawCircleV({cx, cy}, std::max(2.5f, (float)(o.d.radius * k)), BodyColor(o, 0.9f));
+        for (size_t j = 1; j < L.rel.size(); j++) {
+            Vector2 a = proj(L.rel[j - 1]), b = proj(L.rel[j]);
+            if (!CheckCollisionPointRec(a, in) || !CheckCollisionPointRec(b, in)) continue;
+            bool past = L.t[j] <= app.tDays;
+            DrawLineEx(a, b, past ? 1.8f : 1.0f, past ? Color{255, 196, 120, 230} : Color{255, 196, 120, 70});
+        }
+        Vector2 me = proj(app.B[app.voyProbe].pos - o.pos);
+        if (CheckCollisionPointRec(me, in)) {
+            DrawCircleV(me, 3.0f, {120, 255, 170, 255});
+            DrawCircleLinesV(me, 4.0f + 2.0f * (float)std::fabs(std::sin(GetTime() * 3)), {120, 255, 170, 220});
+        }
+        char b[96];
+        snprintf(b, sizeof b, T(UI_VOY_MAP_NEAR), TR(o.d.jp, o.d.en));
+        Txt(b, r.x + 8, r.y + 5, 13, {170, 200, 230, 255});
+        double unit = std::pow(10.0, std::floor(std::log10(range * 0.6)));
+        float bw = (float)(unit * k);
+        DrawLineEx({r.x + 10, r.y + r.height - 10}, {r.x + 10 + bw, r.y + r.height - 10}, 1.5f, {170, 200, 230, 220});
+        Txt(FmtDist(unit).c_str(), r.x + 14 + bw, r.y + r.height - 18, 12, {170, 200, 230, 220});
+        return;
+    }
+    DrawRectangleRounded(r, 0.05f, 6, {0, 8, 20, 250});
     DrawRectangleRoundedLinesEx(r, 0.05f, 6, 1.2f, {90, 130, 180, 200});
     double range = 0;
     for (const V3& p : app.voyTrack) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));

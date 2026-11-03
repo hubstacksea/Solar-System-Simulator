@@ -123,9 +123,11 @@
     X(VOY_REACHED, "%sに到達（最接近）", "Reached %s (closest approach)") \
     X(VOY_IMPACT, "%sに衝突", "Impact on %s") \
     X(VOY_SUMMARY, "出発から %.1f 年、スイングバイ %d 回、飛行距離 約 %.1f AU", "%.1f years since launch, gravity assists: %d, about %.1f AU flown") \
-    X(VOY_KEYS, "Enter : 次の場面   Shift+Enter : 前の場面   P : 停止   F2 : この場面のリンク   F3 : 全体図   Esc : やめる", "Enter : next scene   Shift+Enter : previous   P : pause   F2 : link to this scene   F3 : map   Esc : quit") \
+    X(VOY_KEYS, "Enter : 次の場面   Shift+Enter : 前の場面   P : 停止   F2 : この場面のリンク   F3 : 全体図   ドラッグ・矢印 : 見回す   Esc : やめる", "Enter : next scene   Shift+Enter : previous   P : pause   F2 : link to this scene   F3 : map   drag / arrows : look around   Esc : quit") \
     X(VOY_KEYS_DONE, "旅は完了しました   Enter / Esc : 終わる   F2 : この場面のリンク", "Voyage complete   Enter / Esc : finish   F2 : link to this scene") \
     X(VOY_MAP, "全体図（真上から）", "Map (from above)") \
+    X(VOY_MAP_NEAR, "%sのまわり（真上から）", "Around %s (from above)") \
+    X(TIME_LIMIT, "ここが計算できる範囲の端です（紀元前 3000 年〜西暦 2999 年）。時間を止めました", "This is the edge of the supported range (3000 BC to AD 2999). Time is paused") \
     X(VOY_STOPPED, "探査機の旅を終えました", "Voyage ended") \
     X(VOY_NOT_FOUND, "指定された探査機の旅が見つかりません", "That spacecraft voyage was not found") \
     X(EV_PROBE_TITLE, "探査機のできごと", "Spacecraft events") \

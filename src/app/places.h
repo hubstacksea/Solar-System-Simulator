@@ -160,6 +160,10 @@ static std::string ShareQuery(const App& app) {
     char q[700];
     snprintf(q, sizeof q, "?t=%.6f&at=%s&tg=%s&ts=%d%s", app.tDays, UrlEncode(at).c_str(), UrlEncode(app.B[app.target].d.en).c_str(),
              app.timeIdx, app.paused ? "&p=1" : "");
+    if (app.eventZoom) {   // ズームした視野（ガリレオの見た木星、小惑星への接近など）
+        size_t n = strlen(q);
+        snprintf(q + n, sizeof q - n, "&fov=%.4g", app.eventZoomFov);
+    }
     return q;
 }
 
@@ -232,6 +236,13 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
         double t = atof(kv["t"].c_str());
         if (InDateRange(t)) app.tDays = t;
         UpdateBodies(app.B, app.tDays);
+    }
+    if (kv.count("fov")) {
+        double f = atof(kv["fov"].c_str());
+        if (std::isfinite(f) && f >= 0.05 && f < 60) {
+            app.eventZoom = true;
+            app.eventZoomFov = f;
+        }
     }
     if (kv.count("ts")) app.timeIdx = std::max(0, std::min(TIME_SCALE_COUNT - 1, atoi(kv["ts"].c_str())));
     app.paused = kv["p"] == "1";
