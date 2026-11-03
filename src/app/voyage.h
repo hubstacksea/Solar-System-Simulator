@@ -370,27 +370,32 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
 }
 
 // 今見たい方向: 知らせを出しているできごとの天体、なければ次のできごとの天体、それもなければ進む向き
-static V3 VoyageAimDir(const App& app) {
+static V3 VoyageAimDir(const App& app, int* bodyOut = nullptr) {
     const Body& p = app.B[app.voyProbe];
     int body = -1;
     if (app.voyCard >= 0) body = app.voySteps[app.voyCard].body;
     if (body < 0)
         for (const VoyageStep& st : app.voySteps)
             if (st.t > app.tDays && st.body >= 0) { body = st.body; break; }
+    if (bodyOut) *bodyOut = body;
     if (body >= 0) {
         const Body& o = app.B[body];
         V3 d = o.pos - p.pos;
-        // 近くで夜側を通る時は、昼側の縁（三日月形に光る部分）を正面にする。遠い時や恒星は中心を
-        if (body != B_SUN && Len(d) < o.d.radius * 8 && Len(d) > 1e-6) {
+        double r = Len(d);
+        // 近くで夜側を通る時は、昼側の縁（三日月形に光る部分）の方を見る。夜側の深さと近さに応じて中心から縁へ
+        // 連続的に寄せる（切り替えで画面が飛ばないように）。遠い時や恒星は中心を
+        if (body != B_SUN && r > 1e-6 && r < o.d.radius * 8) {
             V3 out = Norm(d * -1.0), toSun = Norm(app.B[B_SUN].pos - o.pos);
             double facing = Dot(out, toSun);
-            if (facing < 0) {
-                V3 limb = o.pos + Norm(toSun - out * facing) * o.d.radius;
-                V3 dl = limb - p.pos;
-                if (Len(dl) > 1e-6) return Norm(dl);
+            V3 side = toSun - out * facing;
+            if (facing < 0 && Len(side) > 1e-9) {
+                auto smooth = [](double x) { x = std::max(0.0, std::min(1.0, x)); return x * x * (3 - 2 * x); };
+                double w = smooth(-facing / 0.3) * smooth((o.d.radius * 8 - r) / (o.d.radius * 2));
+                V3 aim = o.pos + Norm(side) * (o.d.radius * w) - p.pos;
+                if (Len(aim) > 1e-6) return Norm(aim);
             }
         }
-        if (Len(d) > 1e-6) return Norm(d);
+        if (r > 1e-6) return Norm(d);
     }
     return Len(p.pos - app.B[B_SUN].pos) > 1e-6 ? Norm(app.voyAim) : V3(1, 0, 0);   // 目標のない巡航は今の向きのまま
 }
@@ -433,7 +438,8 @@ static void VoyageJump(App& app, double t) {
     app.voyDone = false;
     UpdateBodies(app.B, app.tDays);
     UpdateVoyageRate(app);
-    app.voyAim = VoyageAimDir(app);
+    app.voyAim = VoyageAimDir(app, &app.voyAimBody);
+    app.voyAimPrevWant = app.voyAim;
     PlaceVoyageCamera(app, app.voyAim);
 }
 
@@ -552,11 +558,37 @@ static void UpdateVoyage(App& app, double dt) {
         }
     }
     UpdateVoyageRate(app);
-    V3 want = VoyageAimDir(app);
-    // 大きく向きを変える時は滑らかに振り向く。追いかけている天体の小さな動き（近くを速く通る小惑星など）にはそのまま付いていく
-    double k = std::min(1.0, dt * 1.2);
-    V3 mix = app.voyAim * (1 - k) + want * k;
-    app.voyAim = Dot(app.voyAim, want) > std::cos(10 * DEG) ? want : Len(mix) > 1e-6 ? Norm(mix) : want;
+    int aimBody;
+    V3 want = VoyageAimDir(app, &aimBody);
+    // カメラの向き: 同じ天体を追っている間は、その天体の見かけの動きの分だけ回す（毎秒 20° まで。通過の直後に
+    // 時間が速まって天体が後ろへ飛び去る時に、振り回されないように）。残りのずれは 0.4 秒ほどで滑らかに詰める
+    // （毎秒 40° まで）。見る天体が変わった時も、この詰め方で振り向く
+    auto rotateToward = [](V3 v, V3 to, double maxAngle) {
+        double c = std::max(-1.0, std::min(1.0, Dot(v, to)));
+        double ang = std::acos(c);
+        if (ang < 1e-9) return v;
+        V3 perp = to - v * c;
+        if (Len(perp) < 1e-12) return v;
+        double step = std::min(ang, maxAngle);
+        return Norm(v * std::cos(step) + Norm(perp) * std::sin(step));
+    };
+    V3 aim = app.voyAim;
+    if (aimBody == app.voyAimBody && aimBody >= 0) {
+        double moved = std::acos(std::max(-1.0, std::min(1.0, Dot(app.voyAimPrevWant, want))));
+        if (moved > 1e-9) {   // 前のフレームの見たい向きから今の見たい向きへの回転を、今の向きにも掛ける
+            V3 axis = Cross(app.voyAimPrevWant, want);
+            if (Len(axis) > 1e-12) {
+                axis = Norm(axis);
+                double a = std::min(moved, 20 * DEG * dt);
+                aim = aim * std::cos(a) + Cross(axis, aim) * std::sin(a) + axis * (Dot(axis, aim) * (1 - std::cos(a)));
+                aim = Norm(aim);
+            }
+        }
+    }
+    double gap = std::acos(std::max(-1.0, std::min(1.0, Dot(aim, want))));
+    app.voyAim = rotateToward(aim, want, std::min(gap * (1 - std::exp(-dt / 0.4)), 40 * DEG * dt));
+    app.voyAimBody = aimBody;
+    app.voyAimPrevWant = want;
     app.target = app.voyCard >= 0 && app.voySteps[app.voyCard].body >= 0 ? app.voySteps[app.voyCard].body : app.voyProbe;
     PlaceVoyageCamera(app, app.voyAim);
     // 小惑星のそば: 小さくて普通の視野では点にしか見えないので、画面の 4 分の 1 ほどの大きさになるまでズームする
@@ -717,46 +749,46 @@ static void PrepareVoyageLocal(App& app, int k) {
     }
 }
 
-static void DrawVoyageMap(const App& app) {
-    if (!app.voyMap || app.voyTrack.empty()) return;
-    const Cam& c = app.cam;
-    Rectangle r = VoyageMapRect(c);
-    int ls = VoyageLocalStep(app);
-    if (ls >= 0) {   // 天体の近く: その天体を中心にした拡大図
-        const App::VoyLocal& L = app.voyLocal[ls];
-        const Body& o = app.B[app.voySteps[ls].body];
-        DrawRectangleRounded(r, 0.05f, 6, {0, 8, 20, 250});
-        DrawRectangleRoundedLinesEx(r, 0.05f, 6, 1.2f, {90, 130, 180, 200});
-        double range = o.d.radius * 1.5;
-        for (const V3& p : L.rel) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));
-        range *= 1.08;
-        float cx = r.x + r.width * 0.5f, cy = r.y + r.height * 0.5f + 6, R = r.width * 0.5f - 10;
-        double k = R / range;
-        auto proj = [&](V3 p) { return Vector2{(float)(cx + p.x * k), (float)(cy + p.z * k)}; };
-        Rectangle in = {r.x + 2, r.y + 2, r.width - 4, r.height - 4};
-        DrawCircleV({cx, cy}, std::max(2.5f, (float)(o.d.radius * k)), BodyColor(o, 0.9f));
-        for (size_t j = 1; j < L.rel.size(); j++) {
-            Vector2 a = proj(L.rel[j - 1]), b = proj(L.rel[j]);
-            if (!CheckCollisionPointRec(a, in) || !CheckCollisionPointRec(b, in)) continue;
-            bool past = L.t[j] <= app.tDays;
-            DrawLineEx(a, b, past ? 1.8f : 1.0f, past ? Color{255, 196, 120, 230} : Color{255, 196, 120, 70});
-        }
-        Vector2 me = proj(app.B[app.voyProbe].pos - o.pos);
-        if (CheckCollisionPointRec(me, in)) {
-            DrawCircleV(me, 3.0f, {120, 255, 170, 255});
-            DrawCircleLinesV(me, 4.0f + 2.0f * (float)std::fabs(std::sin(GetTime() * 3)), {120, 255, 170, 220});
-        }
-        char b[96];
-        snprintf(b, sizeof b, T(UI_VOY_MAP_NEAR), TR(o.d.jp, o.d.en));
-        Txt(b, r.x + 8, r.y + 5, 13, {170, 200, 230, 255});
-        double unit = std::pow(10.0, std::floor(std::log10(range * 0.6)));
-        float bw = (float)(unit * k);
-        DrawLineEx({r.x + 10, r.y + r.height - 10}, {r.x + 10 + bw, r.y + r.height - 10}, 1.5f, {170, 200, 230, 220});
-        Txt(FmtDist(unit).c_str(), r.x + 14 + bw, r.y + r.height - 18, 12, {170, 200, 230, 220});
-        return;
+// 色の透明度に掛ける（右上の図の切り替えのフェード）
+static Color Alpha(Color c, float a) {
+    c.a = (unsigned char)(c.a * std::max(0.0f, std::min(1.0f, a)));
+    return c;
+}
+
+// 天体の近くの拡大図（場面 ls の天体を中心に）。fa は透明度
+static void DrawVoyageMapLocal(const App& app, Rectangle r, int ls, float fa) {
+    const App::VoyLocal& L = app.voyLocal[ls];
+    const Body& o = app.B[app.voySteps[ls].body];
+    double range = o.d.radius * 1.5;
+    for (const V3& p : L.rel) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));
+    range *= 1.08;
+    float cx = r.x + r.width * 0.5f, cy = r.y + r.height * 0.5f + 6, R = r.width * 0.5f - 10;
+    double k = R / range;
+    auto proj = [&](V3 p) { return Vector2{(float)(cx + p.x * k), (float)(cy + p.z * k)}; };
+    Rectangle in = {r.x + 2, r.y + 2, r.width - 4, r.height - 4};
+    DrawCircleV({cx, cy}, std::max(2.5f, (float)(o.d.radius * k)), Alpha(BodyColor(o, 0.9f), fa));
+    for (size_t j = 1; j < L.rel.size(); j++) {
+        Vector2 a = proj(L.rel[j - 1]), b = proj(L.rel[j]);
+        if (!CheckCollisionPointRec(a, in) || !CheckCollisionPointRec(b, in)) continue;
+        bool past = L.t[j] <= app.tDays;
+        DrawLineEx(a, b, past ? 1.8f : 1.0f, past ? Alpha({255, 196, 120, 230}, fa) : Alpha({255, 196, 120, 70}, fa));
     }
-    DrawRectangleRounded(r, 0.05f, 6, {0, 8, 20, 250});
-    DrawRectangleRoundedLinesEx(r, 0.05f, 6, 1.2f, {90, 130, 180, 200});
+    Vector2 me = proj(app.B[app.voyProbe].pos - o.pos);
+    if (CheckCollisionPointRec(me, in)) {
+        DrawCircleV(me, 3.0f, Alpha({120, 255, 170, 255}, fa));
+        DrawCircleLinesV(me, 4.0f + 2.0f * (float)std::fabs(std::sin(GetTime() * 3)), Alpha({120, 255, 170, 220}, fa));
+    }
+    char b[96];
+    snprintf(b, sizeof b, T(UI_VOY_MAP_NEAR), TR(o.d.jp, o.d.en));
+    Txt(b, r.x + 8, r.y + 5, 13, Alpha({170, 200, 230, 255}, fa));
+    double unit = std::pow(10.0, std::floor(std::log10(range * 0.6)));
+    float bw = (float)(unit * k);
+    DrawLineEx({r.x + 10, r.y + r.height - 10}, {r.x + 10 + bw, r.y + r.height - 10}, 1.5f, Alpha({170, 200, 230, 220}, fa));
+    Txt(FmtDist(unit).c_str(), r.x + 14 + bw, r.y + r.height - 18, 12, Alpha({170, 200, 230, 220}, fa));
+}
+
+// 全行程の全体図。fa は透明度
+static void DrawVoyageMapWhole(const App& app, Rectangle r, float fa) {
     double range = 0;
     for (const V3& p : app.voyTrack) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));
     range = std::max(range * 1.08, 0.05 * AU_KM);
@@ -781,40 +813,71 @@ static void DrawVoyageMap(const App& app) {
         Vector2 prev = proj(b.orbit[0]);
         for (size_t j = 1; j < b.orbit.size(); j++) {
             Vector2 q = proj(b.orbit[j]);
-            line(prev, q, 1.0f, col);
+            line(prev, q, 1.0f, Alpha(col, fa));
             prev = q;
         }
         col.a = 230;
-        dot(proj(b.pos - sun), 2.5f, col);
+        dot(proj(b.pos - sun), 2.5f, Alpha(col, fa));
     }
-    DrawCircleV({cx, cy}, 3.5f, {255, 220, 120, 255});
+    DrawCircleV({cx, cy}, 3.5f, Alpha({255, 220, 120, 255}, fa));
     // 探査機の道
     size_t now = 0;
     while (now + 1 < app.voyTrackT.size() && app.voyTrackT[now + 1] <= app.tDays) now++;
     for (size_t j = 1; j < app.voyTrack.size(); j++) {
         bool past = j <= now;
         line(proj(app.voyTrack[j - 1]), proj(app.voyTrack[j]), past ? 1.8f : 1.0f,
-                   past ? Color{255, 196, 120, 230} : Color{255, 196, 120, 70});
+                   past ? Alpha({255, 196, 120, 230}, fa) : Alpha({255, 196, 120, 70}, fa));
     }
     // 場面の場所（済んだものは白、これからのものは灰色。知らせを出している場面は黄色）
     for (size_t j = 0; j < app.voyStepPos.size(); j++) {
         bool done = app.voySteps[j].t <= app.tDays;
         Color col = (int)j == app.voyCard ? Color{255, 220, 80, 255} : done ? Color{230, 235, 245, 220} : Color{130, 140, 160, 200};
-        dot(proj(app.voyStepPos[j]), (int)j == app.voyCard ? 3.5f : 2.2f, col);
+        dot(proj(app.voyStepPos[j]), (int)j == app.voyCard ? 3.5f : 2.2f, Alpha(col, fa));
     }
     // 今の位置（点滅する輪）
     Vector2 me = proj(app.B[app.voyProbe].pos - sun);
     float pulse = 4.0f + 2.0f * (float)std::fabs(std::sin(GetTime() * 3));
-    dot(me, 3.0f, {120, 255, 170, 255});
-    if (CheckCollisionPointRec(me, in)) DrawCircleLinesV(me, pulse, {120, 255, 170, 220});
+    dot(me, 3.0f, Alpha({120, 255, 170, 255}, fa));
+    if (CheckCollisionPointRec(me, in)) DrawCircleLinesV(me, pulse, Alpha({120, 255, 170, 220}, fa));
     // 見出しと縮尺（1 / 10 AU の棒）
-    Txt(T(UI_VOY_MAP), r.x + 8, r.y + 5, 13, {170, 200, 230, 255});
+    Txt(T(UI_VOY_MAP), r.x + 8, r.y + 5, 13, Alpha({170, 200, 230, 255}, fa));
     double unit = range > 8 * AU_KM ? 10 * AU_KM : range > 0.8 * AU_KM ? AU_KM : 0.1 * AU_KM;
     float bw = (float)(unit * k);
     char b[32];
     snprintf(b, sizeof b, "%g AU", unit / AU_KM);
-    DrawLineEx({r.x + 10, r.y + r.height - 10}, {r.x + 10 + bw, r.y + r.height - 10}, 1.5f, {170, 200, 230, 220});
-    Txt(b, r.x + 14 + bw, r.y + r.height - 18, 12, {170, 200, 230, 220});
+    DrawLineEx({r.x + 10, r.y + r.height - 10}, {r.x + 10 + bw, r.y + r.height - 10}, 1.5f, Alpha({170, 200, 230, 220}, fa));
+    Txt(b, r.x + 14 + bw, r.y + r.height - 18, 12, Alpha({170, 200, 230, 220}, fa));
+}
+
+// 右上の小さな図。全体図と拡大図が切り替わる時は 0.6 秒かけて重ねて入れ替える
+static void DrawVoyageMap(const App& app) {
+    if (!app.voyMap || app.voyTrack.empty()) return;
+    Rectangle r = VoyageMapRect(app.cam);
+    DrawRectangleRounded(r, 0.05f, 6, {0, 8, 20, 250});
+    DrawRectangleRoundedLinesEx(r, 0.05f, 6, 1.2f, {90, 130, 180, 200});
+    // 表示中の図（-1: 全体図, 0 以上: その場面の拡大図）と、フェードで消えていく図。旅が変わったら最初から
+    static int shown = -2, fading = -2, key = -1;
+    static double fadeStart = -1e9;
+    int mode = VoyageLocalStep(app);
+    int k = app.voyProbe * 16 + app.voyLeg;
+    if (key != k || shown == -2) {
+        key = k;
+        shown = fading = mode;
+        fadeStart = -1e9;
+    }
+    if (mode != shown) {
+        fading = shown;
+        shown = mode;
+        fadeStart = GetTime();
+    }
+    float f = (float)std::min(1.0, (GetTime() - fadeStart) / 0.6);
+    f = f * f * (3 - 2 * f);
+    auto draw = [&](int m, float a) {
+        if (m >= 0 && m < (int)app.voySteps.size()) DrawVoyageMapLocal(app, r, m, a);
+        else DrawVoyageMapWhole(app, r, a);
+    };
+    if (f < 1) draw(fading, 1 - f);
+    draw(shown, f < 1 ? f : 1.0f);
 }
 
 static void DrawVoyageHud(const App& app) {

@@ -627,6 +627,19 @@ int main(int argc, char** argv) {
             if (sfx::MusicUpdate(track, vol, (float)dt)) Toast(app, T((UiId)(UI_MUSIC_0 + track)));
         }
         UpdateCamera(app);
+        if (opt.voyageTrace && app.voyageOn) {   // 前のフレームからの向き・探査機から見た位置・視野の変化
+            static V3 pf, pl;
+            static double pfov = 0;
+            static bool have = false;
+            V3 f = app.cam.fwd, l = app.ship.local;
+            if (have)
+                printf("VOYTRACE %s card=%d turn=%.3f deg move=%.2f m fov=%.2f->%.2f rate=%.0f\n", FmtDate(app.tDays).c_str(), app.voyCard,
+                       std::acos(std::max(-1.0, std::min(1.0, Dot(pf, f)))) / DEG, Len(l - pl) * 1000, pfov / DEG, app.cam.fovy / DEG, app.voyRate);
+            pf = f;
+            pl = l;
+            pfov = app.cam.fovy;
+            have = true;
+        }
         if (app.toastTime > 0) app.toastTime -= dt;
 
 #if defined(__EMSCRIPTEN__)

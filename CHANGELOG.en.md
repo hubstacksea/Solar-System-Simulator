@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.28.3 (2026-11-03)
+
+- Spacecraft voyages: the camera no longer snaps between scenes or whips around just after a gravity assist; it turns smoothly (with a limit on turning speed, and a continuous shift toward the sunlit limb on night-side passes)
+- Spacecraft voyages: the top-right map now fades between the whole-voyage map and the close-up map
+- New checking option `--voyage-trace` (prints the per-frame change in camera direction, position and field of view during a voyage)
+
 ## 2.28.2 (2026-11-03)
 
 - Reverted the 2.28.1 change to raylib (it only changed how the app fails in rare environments that cannot open a window, which did not justify modifying an external library)

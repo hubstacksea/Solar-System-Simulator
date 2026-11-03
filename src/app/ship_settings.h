@@ -180,6 +180,7 @@ struct Options {
     bool saveBookmark = false;  // 起動直後の位置をブックマーク（確認用）
     int gotoBookmark = -1;      // 1 秒後にブックマークへワープ（確認用、1〜）
     bool dumpMoons = false;     // 衛星の母天体からの相対位置を出力して終了（確認用）
+    bool voyageTrace = false;   // 探査機の旅の毎フレームのカメラの向き・位置・視野の変化を出力する（確認用）
     bool voyageTest = false;    // 探査機の旅の場面の移動・リンク・終了を順に試して出力する（確認用）
     bool listVoyages = false;   // 探査機の旅の行程を出力して終了（確認用）
     bool listEvents = false;    // 天文イベントを出力して終了（確認用）
@@ -230,6 +231,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--list-events") o.listEvents = true;
         else if (a == "--list-voyages") o.listVoyages = true;
         else if (a == "--voyage-test") o.voyageTest = true;
+        else if (a == "--voyage-trace") o.voyageTrace = true;
         else if (a == "--show-events") o.showEvents = true;
         else if (a == "--events-page") o.eventsPage = atoi(next());
         else if (a == "--show-date") o.showDate = true;

@@ -120,6 +120,8 @@ struct App {
     double voyCruise = 86400, voyRate = 1, voyLength = 0;
     bool voyDone = false, voySavedCockpit = false, voySavedPhysics = false;
     V3 voyAim = V3(0, 0, -1);
+    int voyAimBody = -1;                  // カメラが追っている天体と、前のフレームでの見たい向き（滑らかに追うため）
+    V3 voyAimPrevWant = V3(0, 0, -1);
     std::vector<V3> voyTrack;             // 旅の全行程の太陽中心の位置（右上の小さな全体図に描く）
     std::vector<double> voyTrackT;
     std::vector<V3> voyStepPos;           // 各場面の太陽中心の位置
