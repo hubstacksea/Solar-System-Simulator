@@ -576,7 +576,7 @@ static void LoadProbeTracks() {
                 double tp[4];
                 float v[3];
                 if (!rd(tp, sizeof tp) || !rd(v, sizeof v)) return;
-                sg.t.push_back(tp[0]);
+                sg.t.push_back(tp[0] - DeltaTDays(tp[0]));   // Horizons の時刻は力学時なので、シミュレータの世界時に直す
                 sg.p.push_back(ecl(tp + 1));
                 sg.v.push_back(EclToRender(v[0] * 86400.0, v[1] * 86400.0, v[2] * 86400.0));
             }
@@ -830,11 +830,18 @@ static std::vector<Body> InitBodies() {
         if (m.d.moonPeriod2 <= 0) continue;
         for (const Body& pr : B) {
             if (pr.d.probe < 0 || pr.d.probe >= (int)g_probes.size() || !pr.d.probeEnd || g_probes[pr.d.probe].segs.empty()) continue;
-            const ProbeSeg& sg = g_probes[pr.d.probe].segs.back();
+            ProbeSeg& sg = g_probes[pr.d.probe].segs.back();
             if (sg.body != m.d.parent) continue;
             V3 r = sg.p.back() + sg.v.back() * (m.d.moonChangeT - sg.t.back());
             double th = std::atan2(Dot(r, m.oQ), Dot(r, m.oN));
             m.d.moonPhase = (th - 2 * PI * m.d.moonChangeT / m.d.moonPeriod) / DEG;
+            // 軌跡のデータは衝突の少し前で終わるので、衝突までまっすぐ飛ぶ点を足す
+            if (sg.t.back() < m.d.moonChangeT) {
+                V3 v = sg.v.back();
+                sg.t.push_back(m.d.moonChangeT);
+                sg.p.push_back(r);
+                sg.v.push_back(v);
+            }
         }
     }
     for (ProbeTrack& tr : g_probes)

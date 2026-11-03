@@ -9,7 +9,7 @@ enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TO
                  EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH, EV_ECLIPSE_GROUND, EV_METEOR,
                  EV_PERIASTRON, EV_VIEW,   // 連星の近星点通過（body: 主星, body2: 伴星）、ツアーの眺め（body の近くから body2 の方を見る）
                  EV_HISTORY,               // 歴史上の日食・月食（moon: HISTORY の番号、body2: 食の種類、lat・lon: 史実の場所）
-                 EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT };
+                 EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT, EV_VOYAGE };
 struct AstroEvent {
     int kind = 0;
     double t = 0;          // 最大の時刻（J2000 からの日数）
@@ -19,6 +19,18 @@ struct AstroEvent {
     int body2 = -1;             // 惑星の接近: もう一方の惑星。地上から見る日食: 元の日食の種類
     double dist = 0;            // 最接近: 惑星の中心からの距離 km。彗星: 太陽か地球からの距離 km、
                                 // 太陽面通過: 太陽の中心からの距離（太陽の半径が 1）、接近: 角距離 deg、衝: 地球からの距離 km
+};
+
+// 探査機の旅（src/app/voyage.h）の場面
+enum VoyageStepKind { VS_LAUNCH, VS_ESCAPE, VS_SWINGBY, VS_FLYBY, VS_NEAR, VS_ARRIVE };
+struct VoyageStep {
+    int kind = VS_LAUNCH;
+    double t = 0;
+    int body = -1;
+    double dist = 0;          // km（中心から）
+    double vIn = 0, vOut = 0; // スイングバイの前後の太陽に対する速さ km/s
+    int count = 0;            // 到着: スイングバイの回数
+    int evKind = EV_ARRIVE;   // 到着: 到着の種類
 };
 
 struct App {
@@ -102,6 +114,15 @@ struct App {
     bool physics = false;                 // 重力モード（R キー）: 天体の重力を受けて飛ぶ（オフ: 機首の向きへ進むアーケード式）
     bool frameLock = false;               // 基準系を自機に固定（Shift+F）: 近くの天体と一緒に動かず、太陽に対してその場にとどまる
     bool tourOn = false;                  // 自動ツアー（U キー）
+    bool voyageOn = false;                // 探査機の旅
+    int voyProbe = -1, voyCard = -1;
+    std::vector<VoyageStep> voySteps;
+    double voyCruise = 86400, voyRate = 1, voyLength = 0;
+    bool voyDone = false, voySavedCockpit = false, voySavedPhysics = false;
+    V3 voyAim = V3(0, 0, -1);
+    std::string pendingVoyage, pendingScene;   // URL で指定された旅（起動の最後に始める）
+    double pendingVoyageT = NAN;
+    std::vector<AstroEvent> voyageEvents;
     int tourIdx = 0;
     double tourTime = 0;                  // 今の場面に着いてからの実時間 秒
     std::vector<AstroEvent> tourEvents;

@@ -95,7 +95,38 @@
     X(MUSIC_8, "♪ ベートーヴェン 交響曲第6番「田園」第1楽章 Skidmore College Orchestra (Musopen)", "Now playing: Beethoven, Symphony No. 6 \"Pastoral\", I - Skidmore College Orchestra (Musopen)") \
     X(MUSIC_9, "♪ ドビュッシー「月の光」 ピアノ: Laurens Goedhart (2011, CC BY 3.0)", "Now playing: Debussy, Clair de lune - Laurens Goedhart, piano (2011, CC BY 3.0)") \
     X(EV_TITLE, "天文イベント", "Astronomical events") \
-    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 彗星・連星 / 探査機 / 歴史    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / comets and binaries / spacecraft / history    Esc / K : close") \
+    X(EV_KEYS, "↑↓ : 選択    Enter : その日時・場所へワープ    Tab : 天文 / 彗星・連星 / 探査機 / 歴史 / 探査機の旅    Esc / K : 閉じる", "Up/Down : select    Enter : warp to that time and place    Tab : sky / comets and binaries / spacecraft / history / voyages    Esc / K : close") \
+    X(EV_VOYAGE_TITLE, "探査機の旅", "Spacecraft voyages") \
+    X(EV_VOYAGE_NOTE, "地球の出発から目標まで探査機のそばで追います（Enter で開始）。何もない間は時間を速め、できごとの時は等倍に", "Follow a spacecraft from Earth to its goal (Enter to start). Time speeds up in cruise and drops to real time at each event") \
+    X(EV_VOYAGE_D, "→ %s  %d 年", "to %s  %d") \
+    X(VOY_HEAD, "探査機の旅: %s", "Voyage of %s") \
+    X(VOY_DATE, "日時 %s", "Date %s") \
+    X(VOY_ELAPSED, "出発から %d 年 %d 日", "%d y %d d since launch") \
+    X(VOY_NEXT, "次: %s（あと %s）", "Next: %s (in %s)") \
+    X(VOY_DAYS, " 日", " days") \
+    X(VOY_STEP, "場面 %d / %d", "Scene %d / %d") \
+    X(VOY_RATE_MIN, "1 秒で %.0f 分", "%.0f min/s") \
+    X(VOY_RATE_H, "1 秒で %.1f 時間", "%.1f h/s") \
+    X(VOY_RATE_D, "1 秒で %.1f 日", "%.1f days/s") \
+    X(VOY_LAUNCH, "地球を出発", "Departing Earth") \
+    X(VOY_LAUNCH_D, "%s の旅が始まる", "The voyage of %s begins") \
+    X(VOY_ESCAPE, "地球の重力圏を脱出", "Leaving Earth's sphere of influence") \
+    X(VOY_ESCAPE_D, "地球から %s。ここから先は太陽の重力が主役になる。太陽に対する速さ 秒速 %.1f km", "%s from Earth; the Sun's gravity now dominates. Speed relative to the Sun: %.1f km/s") \
+    X(VOY_SWINGBY, "%sでスイングバイ", "Gravity assist at %s") \
+    X(VOY_SWINGBY_D, "高度 %s。太陽に対する速さが 秒速 %.1f km → %.1f km に", "Altitude %s. Speed relative to the Sun: %.1f → %.1f km/s") \
+    X(VOY_FLYBY, "小惑星%sに接近", "Flyby of asteroid %s") \
+    X(VOY_FLYBY_D, "中心から %s（実際の軌跡）。平均の直径 約 %.1f km", "%s from its center (actual trajectory). Mean diameter about %.1f km") \
+    X(VOY_PLANNED, "（予定）", " (planned)") \
+    X(VOY_NEAR, "%sの近くを通過", "Passing near %s") \
+    X(VOY_NEAR_D, "シミュレータの中の距離 %s（衛星の位置には誤差があり、実際の距離とは異なることがあります）", "%s in this simulator (moon positions are approximate, so the real distance may differ)") \
+    X(VOY_ARRIVED, "%sに到着", "Arrived at %s") \
+    X(VOY_REACHED, "%sに到達（最接近）", "Reached %s (closest approach)") \
+    X(VOY_IMPACT, "%sに衝突", "Impact on %s") \
+    X(VOY_SUMMARY, "出発から %.1f 年、スイングバイ %d 回、飛行距離 約 %.1f AU", "%.1f years since launch, gravity assists: %d, about %.1f AU flown") \
+    X(VOY_KEYS, "Enter : 次の場面   Shift+Enter : 前の場面   P : 停止   F2 : この場面のリンク   Esc : やめる", "Enter : next scene   Shift+Enter : previous   P : pause   F2 : link to this scene   Esc : quit") \
+    X(VOY_KEYS_DONE, "旅は完了しました   Enter / Esc : 終わる   F2 : この場面のリンク", "Voyage complete   Enter / Esc : finish   F2 : link to this scene") \
+    X(VOY_STOPPED, "探査機の旅を終えました", "Voyage ended") \
+    X(VOY_NOT_FOUND, "指定された探査機の旅が見つかりません", "That spacecraft voyage was not found") \
     X(EV_PROBE_TITLE, "探査機のできごと", "Spacecraft events") \
     X(EV_COMET_TITLE, "彗星・連星", "Comets and binary stars") \
     X(EV_HISTORY_TITLE, "歴史上の日食・月食・ハレー彗星", "Historic eclipses and Halley's Comet") \

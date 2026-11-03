@@ -359,6 +359,7 @@ static void DrawMarker(const App& app, int idx) {
     V3 rel = ViewRel(app, b.pos);
     double dist = Len(rel);
     double surf = SurfaceDist(b, c.pos);
+    if (app.voyageOn && idx == app.voyProbe) return;   // 乗っている探査機には印を付けない
     bool isTarget = idx == app.target;
     Color col = isTarget ? Color{255, 220, 80, 255} : BodyColor(b, 1.1f);
     std::string label = std::string(TR(b.d.jp, b.d.en)) + "  " + FmtDist(std::max(0.0, surf));
@@ -423,6 +424,7 @@ static void DrawMarkers(const App& app) {
         {0, c.H - 64, c.W, 64},                             // エンジン表示
     };
     if (app.autopilot) g_placed.push_back({c.W * 0.5f - 320, c.H - 118, 640, 40});  // 自動操縦表示
+    if (app.voyageOn) g_placed = {{0, 0, 480, 170}, {0, c.H - 210, std::min(c.W, 1040.0f), 210}};   // 探査機の旅の表示
     if (!app.cockpit) {  // 自機の上にラベルを重ねない
         Vector2 sp;
         V3 rel = c.shipRel;
@@ -1302,6 +1304,12 @@ static void DrawGroundView(const App& app) {
 static void DrawHUD(App& app) {
     const Cam& c = app.cam;
     if (app.photoMode > 0) {   // 写真モード: 一覧・入力欄と、切り替えの知らせだけ
+        DrawToast(app);
+        DrawModalPanels(app);
+        return;
+    }
+    if (app.voyageOn) {   // 探査機の旅: 自機の計器は出さない
+        DrawVoyageHud(app);
         DrawToast(app);
         DrawModalPanels(app);
         return;

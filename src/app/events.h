@@ -487,6 +487,26 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
                 out.push_back(ev);
                 continue;
             }
+            if (sg.body > B_PLUTO && !orbiter) {
+                // 小惑星のそばの短い区間: ほぼ直線なので点が両端しか残らないことがある。補間した軌跡を細かくたどる
+                auto f = [&](double t) { return Len(SegPos(sg, t)); };
+                double t0 = sg.t.front(), t1 = sg.t.back(), tb = t0;
+                const int n = 2000;
+                for (int k = 1; k <= n; k++) {
+                    double t = t0 + (t1 - t0) * k / n;
+                    if (f(t) < f(tb)) tb = t;
+                }
+                if (tb <= t0 || tb >= t1) continue;
+                double h = (t1 - t0) / n;
+                AstroEvent ev;
+                ev.kind = EV_FLYBY;
+                ev.t = MinimizeT(f, std::max(t0, tb - h), std::min(t1, tb + h));
+                ev.probe = (int)i;
+                ev.body = sg.body;
+                ev.dist = f(ev.t);
+                out.push_back(ev);
+                continue;
+            }
             // フライバイは区間で一番近い点、周回機は最初の近点（軌道投入。2 周目以降の方が近いことがある）
             size_t best = 0;
             for (size_t j = 0; j < sg.t.size(); j++) {
@@ -494,6 +514,7 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
                 if (Len(sg.p[j]) < Len(sg.p[best])) best = j;
             }
             if (best == 0) continue;  // 打ち上げ直後の地球からの出発
+            if (&sg == &S.front() && sg.t[best] - sg.t.front() < 1.0) continue;   // 打ち上げ直後の待機軌道（まだ地球を離れていない）
             if (orbiter && best + 1 == sg.t.size()) continue;   // 到着の前にデータが終わる（JUICE）
             bool beforeArrival = false;   // 周回に入る少し前に影響圏をかすめただけの接近（ベピコロンボ）
             for (const ProbeSeg& o : S)
@@ -563,14 +584,23 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
         }
         case EV_VIEW: snprintf(b, sizeof b, T(UI_EV_VIEW), name(g_jp ? ev.body : ev.body2), name(g_jp ? ev.body2 : ev.body)); break;
         case EV_HISTORY: return TR(HISTORY[ev.moon].jp, HISTORY[ev.moon].en);
+        case EV_VOYAGE: return name(ev.probe);
         default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
 }
 
+static std::string VoyageTargetName(const App& app, int i, int body);
 static std::string EventDetail(const App& app, const AstroEvent& ev) {
     char b[160];
     switch (ev.kind) {
+        case EV_VOYAGE: {
+            long long y;
+            int m, d;
+            CivilFromJdn((long long)std::floor(ev.dist + 2451545.5), &y, &m, &d);
+            snprintf(b, sizeof b, T(UI_EV_VOYAGE_D), VoyageTargetName(app, ev.probe, ev.body).c_str(), (int)y);
+            return b;
+        }
         case EV_FLYBY:
         case EV_ARRIVE: snprintf(b, sizeof b, T(UI_EV_ALT), FmtDist(ev.dist - app.B[ev.body].d.radius).c_str()); return b;
         case EV_TRANSIT: snprintf(b, sizeof b, T(UI_EV_TRANSIT_D), ev.dist); return b;
@@ -1045,8 +1075,10 @@ static void OpenEventsPage(App& app) {
         app.eventSel = 0;
         return;
     }
-    app.events = app.eventsPage == 1 ? app.cometEvents : app.eventsPage == 3 ? app.historyEvents : app.probeEvents;
+    app.events = app.eventsPage == 1 ? app.cometEvents : app.eventsPage == 3 ? app.historyEvents
+                 : app.eventsPage == 4 ? app.voyageEvents : app.probeEvents;
     app.eventSel = 0;
+    if (app.eventsPage == 4) return;
     for (size_t i = 0; i < app.events.size(); i++)
         if (std::fabs(app.events[i].t - app.tDays) < std::fabs(app.events[app.eventSel].t - app.tDays)) app.eventSel = (int)i;
 }

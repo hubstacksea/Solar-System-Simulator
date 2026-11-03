@@ -184,7 +184,7 @@ static void TouchToPad(App& app, PadState& pad) {
 }
 
 // 自機の加速・移動に使う経過時間（時間倍率を反映、停止中は 0）
-static double SimDt(const App& app, double dt) { return app.paused ? 0.0 : dt * TIME_SCALES[app.timeIdx]; }
+static double SimDt(const App& app, double dt) { return app.paused ? 0.0 : dt * (app.voyageOn ? app.voyRate : TIME_SCALES[app.timeIdx]); }
 
 // ゲームパッドで案内・設定・イベント一覧・日時指定・操作説明を操作する。ボタンを使ったら true
 static bool PadMenus(App& app, const PadState& pad) {
@@ -223,7 +223,7 @@ static bool PadMenus(App& app, const PadState& pad) {
         if (n > 0 && pad.timeDown) app.eventSel = (app.eventSel + 1) % n;
         if (n > 0 && pad.timeUp) app.eventSel = (app.eventSel + n - 1) % n;
         if (pad.nextTarget || pad.rb) {
-            app.eventsPage = (app.eventsPage + 1) % 4;
+            app.eventsPage = (app.eventsPage + 1) % 5;
             OpenEventsPage(app);
         }
         if (pad.autopilot) GoSelectedEvent(app);
@@ -296,6 +296,22 @@ static void HandleInput(App& app, double dt) {
     if (IsKeyPressed(KEY_Z)) {
         app.photoMode = (app.photoMode + 1) % 3;
         Toast(app, T((UiId)(UI_PHOTO_0 + app.photoMode)));
+    }
+    if (app.voyageOn) {   // 探査機の旅: 操縦はできず、場面の移動と表示の切り替えだけ
+        bool enter = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER);
+        HandleVoyageInput(app, (enter && !shift) || pad.autopilot || app.tapped, enter && shift,
+                          IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE) || pad.stop);
+        if (IsKeyPressed(KEY_P)) app.paused = !app.paused;
+        if (IsKeyPressed(KEY_F2)) ShareScene(app);
+        if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
+        if (IsKeyPressed(KEY_K)) { OpenEventsPage(app); app.eventsOpen = true; }
+        if (IsKeyPressed(KEY_O)) ChangeSetting(app, SET_ORBITS, 1, true);
+        if (IsKeyPressed(KEY_C)) ChangeSetting(app, SET_SKY, 1, true);
+        if (IsKeyPressed(KEY_L)) ChangeSetting(app, SET_MARKERS, 1, true);
+        if (IsKeyPressed(KEY_J)) ChangeSetting(app, SET_LANG, 1, true);
+        if (IsKeyPressed(KEY_M)) ChangeSetting(app, shift ? SET_MUSIC : SET_SOUND, 1, true);
+        if (IsKeyPressed(KEY_F11)) ChangeSetting(app, SET_FULLSCREEN, 1, false);
+        return;
     }
     if (IsKeyPressed(KEY_U)) {
         if (app.tourOn) StopTour(app);

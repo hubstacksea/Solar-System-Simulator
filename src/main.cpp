@@ -91,6 +91,7 @@ EM_JS(int, WebViewH, (), {
 #include "app/app_state.h"
 #include "app/places.h"
 #include "app/events.h"
+#include "app/voyage.h"
 #include "app/menus.h"
 #include "app/flight.h"
 #include "app/render3d.h"
@@ -147,6 +148,29 @@ int main(int argc, char** argv) {
         for (const Body& b : B) shapes += b.shape >= 0 ? 1 : 0;
         printf("music %d/%d, bodies %zu, bodies with shapes %zu, missing %d\n", music, MUSIC_COUNT, B.size(), shapes, missing);
         return missing ? 1 : 0;
+    }
+    if (opt.listVoyages) {   // 探査機の旅の行程を出力して終了（確認用）
+        App tmp;
+        tmp.B = InitBodies();
+        UpdateBodies(tmp.B, 0);
+        tmp.probeEvents = FindProbeEvents(tmp);
+        for (const AstroEvent& ev : FindVoyages(tmp)) {
+            std::vector<VoyageStep> steps;
+            double len;
+            clock_t wall0 = clock();
+            BuildVoyage(tmp, ev.probe, &steps, &len);
+            tmp.voyProbe = ev.probe;
+            tmp.voySteps = steps;
+            tmp.voyLength = len;
+            printf("VOYAGE %s steps %d length %.1f AU build %.0f ms\n", tmp.B[ev.probe].d.en, (int)steps.size(), len / AU_KM, (clock() - wall0) * 1000.0 / CLOCKS_PER_SEC);
+            for (const VoyageStep& st : steps) {
+                std::string title, text;
+                VoyageCardText(tmp, st, &title, &text);
+                for (char& ch : text) if (ch == '\n') ch = ' ';
+                printf("  %s  %s | %s\n", FmtMinute(st.t).c_str(), title.c_str(), text.c_str());
+            }
+        }
+        return 0;
     }
     if (opt.listEvents) {
         App tmp;
@@ -312,6 +336,7 @@ int main(int argc, char** argv) {
     for (const City& c : CITIES) allText += c.jp;
     for (const StarName& n : app.sky.names) allText += n.jp;
     for (const TourStop& st : TOUR) allText += st.jp;
+    for (const VoyageGoal& g : VOYAGE_GOALS) allText += std::string(g.targetJp) + g.titleJp + g.textJp;
     for (const HistoricEclipse& h : HISTORY) allText += std::string(h.jp) + h.placeJp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
@@ -462,7 +487,7 @@ int main(int argc, char** argv) {
     app.showHelp = opt.help;
     app.photoMode = std::max(0, std::min(2, opt.photo));
     app.settingsOpen = opt.settings;
-    if ((GetSetting("intro") != "1" && !opt.shot) || opt.intro) app.introPage = 0;   // 初回だけ案内を出す
+    if ((GetSetting("intro") != "1" && !opt.shot && app.pendingVoyage.empty()) || opt.intro) app.introPage = 0;   // 初回だけ案内を出す
     if (opt.touch) app.touchUI = true;
     if (app.physics || opt.physics) {   // 重力モードで始める時は、今いる天体のまわりの円軌道に乗せる
         app.physics = false;
@@ -471,8 +496,10 @@ int main(int argc, char** argv) {
     app.probeEvents = FindProbeEvents(app);
     app.cometEvents = FindCometEvents(app);
     app.historyEvents = FindHistoryEvents(app);
+    app.voyageEvents = FindVoyages(app);
+    StartPendingVoyage(app);
     app.sl9Dirs = Sl9FixedDirs(app.B);
-    app.eventsPage = std::max(0, std::min(3, opt.eventsPage));
+    app.eventsPage = std::max(0, std::min(4, opt.eventsPage));
     if (opt.showEvents) {
         OpenEventsPage(app);
         if (app.eventsPage == 0) app.eventSel = 5;
@@ -507,11 +534,24 @@ int main(int argc, char** argv) {
         if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_Q)) break;
 
         HandleInput(app, dt);
+        if (opt.voyageTest && app.voyageOn) {
+            auto report = [&](const char* what) {
+                printf("VOYTEST %s t=%s card=%d query=%s\n", what, FmtDate(app.tDays).c_str(), app.voyCard, VoyageQuery(app).c_str());
+            };
+            if (frame == 10) report("start");
+            if (frame == 20) { HandleVoyageInput(app, true, false, false); report("next"); }
+            if (frame == 30) { HandleVoyageInput(app, true, false, false); report("next"); }
+            if (frame == 40) { HandleVoyageInput(app, false, true, false); report("prev"); }
+            if (frame == 50) {
+                HandleVoyageInput(app, false, false, true);
+                printf("VOYTEST stop on=%d cockpit=%d ref=%s\n", app.voyageOn, app.cockpit, app.B[app.ship.ref].d.en);
+            }
+        }
         if (opt.warpAnimAt >= 0 && frame == (int)(opt.warpAnimAt * 60)) WarpToTarget(app, opt.land);
         if (opt.saveBookmark && frame == 1) SaveBookmark(app);
         if (opt.gotoEvent > 0 && frame == 60) {
             app.events = app.eventsPage == 0 ? FindEvents(app, app.tDays) : app.eventsPage == 1 ? app.cometEvents
-                       : app.eventsPage == 3 ? app.historyEvents : app.probeEvents;
+                       : app.eventsPage == 3 ? app.historyEvents : app.eventsPage == 4 ? app.voyageEvents : app.probeEvents;
             if (opt.gotoEvent <= (int)app.events.size()) {
                 const AstroEvent& ev = app.events[opt.gotoEvent - 1];
                 StartWarp(app, EventBody(ev), false);
@@ -567,6 +607,7 @@ int main(int argc, char** argv) {
         CoRotateWithGround(app, spinRef, spin0);
         UpdateMeteors(app, dt, simDt);
         UpdateShip(app, simDt);
+        UpdateVoyage(app, dt);
         UpdateRelativityView(app, dt);
         sfx::Update(app.ship.engine, app.ship.thrusting && app.warpT < 0,
                     std::fabs(app.ship.speed) * 1000.0 / ENGINES[app.ship.engine].vmax);

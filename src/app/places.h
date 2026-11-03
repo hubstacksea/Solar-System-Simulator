@@ -163,8 +163,19 @@ static std::string ShareQuery(const App& app) {
     return q;
 }
 
+// 探査機の旅の中の場面: 知らせを出している場面なら場面の番号（到着は arrive）、ほかは時刻で
+static std::string VoyageQuery(const App& app) {
+    char q[200];
+    std::string name = UrlEncode(app.B[app.voyProbe].d.en);
+    int last = (int)app.voySteps.size() - 1;
+    if (app.voyCard == last) snprintf(q, sizeof q, "?voyage=%s&scene=arrive", name.c_str());
+    else if (app.voyCard >= 0) snprintf(q, sizeof q, "?voyage=%s&scene=%d", name.c_str(), app.voyCard + 1);
+    else snprintf(q, sizeof q, "?voyage=%s&t=%.6f", name.c_str(), app.tDays);
+    return q;
+}
+
 static void ShareScene(App& app) {
-    std::string q = ShareQuery(app);
+    std::string q = app.voyageOn ? VoyageQuery(app) : ShareQuery(app);
 #if defined(__EMSCRIPTEN__)
     char* base = WebPageUrl();
     std::string url = base + q;
@@ -209,6 +220,12 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
         size_t eq = item.find('=');
         if (eq != std::string::npos) kv[item.substr(0, eq)] = UrlDecode(item.substr(eq + 1));
         i = amp + 1;
+    }
+    if (kv.count("voyage")) {   // 探査機の旅: 探査機の一覧ができてから StartPendingVoyage で始める
+        app.pendingVoyage = kv["voyage"];
+        app.pendingScene = kv["scene"];
+        if (kv.count("t")) app.pendingVoyageT = atof(kv["t"].c_str());
+        return true;
     }
     if (!kv.count("t") && !kv.count("at")) return false;
     if (kv.count("t")) {

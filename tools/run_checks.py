@@ -87,6 +87,41 @@ def check_history(exe):
     return n == HISTORY_COUNT, "%d events" % n
 
 
+def check_voyages(exe):
+    # 探査機の旅の行程: 全機体で、時刻の順に並び、最初が出発で終わりが到達になっていること
+    out = run(exe, ["--list-voyages"])
+    voyages, bad = {}, []
+    name = None
+    for line in out.splitlines():
+        m = re.match(r"VOYAGE (.+) steps (\d+) ", line)
+        if m:
+            name = m.group(1)
+            voyages[name] = []
+        elif name and line.startswith("  "):
+            voyages[name].append(line.strip())
+    for n, st in voyages.items():
+        times = [s[:16] for s in st]
+        if len(st) < 2 or times != sorted(times) or "Earth" not in st[0]:
+            bad.append(n)
+    if len(voyages) < 19:
+        bad.append("only %d voyages" % len(voyages))
+    bepi = voyages.get("BepiColombo", [""])[-1]
+    if not bepi.startswith("2026-11-21") or "Arrived at Mercury" not in bepi:
+        bad.append("BepiColombo arrival: " + bepi[:40])
+    return not bad, "; ".join(bad) if bad else "%d voyages" % len(voyages)
+
+
+def check_voyage_link(exe):
+    # URL で旅の到着の場面から始まり、場面の移動・リンク・終了ができること
+    with tempfile.TemporaryDirectory() as tmp:
+        out = run(exe, ["--share", "?voyage=BepiColombo&scene=arrive", "--voyage-test",
+                        "--shot", os.path.join(tmp, "v.png"), "--frames", "60"])
+    lines = [l for l in out.splitlines() if l.startswith("VOYTEST")]
+    ok = (len(lines) == 5 and "2026-11-2" in lines[0] and "voyage=BepiColombo" in lines[0]
+          and "on=0" in lines[4] and "cockpit=0" in lines[4])
+    return ok, " / ".join(l.split(" ", 2)[1] for l in lines) if ok else "; ".join(lines) or "no output"
+
+
 def body_count(exe):
     out = run(exe, ["--check-assets"])
     m = re.search(r"bodies (\d+)", out)
@@ -175,9 +210,9 @@ def main():
     exe = next((a for a in args if not a.startswith("--") and not a.isdigit()), "build/solar_voyager")
     display = "--no-display" not in args
     jobs = int(args[args.index("--jobs") + 1]) if "--jobs" in args else 3
-    checks = [("assets", check_assets), ("eclipses", check_eclipses), ("history", check_history)]
+    checks = [("assets", check_assets), ("eclipses", check_eclipses), ("history", check_history), ("voyages", check_voyages)]
     if display:
-        checks += [("warps", lambda e: check_warps(e, jobs)), ("skim", lambda e: check_skim(e, jobs))]
+        checks += [("voyagelink", check_voyage_link), ("warps", lambda e: check_warps(e, jobs)), ("skim", lambda e: check_skim(e, jobs))]
     failed = 0
     for name, fn in checks:
         t0 = time.time()

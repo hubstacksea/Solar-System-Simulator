@@ -952,6 +952,12 @@ static void ApplyDateEntry(App& app) {
 static void GoSelectedEvent(App& app) {
     if (app.events.empty() || app.warpT >= 0) return;
     const AstroEvent& ev = app.events[app.eventSel];
+    if (ev.kind == EV_VOYAGE) {
+        app.eventsOpen = false;
+        StartVoyage(app, ev.probe, 0, NAN);
+        return;
+    }
+    StopVoyage(app);
     StartWarp(app, EventBody(ev), false);
     app.warpEvent = app.eventSel;
     app.eventsOpen = false;
@@ -1030,7 +1036,7 @@ static bool HandleModalInput(App& app) {
             return true;
         }
         if (app.tapPos.y < y + 64) {
-            app.eventsPage = (app.eventsPage + 1) % 4;
+            app.eventsPage = (app.eventsPage + 1) % 5;
             OpenEventsPage(app);
             return true;
         }
@@ -1038,10 +1044,7 @@ static bool HandleModalInput(App& app) {
         int row = first + (int)std::floor((app.tapPos.y - (y + 65)) / 28.0f);
         if (row >= 0 && row < n) {
             if (row == app.eventSel && app.warpT < 0) {
-                const AstroEvent& ev = app.events[row];
-                StartWarp(app, EventBody(ev), false);
-                app.warpEvent = row;
-                app.eventsOpen = false;
+                GoSelectedEvent(app);
             } else {
                 app.eventSel = row;
             }
@@ -1080,7 +1083,7 @@ static bool HandleModalInput(App& app) {
         }
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_K)) app.eventsOpen = false;
         if (IsKeyPressed(KEY_TAB)) {
-            app.eventsPage = (app.eventsPage + (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? 3 : 1)) % 4;
+            app.eventsPage = (app.eventsPage + (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? 4 : 1)) % 5;
             OpenEventsPage(app);
             return true;
         }
@@ -1121,8 +1124,8 @@ static void DrawModalPanels(const App& app) {
         float w = std::min(c.W - 20, 900.0f), h = 96 + rows * 28.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
-        static const UiId TITLE[4] = {UI_EV_TITLE, UI_EV_COMET_TITLE, UI_EV_PROBE_TITLE, UI_EV_HISTORY_TITLE};
-        static const UiId NOTE[4] = {UI_EV_NOTE, UI_EV_COMET_NOTE, UI_EV_PROBE_NOTE, UI_EV_HISTORY_NOTE};
+        static const UiId TITLE[5] = {UI_EV_TITLE, UI_EV_COMET_TITLE, UI_EV_PROBE_TITLE, UI_EV_HISTORY_TITLE, UI_EV_VOYAGE_TITLE};
+        static const UiId NOTE[5] = {UI_EV_NOTE, UI_EV_COMET_NOTE, UI_EV_PROBE_NOTE, UI_EV_HISTORY_NOTE, UI_EV_VOYAGE_NOTE};
         TxtC(T(TITLE[app.eventsPage]), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
         TxtC(T(UI_EV_KEYS), c.W * 0.5f, y + 40, 15, {170, 200, 230, 255});
         if (n == 0) TxtC(T(UI_EV_NONE), c.W * 0.5f, y + 72, 18, {215, 228, 245, 255});

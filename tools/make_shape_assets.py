@@ -9,9 +9,10 @@
   - チュリュモフ・ゲラシメンコ彗星 (67P): ESA の NAVCAM による形状モデル MTP019 の低解像度版
     cshp_dv_130_01_lores_obj.obj（NASA PDS Small Bodies Node, ro-c-multi-5-67p-shape-v2.0、
     ESA/Rosetta/NAVCAM – CC BY-SA IGO 3.0）
-  - ベンヌ・イトカワ・ディディモス・ディモルフォス・フォボス: NASA NAIF の SPICE 形状データ (DSK)
+  - ベンヌ・イトカワ・ディディモス・ディモルフォス・フォボス・ドナルドジョハンソン: NASA NAIF の SPICE 形状データ (DSK)
     （ベンヌ: OSIRIS-REx、イトカワ: Gaskell et al. の Hayabusa AMICA モデル、ディディモス・ディモルフォス: DART、
-    フォボス: Gaskell のモデル。いずれも NASA の惑星データ）
+    フォボス: Gaskell のモデル、ドナルドジョハンソン: Lucy の DLR チーム。いずれも NASA の惑星データ）
+  - ガスプラ・イダ: 形状データの代わりに、JPL Small-Body Database の三軸の大きさの楕円体
 頂点が 65,536 個を超えるもの（フォボス）は格子でまとめて間引く。座標を 16 ビットに丸め、外側の表面までの半径の表を加える。
 
 出力形式（リトルエンディアン）:
@@ -44,6 +45,11 @@ SHAPES = [
     ("Didymos", NAIF + "pds/pds4/dart/dart_spice/spice_kernels/dsk/didymos_g_09309mm_spc_0000n00000_v003.bds"),
     ("Dimorphos", NAIF + "pds/pds4/dart/dart_spice/spice_kernels/dsk/dimorphos_g_01940mm_spc_0000n00000_v004.bds"),
     ("Phobos", NAIF + "generic_kernels/dsk/satellites/phobos_3_3.bds"),
+    # ドナルドジョハンソン: ルーシーの撮影から DLR のチームが作った DSK（NASA PDS の Lucy SPICE アーカイブ）
+    ("Donaldjohanson", NAIF + "pds/pds4/lucy/lucy_spice/spice_kernels/dsk/lcy_donj_k548_iso20m_v10.bds"),
+    # ガスプラ・イダ: 形状データを自動で取得できないので、JPL SBDB の三軸の大きさ [km] の楕円体で代える
+    ("Gaspra", "ellipsoid:18.2,10.5,8.9"),
+    ("Ida", "ellipsoid:59.8,25.4,18.6"),
 ]
 MAX_VERTS = 60000
 NLON, NLAT = 96, 49
@@ -72,6 +78,28 @@ def read_obj(path):
             elif p[0] == "f":
                 faces.append([int(x.split("/")[0]) - 1 for x in p[1:4]])
     return np.array(verts), np.array(faces, dtype=np.int64)
+
+
+def ellipsoid(spec, nlat=36, nlon=72):
+    """"ellipsoid:長さ,幅,厚さ" [km] の楕円体（緯度・経度の格子）"""
+    a, b, c = (float(x) / 2 for x in spec.split(":")[1].split(","))
+    verts = [[0, 0, -c]]
+    for i in range(1, nlat):
+        la = np.pi * i / nlat - np.pi / 2
+        for j in range(nlon):
+            lo = 2 * np.pi * j / nlon
+            verts.append([a * np.cos(la) * np.cos(lo), b * np.cos(la) * np.sin(lo), c * np.sin(la)])
+    verts.append([0, 0, c])
+    top = len(verts) - 1
+    faces = []
+    ring = lambda i, j: 1 + (i - 1) * nlon + j % nlon
+    for j in range(nlon):
+        faces.append([0, ring(1, j + 1), ring(1, j)])
+        faces.append([top, ring(nlat - 1, j), ring(nlat - 1, j + 1)])
+    for i in range(1, nlat - 1):
+        for j in range(nlon):
+            faces += [[ring(i, j), ring(i, j + 1), ring(i + 1, j + 1)], [ring(i, j), ring(i + 1, j + 1), ring(i + 1, j)]]
+    return np.array(verts, dtype=float), np.array(faces, dtype=np.int64)
 
 
 def read_dsk(path):
@@ -135,8 +163,11 @@ def main():
     la, lo = np.meshgrid(lat, lon, indexing="ij")
     dirs = np.stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)], axis=-1).reshape(-1, 3)
     for name, url in SHAPES:
-        path = fetch(work, url)
-        v, f = read_dsk(path) if path.endswith(".bds") else read_obj(path)
+        if url.startswith("ellipsoid:"):
+            v, f = ellipsoid(url)
+        else:
+            path = fetch(work, url)
+            v, f = read_dsk(path) if path.endswith(".bds") else read_obj(path)
         v, f = decimate(v, f, MAX_VERTS)
         # 三角形の向きをそろえる（法線が中心から外を向くものが多数派になるように）
         a, b, c = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
