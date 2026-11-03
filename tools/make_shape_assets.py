@@ -12,7 +12,9 @@
   - ベンヌ・イトカワ・ディディモス・ディモルフォス・フォボス・ドナルドジョハンソン: NASA NAIF の SPICE 形状データ (DSK)
     （ベンヌ: OSIRIS-REx、イトカワ: Gaskell et al. の Hayabusa AMICA モデル、ディディモス・ディモルフォス: DART、
     フォボス: Gaskell のモデル、ドナルドジョハンソン: Lucy の DLR チーム。いずれも NASA の惑星データ）
-  - ガスプラ・イダ: Stooke の形状モデル（Galileo の撮影から。PDS Small Bodies Node の small_bodies.stooke.shape-models、
+  - ダイモス: Thomas の形状モデル（Viking Orbiter の撮影から。PDS Small Bodies Node の ast-sat.thomas.shape-models）。
+    配布元が自動の取得を受け付けないので、ブラウザで取得して作業ディレクトリに置く
+  - ガスプラ・イダ・ハレー彗星: Stooke の形状モデル（Galileo、ハレー彗星は Giotto・Vega の撮影から。PDS Small Bodies Node の small_bodies.stooke.shape-models、
     パブリックドメイン）。配布元が自動の取得を受け付けないので、ブラウザで取得して作業ディレクトリに置く
 頂点が 65,536 個を超えるもの（フォボス）は格子でまとめて間引く。座標を 16 ビットに丸め、外側の表面までの半径の表を加える。
 
@@ -52,11 +54,19 @@ SHAPES = [
     # 配布元が自動の取得を受け付けないので、ブラウザで STOOKE_ZIP を作業ディレクトリに置いておく
     ("Gaspra", "stooke:951gaspra.tab"),
     ("Ida", "stooke:243ida.tab"),
+    # ハレー彗星の核: Stooke の形状モデル（Giotto・Vega の撮影から。指向の計算は Abergel）。このモデルの北は長軸の向きで、
+    # 長軸のまわりに回して見せると細長さが分からないので、長軸を赤道面に寝かせる（シミュレータの自転は 1 軸の単純な回転）
+    ("Halley", "stooke:1682q1halley.tab"),
+    # ダイモス: Thomas の形状モデル（Viking Orbiter の撮影から。PDS Small Bodies Node の ast-sat.thomas.shape-models、
+    # NASA の惑星データ）。Stooke と同じく、ブラウザで THOMAS_ZIP を作業ディレクトリに置いておく
+    ("Deimos", "thomas:m2deimos.tab"),
 ]
 MAX_VERTS = 60000
 NLON, NLAT = 96, 49
 STOOKE_ZIP = "small_bodies.stooke.shape-models.zip"
 STOOKE_URL = "https://sbnarchive.psi.edu/pds4/non_mission/small_bodies.stooke.shape-models.zip"
+THOMAS_ZIP = "ast-sat.thomas.shape-models_V1_0.zip"
+THOMAS_URL = "https://sbnarchive.psi.edu/pds4/non_mission/" + THOMAS_ZIP
 
 
 def fetch(work, url):
@@ -84,19 +94,25 @@ def read_obj(path):
     return np.array(verts), np.array(faces, dtype=np.int64)
 
 
-def read_stooke(work, name):
-    """Stooke の形状モデル: 緯度・経度 5° ごとの格子の半径 [km]（経度は東が正、0° と 360° は同じ点）"""
+def read_stooke(work, name, thomas=False):
+    """Stooke・Thomas の形状モデル: 緯度・経度 5° ごとの格子の半径 [km]（0° と 360° は同じ点）。
+    Stooke は 経度・緯度・半径 の順で経度は東が正。Thomas は 緯度・経度・半径 の順で、経度は西が正
+    （同じ集まりのフォボスで、スティックニー・クレーターのくぼみが西経 49° に出ることで確認）"""
     import zipfile
-    path = os.path.join(work, STOOKE_ZIP)
+    zname, url = (THOMAS_ZIP, THOMAS_URL) if thomas else (STOOKE_ZIP, STOOKE_URL)
+    path = os.path.join(work, zname)
     if not os.path.exists(path):
-        raise SystemExit("%s をブラウザで %s から取得して %s に置いてください" % (STOOKE_ZIP, STOOKE_URL, work))
+        raise SystemExit("%s をブラウザで %s から取得して %s に置いてください" % (zname, url, work))
     with zipfile.ZipFile(path) as z:
-        text = z.read("small_bodies.stooke.shape-models/data/" + name).decode("ascii")
+        text = z.read(zname[:-4] + "/data/" + name).decode("ascii")
     grid = {}
     for line in text.splitlines():
         p = line.split()
         if len(p) == 3:
-            grid[(int(p[0]) % 360, int(p[1]))] = float(p[2])
+            if thomas:
+                grid[(-int(round(float(p[1]))) % 360, int(round(float(p[0]))))] = float(p[2])
+            else:
+                grid[(int(p[0]) % 360, int(p[1]))] = float(p[2])
     lons = sorted({k[0] for k in grid})
     lats = sorted({k[1] for k in grid})
     nlon = len(lons)
@@ -181,8 +197,10 @@ def main():
     la, lo = np.meshgrid(lat, lon, indexing="ij")
     dirs = np.stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)], axis=-1).reshape(-1, 3)
     for name, url in SHAPES:
-        if url.startswith("stooke:"):
-            v, f = read_stooke(work, url.split(":", 1)[1])
+        if url.startswith(("stooke:", "thomas:")):
+            v, f = read_stooke(work, url.split(":", 1)[1], url.startswith("thomas:"))
+            if name == "Halley":
+                v = v[:, [2, 0, 1]]   # 長軸（モデルの +Z）を +X に（並べ替えは巡回なので右手系のまま）
         else:
             path = fetch(work, url)
             v, f = read_dsk(path) if path.endswith(".bds") else read_obj(path)

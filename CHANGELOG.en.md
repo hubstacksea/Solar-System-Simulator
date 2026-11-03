@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.31.0 (2026-11-04)
+
+- The five major moons of Uranus (Miranda, Ariel, Umbriel, Titania and Oberon) now have USGS maps from Voyager 2 images (only the imaged southern hemispheres; the northern hemispheres keep the procedural surface)
+- Deimos and the nucleus of Halley's Comet now have their real shapes (Thomas's shape model from Viking Orbiter images for Deimos, Stooke's shape model from Giotto and Vega images for Halley). The radius of Halley's nucleus is now 4.6 km, that of a sphere of the same volume
+
 ## 2.30.1 (2026-11-03)
 
 - Spacecraft voyages: when cruising toward a moon (such as Ganymede for Europa Clipper), the camera no longer sways from side to side following the moon as it circles its planet many times under fast time. It looks at the planet while that happens and turns to the moon as time slows down

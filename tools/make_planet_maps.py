@@ -5,7 +5,9 @@
 
 データ: USGS Astrogeology の天体地図サービス（WMS, https://planetarymaps.usgs.gov/）で配信している全球モザイク
 （NASA の探査機の画像から USGS などが作成。米国政府の著作物でパブリックドメイン）と、火星の標高は
-NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）。
+NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）。天王星の衛星は JPL の Solar System Simulator
+（https://space.jpl.nasa.gov/tmaps/uranus.html。Caltech/JPL/USGS、JPL の画像利用規定により許可なく利用可、
+クレジット Courtesy NASA/JPL-Caltech）が配っている USGS の全球図。
 いずれも正距円筒図法・東経が正・左端が経度 -180°・上端が北緯 90° で取得する（シミュレータの月の地図と同じ並び）。
 
 出力形式（リトルエンディアン）:
@@ -36,7 +38,10 @@ WMS = "https://planetarymaps.usgs.gov/cgi-bin/mapserv"
 # 英語名, 地図ファイル, レイヤー, 幅, 種類（0: カラー, 1: 白黒, 2: 模様だけ）, 元データ
 # イアペトゥスのモザイクは明暗がならされていて、暗い半球と明るい半球の差が残っていないので模様だけ使う。
 # 木星の雲は場所ごとに違う速さで流れるので、地図は大赤斑が経度 0°（画像の中央）に来るよう回して保存し、
-# シミュレータが大赤斑の今の経度（体系 II）に合わせて回す。土星・天王星・海王星は、再配布できる全球図がないので入れない
+# シミュレータが大赤斑の今の経度（体系 II）に合わせて回す。土星・天王星・海王星は、再配布できる全球図がないので入れない。
+# 天王星の 5 衛星は USGS の WMS に画像の層がないので、JPL の Solar System Simulator が配っている USGS の全球図
+# （ボイジャー 2 号。1440x720 のグレー、東経が正・左端が経度 -180°。ミランダのアーデン・エルシノアの両コロナの位置で確認）
+# を使う（地図ファイルの欄に jpl: とファイル名）。撮影されたのは南半球だけ（北半球は黒）
 MAPS = [
     ("Mercury", "mercury/mercury_simp_cyl.map", "MESSENGER", 2048, 1, "MESSENGER MDIS"),
     ("Jupiter", "jupiter/jupiter_simp_cyl.map", "CASSINI", 3600, 0, "Cassini ISS, PIA07782 (December 2000)"),
@@ -53,6 +58,11 @@ MAPS = [
     ("Dione", "saturn/dione_simp_cyl.map", "CASSINI_VOYAGER", 2048, 1, "Cassini ISS / Voyager"),
     ("Rhea", "saturn/rhea_simp_cyl.map", "CASSINI_VOYAGER", 2048, 1, "Cassini ISS / Voyager"),
     ("Iapetus", "saturn/iapetus_simp_cyl.map", "CASSINI_VOYAGER", 2048, 2, "Cassini ISS / Voyager"),
+    ("Miranda", "jpl:ura5vuu2.jpg", "", 1440, 1, "Voyager 2 (USGS, via JPL Solar System Simulator)"),
+    ("Ariel", "jpl:ura1vuu2.jpg", "", 1440, 1, "Voyager 2 (USGS, via JPL Solar System Simulator)"),
+    ("Umbriel", "jpl:ura2vuu2.jpg", "", 1440, 1, "Voyager 2 (USGS, via JPL Solar System Simulator)"),
+    ("Titania", "jpl:ura3vuu2.jpg", "", 1440, 1, "Voyager 2 (USGS, via JPL Solar System Simulator)"),
+    ("Oberon", "jpl:ura4vuu2.jpg", "", 1440, 1, "Voyager 2 (USGS, via JPL Solar System Simulator)"),
     ("Triton", "neptune/triton_simp_cyl.map", "TRITON_VOYAGER2", 1024, 1, "Voyager 2"),
     ("Pluto", "pluto/pluto_simp_cyl.map", "NEWHORIZONS_PLUTO_MOSAIC", 2048, 1, "New Horizons LORRI / MVIC"),
     ("Charon", "pluto/charon_simp_cyl.map", "NEWHORIZONS_CHARON_MOSAIC", 1024, 0, "New Horizons LORRI / MVIC"),
@@ -71,7 +81,13 @@ def fetch(work, name, url):
     return path
 
 
+JPL_TMAPS = "https://space.jpl.nasa.gov/tmaps/pix/"
+
+
 def wms(work, mapfile, layer, w):
+    if mapfile.startswith("jpl:"):
+        name = mapfile[4:]
+        return Image.open(fetch(work, "jpl_" + name, JPL_TMAPS + name)).convert("RGB")
     q = {"map": "/maps/" + mapfile, "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetMap", "LAYERS": layer,
          "STYLES": "", "SRS": "EPSG:4326", "BBOX": "-180,-90,180,90", "WIDTH": str(w), "HEIGHT": str(w // 2),
          "FORMAT": "image/png"}

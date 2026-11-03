@@ -307,7 +307,8 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     v.push_back(MakePlanet("エリス", "Eris", 1163, 0.0, 1.647e22, 0, 0, 0, 0, 0, 0,
                            270.0, 66.56, 15.786,
                            KIND_ROCKY, {0.95f, 0.94f, 0.92f}, {0.78f, 0.77f, 0.76f}));
-    BodyDef halley = MakePlanet("ハレー彗星", "Halley", 5.5, 0.0, 2.2e14, 0, 0, 0, 0, 0, 0,
+    // ハレー彗星の核は 15 × 7 × 7 km ほどの細長い形（assets/shapes.bin）。半径は同じ体積の球の値
+    BodyDef halley = MakePlanet("ハレー彗星", "Halley", 4.6, 0.0, 2.2e14, 0, 0, 0, 0, 0, 0,
                                 270.0, 66.56, 2.2,
                                 KIND_ROCKY, {0.24f, 0.22f, 0.20f}, {0.12f, 0.11f, 0.10f});
     halley.comet = true;
