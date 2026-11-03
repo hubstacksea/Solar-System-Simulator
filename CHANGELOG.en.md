@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.29.0 (2026-11-03)
+
+- Spacecraft voyages: a timeline at the bottom. Click or tap a scene dot to go to that scene, or elsewhere on the bar to go to that time (hover over a dot to see its title). The mouse is no longer captured during a voyage; look around by dragging with the left button
+- Spacecraft voyages: `[` and `]` choose the voyage speed: slow (about 10 minutes for the whole voyage), normal (about 4 minutes) or fast (about 1 minute)
+
 ## 2.28.3 (2026-11-03)
 
 - Spacecraft voyages: the camera no longer snaps between scenes or whips around just after a gravity assist; it turns smoothly (with a limit on turning speed, and a continuous shift toward the sunlit limb on night-side passes)

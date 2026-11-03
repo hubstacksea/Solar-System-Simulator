@@ -118,6 +118,7 @@ struct App {
     int voyProbe = -1, voyCard = -1, voyLeg = 1;   // voyLeg: 区間（1 が最初の旅、2 以降が延長ミッション）
     std::vector<VoyageStep> voySteps;
     double voyCruise = 86400, voyRate = 1, voyLength = 0;
+    int voySpeed = 1;                     // 旅の巡航の速さ（0: ゆっくり, 1: 標準, 2: 速い）
     bool voyDone = false, voySavedCockpit = false, voySavedPhysics = false;
     V3 voyAim = V3(0, 0, -1);
     int voyAimBody = -1;                  // カメラが追っている天体と、前のフレームでの見たい向き（滑らかに追うため）

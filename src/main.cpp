@@ -545,6 +545,17 @@ int main(int argc, char** argv) {
             if (frame == 20) { HandleVoyageInput(app, true, false, false); report("next"); }
             if (frame == 30) { HandleVoyageInput(app, true, false, false); report("next"); }
             if (frame == 40) { HandleVoyageInput(app, false, true, false); report("prev"); }
+            if (frame == 45) {   // 巡航の速さ: ゆっくり・速いで 1 秒あたりの日数が変わる
+                double normal = app.voyCruise;
+                VoyageSetSpeed(app, 0);
+                double slow = app.voyCruise;
+                VoyageSetSpeed(app, 2);
+                double fast = app.voyCruise;
+                VoyageSetSpeed(app, 1);
+                printf("VOYTEST speed slow=%.2f normal=%.2f fast=%.2f days/s\n", slow / 86400, normal / 86400, fast / 86400);
+                VoyageGoScene(app, 1);
+                printf("VOYTEST scene2 t=%s\n", FmtDate(app.tDays).c_str());
+            }
             if (frame == 50) {
                 HandleVoyageInput(app, false, false, true);
                 printf("VOYTEST stop on=%d cockpit=%d ref=%s\n", app.voyageOn, app.cockpit, app.B[app.ship.ref].d.en);

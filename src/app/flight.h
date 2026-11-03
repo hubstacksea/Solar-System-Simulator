@@ -299,6 +299,18 @@ static void HandleInput(App& app, double dt) {
     }
     if (app.voyageOn) {   // 探査機の旅: 操縦はできず、場面の移動と表示の切り替えだけ
         bool enter = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER);
+        // 下のタイムライン: クリック・タップした場面か時刻へ（その時は「次の場面へ」のタップにしない）
+        float uk = UiScale(app.cam);
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !app.touchUI && !app.mouseCaptured)
+            VoyageTimelineClick(app, Vector2Scale(GetMousePosition(), 1 / uk));
+        if (app.tapped && VoyageTimelineClick(app, app.tapPos)) app.tapped = false;
+        if (IsKeyPressed(KEY_RIGHT_BRACKET) || pad.timeUp || IsKeyPressed(KEY_LEFT_BRACKET) || pad.timeDown) {   // 巡航の速さ
+            VoyageSetSpeed(app, app.voySpeed + (IsKeyPressed(KEY_RIGHT_BRACKET) || pad.timeUp ? 1 : -1));
+            static const UiId SPEED[3] = {UI_VOY_SPEED_SLOW, UI_VOY_SPEED_NORMAL, UI_VOY_SPEED_FAST};
+            char b[96];
+            snprintf(b, sizeof b, T(UI_VOY_SPEED_SET), T(SPEED[app.voySpeed]));
+            Toast(app, b);
+        }
         HandleVoyageInput(app, (enter && !shift) || pad.autopilot || app.tapped, enter && shift,
                           IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE) || pad.stop);
         if (IsKeyPressed(KEY_P)) app.paused = !app.paused;

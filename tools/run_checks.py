@@ -118,8 +118,9 @@ def check_voyage_link(exe):
         out = run(exe, ["--share", "?voyage=BepiColombo&scene=arrive", "--voyage-test",
                         "--shot", os.path.join(tmp, "v.png"), "--frames", "60"])
     lines = [l for l in out.splitlines() if l.startswith("VOYTEST")]
-    ok = (len(lines) == 5 and "2026-11-2" in lines[0] and "voyage=BepiColombo" in lines[0]
-          and "on=0" in lines[4] and "cockpit=0" in lines[4])
+    ok = (len(lines) == 7 and "2026-11-2" in lines[0] and "voyage=BepiColombo" in lines[0]
+          and "speed slow=" in lines[4] and "scene2 t=2018-10-2" in lines[5]
+          and "on=0" in lines[6] and "cockpit=0" in lines[6])
     return ok, " / ".join(l.split(" ", 2)[1] for l in lines) if ok else "; ".join(lines) or "no output"
 
 

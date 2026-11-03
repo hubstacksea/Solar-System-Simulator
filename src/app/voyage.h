@@ -8,7 +8,8 @@
 // 時間の進み方: できごとの前後 VOY_HOLD_SEC 秒は等倍、そこから離れるほど指数的に速くする（時定数 VOY_RAMP_SEC 秒）
 static const double VOY_HOLD_SEC = 8.0, VOY_RAMP_SEC = 1.5;
 static const double VOY_CARD_LEAD_SEC = 3000.0;      // できごとの知らせを出す範囲（前後のシミュレータの秒。実時間で 10 秒ほど）
-static const double VOY_CRUISE_WALL_SEC = 240.0;     // 巡航の速さの目安: 全行程をこの実時間で進む速さ
+// 巡航の速さの目安: 全行程をこの実時間 [秒] で進む速さ（ゆっくり・標準・速い。[ ] キーで切り替え）
+static const double VOY_CRUISE_WALL_SEC[3] = {600.0, 240.0, 60.0};
 static const double VOY_SCENE_LEAD_DAYS = 1.0;       // 場面を指定した時は、これだけ前から始める
 
 // 終点を軌跡から決められない探査機（目標の天体がシミュレータにないか、到着の前にデータが終わる）
@@ -443,6 +444,14 @@ static void VoyageJump(App& app, double t) {
     PlaceVoyageCamera(app, app.voyAim);
 }
 
+// 巡航の速さ（0: ゆっくり, 1: 標準, 2: 速い）
+static void VoyageSetSpeed(App& app, int speed) {
+    app.voySpeed = std::max(0, std::min(2, speed));
+    if (app.voySteps.size() < 2) return;
+    double days = app.voySteps.back().t - app.voySteps.front().t;
+    app.voyCruise = std::max(0.2, std::min(80.0, days / VOY_CRUISE_WALL_SEC[app.voySpeed])) * 86400.0;
+}
+
 // 旅の名前（延長ミッションはその名前）
 static std::string VoyageName(const App& app, int i, int leg) {
     if (const VoyageLeg* l = leg > 1 ? FindVoyageLeg(app.B[i].d, leg) : nullptr) return TR(l->nameJp, l->nameEn);
@@ -462,6 +471,10 @@ static bool StartVoyage(App& app, int i, int leg, int scene, double t) {
     app.voySavedPhysics = app.physics;
     if (app.physics) SetPhysics(app, false);
     app.voySavedCockpit = app.voyageOn ? app.voySavedCockpit : app.cockpit;
+    if (app.mouseCaptured) {   // 旅の間は下のタイムラインを押せるよう、マウスを捕まえない（見回すのは左ドラッグ）
+        app.mouseCaptured = false;
+        EnableCursor();
+    }
     app.voyageOn = true;
     app.voyProbe = i;
     app.voyLeg = leg;
@@ -477,7 +490,7 @@ static bool StartVoyage(App& app, int i, int leg, int scene, double t) {
     app.target = i;
     SampleVoyageTrack(app);
     double t0 = steps.front().t, t1 = steps.back().t;
-    app.voyCruise = std::max(0.5, std::min(20.0, (t1 - t0) / VOY_CRUISE_WALL_SEC)) * 86400.0;
+    VoyageSetSpeed(app, app.voySpeed);
     int n = (int)steps.size();
     if (scene < 0) scene = n + scene;
     scene = std::max(0, std::min(n - 1, scene));
@@ -507,6 +520,75 @@ static void StartPendingVoyage(App& app) {
     else if (!sc.empty() && sc != "launch") scene = std::max(1, atoi(sc.c_str())) - 1;
     if (who < 0 || !StartVoyage(app, who, std::max(1, app.pendingLeg), scene, app.pendingVoyageT)) Toast(app, T(UI_VOY_NOT_FOUND));
     app.pendingVoyage.clear();
+}
+
+// 場面 k へ移る（その場面の 1 日前から。前の場面の知らせが終わった後から）
+static void VoyageGoScene(App& app, int k) {
+    const std::vector<VoyageStep>& S = app.voySteps;
+    if (k < 0 || k >= (int)S.size()) return;
+    double t = k == 0 ? S[0].t : std::max(S[0].t, S[k].t - VOY_SCENE_LEAD_DAYS);
+    if (k > 0) t = std::min(S[k].t, std::max(t, S[k - 1].t + VOY_CARD_LEAD_SEC / 86400.0));
+    VoyageJump(app, t);
+}
+
+// 画面下のタイムライン（出発から到着までを時刻で等分した棒）の位置
+static Rectangle VoyageTimelineRect(const Cam& c) {
+    return {24, c.H - 46, c.W - 48, 10};
+}
+static float VoyageTimelineX(const App& app, Rectangle r, double t) {
+    double t0 = app.voySteps.front().t, t1 = app.voySteps.back().t;
+    return r.x + r.width * (float)std::max(0.0, std::min(1.0, (t - t0) / std::max(1e-9, t1 - t0)));
+}
+// p（2D の表示の座標）にある場面の番号。点から 9 ピクセル以内で一番近いもの。無ければ -1
+static int VoyageTimelineScene(const App& app, Rectangle r, Vector2 p) {
+    int best = -1;
+    float bd = 9;
+    for (size_t k = 0; k < app.voySteps.size(); k++) {
+        float d = std::fabs(p.x - VoyageTimelineX(app, r, app.voySteps[k].t));
+        if (d < bd && std::fabs(p.y - (r.y + r.height / 2)) < 14) { bd = d; best = (int)k; }
+    }
+    return best;
+}
+// タイムラインを押した: 場面の点ならその場面へ、ほかの所ならその時刻へ。押したなら true
+static bool VoyageTimelineClick(App& app, Vector2 p) {
+    Rectangle r = VoyageTimelineRect(UiCam(app.cam));
+    if (!CheckCollisionPointRec(p, {r.x - 10, r.y - 12, r.width + 20, r.height + 24})) return false;
+    int k = VoyageTimelineScene(app, r, p);
+    if (k >= 0) VoyageGoScene(app, k);
+    else {
+        double t0 = app.voySteps.front().t, t1 = app.voySteps.back().t;
+        VoyageJump(app, t0 + (t1 - t0) * std::max(0.0f, std::min(1.0f, (p.x - r.x) / r.width)));
+    }
+    return true;
+}
+
+static void VoyageCardText(const App& app, const VoyageStep& st, std::string* title, std::string* text);
+static void DrawVoyageTimeline(const App& app) {
+    const Cam& c = app.cam;
+    Rectangle r = VoyageTimelineRect(c);
+    float cy = r.y + r.height / 2, now = VoyageTimelineX(app, r, app.tDays);
+    DrawRectangleRounded({r.x - 8, r.y - 6, r.width + 16, r.height + 12}, 0.5f, 6, {0, 8, 20, 190});
+    DrawLineEx({r.x, cy}, {r.x + r.width, cy}, 2.0f, {90, 110, 140, 220});
+    DrawLineEx({r.x, cy}, {now, cy}, 3.0f, {255, 196, 120, 230});
+    for (size_t k = 0; k < app.voySteps.size(); k++) {
+        float x = VoyageTimelineX(app, r, app.voySteps[k].t);
+        bool done = app.voySteps[k].t <= app.tDays;
+        Color col = (int)k == app.voyCard ? Color{255, 220, 80, 255} : done ? Color{230, 235, 245, 230} : Color{130, 140, 160, 230};
+        DrawCircleV({x, cy}, (int)k == app.voyCard ? 5.0f : 3.5f, col);
+    }
+    DrawCircleV({now, cy}, 4.0f, {120, 255, 170, 255});
+    DrawCircleLinesV({now, cy}, 7.0f, {120, 255, 170, 200});
+    // マウスを乗せた場面の見出し
+    Vector2 m = Vector2Scale(GetMousePosition(), 1 / UiScale(c));
+    int k = app.mouseCaptured || app.touchUI ? -1 : VoyageTimelineScene(app, r, m);
+    if (k >= 0) {
+        std::string title, text;
+        VoyageCardText(app, app.voySteps[k], &title, &text);
+        std::string s = FmtDay(app.voySteps[k].t) + "  " + title;
+        float w = TxtW(s.c_str(), 14) + 16, x = std::max(4.0f, std::min(c.W - w - 4, VoyageTimelineX(app, r, app.voySteps[k].t) - w / 2));
+        DrawRectangleRounded({x, r.y - 34, w, 22}, 0.3f, 6, {0, 8, 20, 235});
+        Txt(s.c_str(), x + 8, r.y - 31, 14, {255, 230, 170, 255});
+    }
 }
 
 // 次・前の場面へ
@@ -900,7 +982,8 @@ static void DrawVoyageHud(const App& app) {
     snprintf(b, sizeof b, T(UI_VOY_ELAPSED), ey, (int)(elapsed - ey * 365.25));
     Txt(b, x, y, fs, {200, 220, 240, 255}); y += lh;
     std::string rate = VoyageRateText(app);
-    snprintf(b, sizeof b, "%s %s", T(UI_TSCALE), rate.c_str());
+    static const UiId SPEED[3] = {UI_VOY_SPEED_SLOW, UI_VOY_SPEED_NORMAL, UI_VOY_SPEED_FAST};
+    snprintf(b, sizeof b, "%s %s   [%s]", T(UI_TSCALE), rate.c_str(), T(SPEED[app.voySpeed]));
     Txt(b, x, y, fs, app.paused ? Color{255, 160, 80, 255} : app.voyRate < 1.5 ? Color{140, 230, 160, 255} : Color{255, 210, 120, 255}); y += lh;
     if (nextIdx >= 0) {
         std::string t, d;
@@ -922,7 +1005,7 @@ static void DrawVoyageHud(const App& app) {
         std::string title, text;
         VoyageCardText(app, st, &title, &text);
         std::vector<std::string> lines = SplitLines(text);
-        float h = 72 + lines.size() * 22.0f, py = c.H - 34 - h;
+        float h = 72 + lines.size() * 22.0f, py = c.H - 60 - h;
         DrawRectangleRounded({px, py, w, h}, 0.08f, 6, {0, 8, 20, 215});
         DrawRectangleRoundedLinesEx({px, py, w, h}, 0.08f, 6, 1.5f, {90, 130, 180, 255});
         snprintf(b, sizeof b, T(UI_VOY_STEP), app.voyCard + 1, (int)app.voySteps.size());
@@ -930,12 +1013,13 @@ static void DrawVoyageHud(const App& app) {
         Txt(title.c_str(), px + 18, py + 32, 22, {255, 220, 120, 255});
         for (size_t i = 0; i < lines.size(); i++) Txt(lines[i].c_str(), px + 18, py + 64 + i * 22.0f, 16, {215, 228, 245, 255});
     }
+    DrawVoyageTimeline(app);
     const char* keys = T(app.voyDone ? UI_VOY_KEYS_DONE : UI_VOY_KEYS);
-    Txt(keys, 14, c.H - 26, 14, {150, 170, 200, 230});
+    Txt(keys, 14, c.H - 22, 13, {150, 170, 200, 230});
 #if defined(__EMSCRIPTEN__)
     if (int pend = DeferredAssetsPending(); pend > 0) {
         snprintf(b, sizeof b, T(UI_LOADING), pend);
-        Txt(b, 14, c.H - 46, 14, {255, 210, 120, 230});
+        Txt(b, 14, c.H - 70, 14, {255, 210, 120, 230});
     }
 #endif
 }

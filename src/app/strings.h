@@ -125,9 +125,13 @@
     X(VOY_REACHED, "%sに到達（最接近）", "Reached %s (closest approach)") \
     X(VOY_IMPACT, "%sに衝突", "Impact on %s") \
     X(VOY_SUMMARY, "出発から %.1f 年、スイングバイ %d 回、飛行距離 約 %.1f AU", "%.1f years since launch, gravity assists: %d, about %.1f AU flown") \
-    X(VOY_KEYS, "Enter : 次の場面   Shift+Enter : 前の場面   P : 停止   F2 : この場面のリンク   F3 : 全体図   ドラッグ・矢印 : 見回す   Esc : やめる", "Enter : next scene   Shift+Enter : previous   P : pause   F2 : link to this scene   F3 : map   drag / arrows : look around   Esc : quit") \
+    X(VOY_KEYS, "Enter / Shift+Enter : 次 / 前の場面   下の棒 : 場面へ   [ ] : 速さ   P : 停止   F2 : リンク   F3 : 全体図   ドラッグ・矢印 : 見回す   Esc : やめる", "Enter / Shift+Enter : next / previous scene   bar below : jump   [ ] : speed   P : pause   F2 : link   F3 : map   drag / arrows : look   Esc : quit") \
     X(VOY_KEYS_DONE, "旅は完了しました   Enter / Esc : 終わる   F2 : この場面のリンク", "Voyage complete   Enter / Esc : finish   F2 : link to this scene") \
     X(VOY_MAP, "全体図（真上から）", "Map (from above)") \
+    X(VOY_SPEED_SLOW, "ゆっくり", "slow") \
+    X(VOY_SPEED_NORMAL, "標準", "normal") \
+    X(VOY_SPEED_FAST, "速い", "fast") \
+    X(VOY_SPEED_SET, "旅の速さ: %s", "Voyage speed: %s") \
     X(VOY_MAP_NEAR, "%sのまわり（真上から）", "Around %s (from above)") \
     X(TIME_LIMIT, "ここが計算できる範囲の端です（紀元前 3000 年〜西暦 2999 年）。時間を止めました", "This is the edge of the supported range (3000 BC to AD 2999). Time is paused") \
     X(VOY_STOPPED, "探査機の旅を終えました", "Voyage ended") \
