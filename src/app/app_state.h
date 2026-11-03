@@ -120,6 +120,10 @@ struct App {
     double voyCruise = 86400, voyRate = 1, voyLength = 0;
     bool voyDone = false, voySavedCockpit = false, voySavedPhysics = false;
     V3 voyAim = V3(0, 0, -1);
+    std::vector<V3> voyTrack;             // 旅の全行程の太陽中心の位置（右上の小さな全体図に描く）
+    std::vector<double> voyTrackT;
+    std::vector<V3> voyStepPos;           // 各場面の太陽中心の位置
+    bool voyMap = true;                   // 右上の小さな全体図を出す（F3 で切り替え）
     std::string pendingVoyage, pendingScene;   // URL で指定された旅（起動の最後に始める）
     double pendingVoyageT = NAN;
     std::vector<AstroEvent> voyageEvents;

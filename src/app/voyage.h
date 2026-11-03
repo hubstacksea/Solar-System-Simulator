@@ -227,6 +227,27 @@ static void BuildVoyage(const App& app, int i, std::vector<VoyageStep>* steps, d
     std::stable_sort(steps->begin(), steps->end(), [](const VoyageStep& a, const VoyageStep& b) { return a.t < b.t; });
 }
 
+// 右上の小さな全体図のために、全行程の太陽中心の位置を等間隔の時刻で求めておく
+static void SampleVoyageTrack(App& app) {
+    const int N = 1500;
+    std::vector<Body> B = app.B;
+    for (Body& b : B) b.orbit.clear();
+    double t0 = app.voySteps.front().t, t1 = app.voySteps.back().t;
+    app.voyTrack.clear();
+    app.voyTrackT.clear();
+    app.voyStepPos.clear();
+    for (int k = 0; k <= N; k++) {
+        double t = t0 + (t1 - t0) * k / N;
+        UpdateBodies(B, t);
+        app.voyTrack.push_back(B[app.voyProbe].pos - B[B_SUN].pos);
+        app.voyTrackT.push_back(t);
+    }
+    for (const VoyageStep& st : app.voySteps) {
+        UpdateBodies(B, st.t);
+        app.voyStepPos.push_back(B[app.voyProbe].pos - B[B_SUN].pos);
+    }
+}
+
 // イベント一覧の「探査機の旅」のページ。ev.t は出発、ev.body は目標、ev.dist は到着の時刻
 static std::vector<AstroEvent> FindVoyages(const App& app) {
     std::vector<AstroEvent> out;
@@ -346,6 +367,7 @@ static bool StartVoyage(App& app, int i, int scene, double t) {
     app.eventZoom = false;
     app.frameLock = false;
     app.target = i;
+    SampleVoyageTrack(app);
     double t0 = steps.front().t, t1 = steps.back().t;
     app.voyCruise = std::max(0.5, std::min(20.0, (t1 - t0) / VOY_CRUISE_WALL_SEC)) * 86400.0;
     int n = (int)steps.size();
@@ -521,6 +543,79 @@ static std::string VoyageRateText(const App& app) {
     return b;
 }
 
+// 右上の小さな全体図: 太陽系を真上から見て（右が春分点の方向）、全行程が収まる縮尺で、惑星の軌道と位置、
+// 探査機の通ってきた道（明るく）とこれから通る道（暗く）、場面の場所、今の位置を描く
+static Rectangle VoyageMapRect(const Cam& c) {
+    float s = std::max(150.0f, std::min(280.0f, std::min(c.W * 0.26f, c.H * 0.42f)));
+    return {c.W - s - 10, 10, s, s};
+}
+
+static void DrawVoyageMap(const App& app) {
+    if (!app.voyMap || app.voyTrack.empty()) return;
+    const Cam& c = app.cam;
+    Rectangle r = VoyageMapRect(c);
+    DrawRectangleRounded(r, 0.05f, 6, {0, 8, 20, 238});
+    DrawRectangleRoundedLinesEx(r, 0.05f, 6, 1.2f, {90, 130, 180, 200});
+    double range = 0;
+    for (const V3& p : app.voyTrack) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));
+    range = std::max(range * 1.08, 0.05 * AU_KM);
+    float cx = r.x + r.width * 0.5f, cy = r.y + r.height * 0.5f + 6, R = r.width * 0.5f - 10;
+    double k = R / range;
+    auto proj = [&](V3 p) { return Vector2{(float)(cx + p.x * k), (float)(cy + p.z * k)}; };
+    // 枠の外にはみ出す線や点は描かない（切り抜きは HUD の拡大と座標が合わないので使わない）
+    Rectangle in = {r.x + 2, r.y + 2, r.width - 4, r.height - 4};
+    auto line = [&](Vector2 a, Vector2 b, float w, Color col) {
+        if (CheckCollisionPointRec(a, in) && CheckCollisionPointRec(b, in)) DrawLineEx(a, b, w, col);
+    };
+    auto dot = [&](Vector2 a, float rad, Color col) {
+        if (CheckCollisionPointRec(a, in)) DrawCircleV(a, rad, col);
+    };
+    const V3 sun = app.B[B_SUN].pos;
+    // 惑星の軌道と今の位置（全体図の外まで広がる軌道も、図の中の部分は描く）
+    for (int i = 1; i <= B_PLUTO; i++) {
+        const Body& b = app.B[i];
+        if (b.orbit.size() < 2 || b.d.a_au * AU_KM * (1 - 0.25) > range * 1.5) continue;
+        Color col = BodyColor(b, 0.8f);
+        col.a = 90;
+        Vector2 prev = proj(b.orbit[0]);
+        for (size_t j = 1; j < b.orbit.size(); j++) {
+            Vector2 q = proj(b.orbit[j]);
+            line(prev, q, 1.0f, col);
+            prev = q;
+        }
+        col.a = 230;
+        dot(proj(b.pos - sun), 2.5f, col);
+    }
+    DrawCircleV({cx, cy}, 3.5f, {255, 220, 120, 255});
+    // 探査機の道
+    size_t now = 0;
+    while (now + 1 < app.voyTrackT.size() && app.voyTrackT[now + 1] <= app.tDays) now++;
+    for (size_t j = 1; j < app.voyTrack.size(); j++) {
+        bool past = j <= now;
+        line(proj(app.voyTrack[j - 1]), proj(app.voyTrack[j]), past ? 1.8f : 1.0f,
+                   past ? Color{255, 196, 120, 230} : Color{255, 196, 120, 70});
+    }
+    // 場面の場所（済んだものは白、これからのものは灰色。知らせを出している場面は黄色）
+    for (size_t j = 0; j < app.voyStepPos.size(); j++) {
+        bool done = app.voySteps[j].t <= app.tDays;
+        Color col = (int)j == app.voyCard ? Color{255, 220, 80, 255} : done ? Color{230, 235, 245, 220} : Color{130, 140, 160, 200};
+        dot(proj(app.voyStepPos[j]), (int)j == app.voyCard ? 3.5f : 2.2f, col);
+    }
+    // 今の位置（点滅する輪）
+    Vector2 me = proj(app.B[app.voyProbe].pos - sun);
+    float pulse = 4.0f + 2.0f * (float)std::fabs(std::sin(GetTime() * 3));
+    dot(me, 3.0f, {120, 255, 170, 255});
+    if (CheckCollisionPointRec(me, in)) DrawCircleLinesV(me, pulse, {120, 255, 170, 220});
+    // 見出しと縮尺（1 / 10 AU の棒）
+    Txt(T(UI_VOY_MAP), r.x + 8, r.y + 5, 13, {170, 200, 230, 255});
+    double unit = range > 8 * AU_KM ? 10 * AU_KM : range > 0.8 * AU_KM ? AU_KM : 0.1 * AU_KM;
+    float bw = (float)(unit * k);
+    char b[32];
+    snprintf(b, sizeof b, "%g AU", unit / AU_KM);
+    DrawLineEx({r.x + 10, r.y + r.height - 10}, {r.x + 10 + bw, r.y + r.height - 10}, 1.5f, {170, 200, 230, 220});
+    Txt(b, r.x + 14 + bw, r.y + r.height - 18, 12, {170, 200, 230, 220});
+}
+
 static void DrawVoyageHud(const App& app) {
     const Cam& c = app.cam;
     const Body& p = app.B[app.voyProbe];
@@ -551,6 +646,8 @@ static void DrawVoyageHud(const App& app) {
         snprintf(b, sizeof b, T(UI_VOY_NEXT), t.c_str(), when.c_str());
         Txt(b, x, y, fs - 1, {170, 200, 230, 255});
     }
+
+    DrawVoyageMap(app);
 
     // できごとの知らせ（右下の空いた所まで使えるよう、左下に）
     bool showCard = app.voyCard >= 0;

@@ -424,7 +424,13 @@ static void DrawMarkers(const App& app) {
         {0, c.H - 64, c.W, 64},                             // エンジン表示
     };
     if (app.autopilot) g_placed.push_back({c.W * 0.5f - 320, c.H - 118, 640, 40});  // 自動操縦表示
-    if (app.voyageOn) g_placed = {{0, 0, 480, 170}, {0, c.H - 210, std::min(c.W, 1040.0f), 210}};   // 探査機の旅の表示
+    if (app.voyageOn) {   // 探査機の旅の表示
+        g_placed = {{0, 0, 480, 170}, {0, c.H - 210, std::min(c.W, 1040.0f), 210}};
+        if (app.voyMap) {
+            Rectangle m = VoyageMapRect(c);
+            g_placed.push_back({m.x - 6, 0, m.width + 16, m.height + 20});
+        }
+    }
     if (!app.cockpit) {  // 自機の上にラベルを重ねない
         Vector2 sp;
         V3 rel = c.shipRel;

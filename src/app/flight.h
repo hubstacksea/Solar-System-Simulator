@@ -303,6 +303,7 @@ static void HandleInput(App& app, double dt) {
                           IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE) || pad.stop);
         if (IsKeyPressed(KEY_P)) app.paused = !app.paused;
         if (IsKeyPressed(KEY_F2)) ShareScene(app);
+        if (IsKeyPressed(KEY_F3)) app.voyMap = !app.voyMap;   // 右上の小さな全体図
         if (IsKeyPressed(KEY_H) || pad.help) app.showHelp = !app.showHelp;
         if (IsKeyPressed(KEY_K)) { OpenEventsPage(app); app.eventsOpen = true; }
         if (IsKeyPressed(KEY_O)) ChangeSetting(app, SET_ORBITS, 1, true);

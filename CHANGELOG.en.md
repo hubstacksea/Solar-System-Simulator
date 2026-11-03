@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.26.1 (2026-11-03)
+
+- A small map at the top right during spacecraft voyages: the solar system from above with the path flown so far and ahead, the scene locations and the current position (F3 toggles it)
+
 ## 2.26.0 (2026-11-03)
 
 - Spacecraft voyages: a new page in the event list (K) follows a spacecraft from launch to its goal (19 spacecraft). Time runs fast during cruise and drops to real time with a caption at launch, leaving Earth's sphere of influence, gravity assists, passes by asteroids and moons, and arrival. URLs such as `?voyage=BepiColombo&scene=arrive` start at that scene, and F2 during a voyage copies a link to the current scene
