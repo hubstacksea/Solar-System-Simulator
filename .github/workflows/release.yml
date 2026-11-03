@@ -128,8 +128,10 @@ jobs:
         run: |
           (cd build-web && python3 -m http.server 8000 > /dev/null 2>&1 &)
           sleep 2
-          timeout 900 python3 tools/web_smoke.py shots-web http://localhost:8000/index.html \
-            "" "?voyage=BepiColombo&scene=arrive" "?voyage=Lucy&scene=5"
+          # 最後は操作の確認: Enter で次の場面、] で速さ、下のタイムラインのクリック、P で停止、ドラッグで見回す
+          timeout 1200 python3 tools/web_smoke.py shots-web http://localhost:8000/index.html \
+            "" "?voyage=BepiColombo&scene=arrive" "?voyage=Lucy&scene=5" \
+            "?voyage=BepiColombo&scene=2|wait:10;shot:a_start;key:Enter;wait:3;shot:b_enter;key:BracketRight;wait:2;shot:c_fast;click:0.5,-41;wait:3;shot:d_timeline;key:KeyP;wait:2;shot:e_paused;drag:0.35,0.5,0.65,0.5;shot:f_drag;wait:8;shot:g_back"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

@@ -387,7 +387,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     //   coast: データの後も直進する, end: データの終わりが運用終了（天体への突入・着地）
     //   機体の形: 0 ボイジャー, 1 パイオニア, 2 ガリレオ, 4 カッシーニ, 6 ニュー・ホライズンズ, 7 パーカー,
     //             8 ジュノー, 9 ロゼッタ, 10 はやぶさ2, 11 オシリス・レックス, 12 DART, 13 JWST,
-    //             16 ベピコロンボ, 17 JUICE, 18 エウロパ・クリッパー, 19 ルーシー, 20 サイキ（ProbeModel）
+    //             16 ベピコロンボ, 17 JUICE, 18 エウロパ・クリッパー, 19 ルーシー, 20 サイキ, 21 ヘラ（ProbeModel）
     static const struct { const char* jp; const char* en; bool coast, end; int model; } PROBES[] = {
         {"ボイジャー1号", "Voyager 1", true, false, 0}, {"ボイジャー2号", "Voyager 2", true, false, 0},
         {"パイオニア10号", "Pioneer 10", true, false, 1}, {"パイオニア11号", "Pioneer 11", true, false, 1},
@@ -400,7 +400,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         {"ジェイムズ・ウェッブ宇宙望遠鏡", "James Webb Space Telescope", false, false, 13},
         {"ベピコロンボ", "BepiColombo", false, false, 16}, {"JUICE", "JUICE", false, false, 17},
         {"エウロパ・クリッパー", "Europa Clipper", false, false, 18}, {"ルーシー", "Lucy", false, false, 19},
-        {"サイキ", "Psyche", false, false, 20},
+        {"サイキ", "Psyche", false, false, 20}, {"ヘラ", "Hera", false, false, 21},
     };
     for (int i = 0; i < (int)(sizeof PROBES / sizeof PROBES[0]); i++) {
         BodyDef d{};

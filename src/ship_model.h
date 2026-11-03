@@ -229,7 +229,7 @@ private:
 enum ProbeModel {
     PM_VOYAGER = 0, PM_PIONEER, PM_GALILEO, PM_GALILEO_PROBE, PM_CASSINI, PM_CASSINI_HUYGENS, PM_NEW_HORIZONS, PM_PARKER,
     PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_OSIRIS_REX, PM_DART, PM_JWST, PM_ISS, PM_HUBBLE,
-    PM_BEPICOLOMBO, PM_JUICE, PM_EUROPA_CLIPPER, PM_LUCY, PM_PSYCHE, PM_COUNT
+    PM_BEPICOLOMBO, PM_JUICE, PM_EUROPA_CLIPPER, PM_LUCY, PM_PSYCHE, PM_HERA, PM_COUNT
 };
 
 inline Mesh GenProbeMesh(int model) {
@@ -574,6 +574,21 @@ inline Mesh GenProbeMesh(int model) {
             for (int sz = -1; sz <= 1; sz += 2) mb.Box({sx * 4.5f, 0, sz * 2.25f}, {0.98f, 0.02f, 1.1f}, panel, SM_GLASS);
         }
         mb.Tube({0, 0, 1.2f}, {0, 0, 1.45f}, 0.3f, 12, dark, SM_METAL);          // ホール推進機
+        break;
+    }
+    case PM_HERA: {
+        // ヘラ: 1.6 × 1.6 × 1.7 m の箱形の本体（金色の断熱材）、両側に長さ 約 5 m の太陽電池パネル（3 枚ずつ）、
+        // 側面に直径 1.13 m の高利得アンテナ、前（-Z）に小惑星を撮るカメラ
+        mb.Box({0, 0, 0}, {0.8f, 0.8f, 0.85f}, gold, SM_METAL);
+        mb.Dish({0, 1.45f, 0}, {0, 1, 0}, 0.565f, 0.18f, white, SM_PAINT);
+        mb.Tube({0, 0.8f, 0}, {0, 1.3f, 0}, 0.05f, 6, metal, SM_METAL);
+        mb.Tube({0.3f, 0, -0.85f}, {0.3f, 0, -1.1f}, 0.1f, 10, dark, SM_METAL);
+        mb.Disc({0.3f, 0, -1.101f}, {0, 0, -1}, 0.1f, 10, black, SM_METAL);
+        for (int i = 0; i < 2; i++) {
+            float sx = i ? 1.0f : -1.0f;
+            mb.Tube({sx * 0.8f, 0, 0}, {sx * 1.1f, 0, 0}, 0.04f, 6, metal, SM_METAL);
+            for (int k = 0; k < 3; k++) mb.Box({sx * (1.65f + k * 1.15f), 0, 0}, {0.55f, 0.015f, 0.85f}, panel, SM_GLASS);
+        }
         break;
     }
     case PM_HUBBLE: {

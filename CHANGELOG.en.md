@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.30.0 (2026-11-03)
+
+- The ESA probe Hera: from its October 2024 launch through the March 2025 Mars flyby to its arrival at Didymos on 27 October 2026, also as a spacecraft voyage (`?voyage=Hera&scene=arrive`)
+- Arrival at an asteroid is now the first time within 200 km (100 radii for larger bodies); OSIRIS-APEX now arrives at Apophis on 17 May 2029
+- The release build's browser check now also tries key, click and drag input and saves screenshots (actions in `tools/web_smoke.py`)
+
 ## 2.29.0 (2026-11-03)
 
 - Spacecraft voyages: a timeline at the bottom. Click or tap a scene dot to go to that scene, or elsewhere on the bar to go to that time (hover over a dot to see its title). The mouse is no longer captured during a voyage; look around by dragging with the left button

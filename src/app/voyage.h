@@ -80,6 +80,12 @@ static const VoyageLeg VOYAGE_LEGS[] = {
      "2029 年 4 月 13 日に地球の中心から 3.8 万 km を通ったばかりのアポフィスに着き、\n地球の重力で表面や自転がどう変わったかを調べる",
      "It reaches Apophis just after its 13 April 2029 pass 38,000 km from Earth's center,\nto study how Earth's gravity changed its surface and spin"},
 };
+// 到着の場面の説明（イベント一覧の名場面に説明の無い探査機）
+static const struct { const char* probe; const char* jp; const char* en; } VOYAGE_ARRIVAL_TEXT[] = {
+    {"Hera", "DART が 2022 年に衝突したディモルフォスを調べに来た ESA の探査機。衝突でできたクレーターの大きさと深さ、\n衝突で形が変わったかを、2 機の小型衛星（ミラニとユベンタス）とともに調べる",
+     "ESA's probe to study Dimorphos after DART's 2022 impact: the size and depth of the crater and whether the impact\nreshaped it, together with two CubeSats (Milani and Juventas)"},
+};
+
 // 探査機 d の区間 leg（1 が最初の旅、2 以降が延長ミッション）
 static const VoyageLeg* FindVoyageLeg(const BodyDef& d, int leg) {
     int n = 1;
@@ -749,6 +755,8 @@ static void VoyageCardText(const App& app, const VoyageStep& st, std::string* ti
                     if (ts.page == 2 && std::strcmp(ts.who, pr.en) == 0 && ts.body && std::strcmp(ts.body, app.B[st.body].d.en) == 0 &&
                         ts.kind == st.evKind)
                         *text = TR(ts.jp, ts.en);
+                for (const auto& a : VOYAGE_ARRIVAL_TEXT)
+                    if (text->empty() && std::strcmp(a.probe, pr.en) == 0) *text = TR(a.jp, a.en);
             }
             double years = (st.t - app.voySteps.front().t) / 365.25;
             snprintf(b, sizeof b, T(UI_VOY_SUMMARY), years, st.count, app.voyLength / AU_KM);

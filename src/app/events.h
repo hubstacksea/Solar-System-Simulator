@@ -500,13 +500,25 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
             // 周回機: 長い区間か、データの最後の区間（周回に入るところや到着の直前でデータが終わる機体）
             bool orbiter = sg.t.back() - sg.t.front() > 200 || (&sg == &S.back() && sg.t.back() - sg.t.front() > 60);
             if (orbiter && app.B[sg.body].d.kind == KIND_ROCKY && app.B[sg.body].d.a_au > 0 && sg.body > B_MOON) {
-                // 彗星・小惑星への到着は区間の始まり（周回や待機の開始）
+                // 彗星・小惑星への到着: 初めて 200 km（大きな天体は半径の 100 倍）より近づいた時。区間が最初から
+                // それより近ければ区間の始まり（周回や待機の開始）
+                double near = std::max(200.0, app.B[sg.body].d.radius * 100);
                 AstroEvent ev;
                 ev.kind = EV_ARRIVE;
                 ev.t = sg.t.front();
+                for (size_t j = 1; j < sg.t.size() && Len(sg.p.front()) >= near; j++)
+                    if (Len(sg.p[j]) < near && Len(sg.p[j - 1]) >= near) {
+                        double a = sg.t[j - 1], b = sg.t[j];
+                        for (int it = 0; it < 40; it++) {
+                            double m = (a + b) / 2;
+                            (Len(SegPos(sg, m)) < near ? b : a) = m;
+                        }
+                        ev.t = b;
+                        break;
+                    }
                 ev.probe = (int)i;
                 ev.body = sg.body;
-                ev.dist = Len(sg.p.front());
+                ev.dist = Len(SegPos(sg, ev.t));
                 out.push_back(ev);
                 continue;
             }
