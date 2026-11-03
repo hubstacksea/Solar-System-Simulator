@@ -541,7 +541,10 @@ struct ProbeSeg {
     std::vector<double> t;    // J2000 からの日数
     std::vector<V3> p, v;     // 描画座標 km, km/日
 };
-struct ProbeTrack { std::vector<ProbeSeg> segs; };
+struct ProbeTrack {
+    std::string name;   // 英語名（探査機ではない天体の軌跡を名前で結び付ける）
+    std::vector<ProbeSeg> segs;
+};
 static std::vector<ProbeTrack> g_probes;
 static const double PROBE_BLEND_DAYS = 20;
 
@@ -563,6 +566,7 @@ static void LoadProbeTracks() {
         uint32_t ns = 0;
         if (!rd(name, 32) || !rd(&ns, 4)) return;
         ProbeTrack tr;
+        tr.name = std::string(name, strnlen(name, 32));
         for (uint32_t k = 0; k < ns; k++) {
             ProbeSeg sg;
             int32_t body;
@@ -685,7 +689,22 @@ static void SetMoonOrientation(Body& b, double t) {
 }
 
 // 惑星のシミュレータ上の位置（任意の時刻）
-static V3 SimPlanetPos(const std::vector<Body>& B, int i, double t) { return i == B_EARTH ? EarthPos(B[i].d, t) : PlanetPos(B[i].d, t); }
+// 軌跡を持つ天体（アポフィス）: 軌跡のある期間はそちらの位置に（端の 30 日で軌道要素の位置 elem から滑らかに移る）
+template <class F>
+static V3 TrackBlend(const BodyDef& d, double t, V3 elem, F planetAt) {
+    if (d.track < 0) return elem;
+    BodyDef td;
+    td.probe = d.track;
+    bool act;
+    V3 p = ProbePosAt(td, t, planetAt, &act);
+    const std::vector<ProbeSeg>& S = g_probes[d.track].segs;
+    double edge = std::min(t - S.front().t.front(), S.back().t.back() - t) / 30.0;
+    return act && edge > 0 ? elem + (p - elem) * (1 - BlendIn(edge)) : elem;
+}
+static V3 SimPlanetPos(const std::vector<Body>& B, int i, double t) {
+    if (i == B_EARTH) return EarthPos(B[i].d, t);
+    return TrackBlend(B[i].d, t, PlanetPos(B[i].d, t), [&](int k) { return k == B_EARTH ? EarthPos(B[k].d, t) : PlanetPos(B[k].d, t); });
+}
 
 // ---------------------------------------------------------------- 惑星の環
 // 土星は Voyager 2 の観測（assets/saturn_rings.png）。天王星・海王星・木星は NASA NSSDCA の Ring Fact Sheet の
@@ -819,6 +838,10 @@ static std::vector<Body> InitBodies() {
     }
     // 探査機: 惑星中心の区間の境目での、シミュレータの惑星と実際の惑星の差
     if (g_probes.empty()) LoadProbeTracks();
+    // 探査機ではない天体の軌跡（アポフィス）
+    for (Body& b : B)
+        for (size_t k = 0; k < g_probes.size(); k++)
+            if (b.d.kind != KIND_PROBE && b.d.probe < 0 && g_probes[k].name == b.d.en && !g_probes[k].segs.empty()) b.d.track = (int)k;
     // 人工衛星は軌跡の代わりに軌道要素で動く。探査機と同じ扱いにするため、空の軌跡の番号を割り当てる
     for (Body& b : B)
         if (b.d.tleN > 0 && b.d.probe < 0) {
@@ -885,6 +908,7 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
             b.pos = B[d.parent].pos + ExoRelative(d, B[d.parent].d, t);   // 恒星は先に更新済み（惑星は配列の最後）
         } else if (d.parent == 0) {
             b.pos = &b == &B[B_EARTH] ? EarthPos(d, t) : PlanetPos(d, t);
+            b.pos = TrackBlend(d, t, b.pos, [&](int i) { return B[i].pos; });
             if (d.vsop >= 0 && std::fabs(t - b.orbitT) > 1.0) {
                 b.orbitT = t;
                 OsculatingOrbit(b, t);
@@ -961,7 +985,8 @@ static V3 PosAt(const std::vector<Body>& B, int i, double t) {
         return ProbePosAt(d, t, [&](int k) { return PosAt(B, k, t); }, &act);
     }
     if (d.exo >= 0) return PosAt(B, d.parent, t) + ExoRelative(d, B[d.parent].d, t);
-    if (d.parent == 0) return i == B_EARTH ? EarthPos(d, t) : PlanetPos(d, t);
+    if (d.parent == 0)
+        return i == B_EARTH ? EarthPos(d, t) : TrackBlend(d, t, PlanetPos(d, t), [&](int k) { return PosAt(B, k, t); });
     if (i == B_MOON) return PosAt(B, B_EARTH, t) + MoonGeoPos(t);
     double th = d.moonPhase * DEG + 2 * PI * t / d.moonPeriod;
     if (d.moonPeriod2 > 0 && t > d.moonChangeT)

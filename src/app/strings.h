@@ -117,6 +117,8 @@
     X(VOY_FLYBY, "小惑星%sに接近", "Flyby of asteroid %s") \
     X(VOY_FLYBY_D, "中心から %s（実際の軌跡）。平均の直径 約 %.1f km", "%s from its center (actual trajectory). Mean diameter about %.1f km") \
     X(VOY_PLANNED, "（予定）", " (planned)") \
+    X(VOY_TARGET_EARTH, "目標の%sが地球に最接近", "The target %s passes closest to Earth") \
+    X(VOY_TARGET_EARTH_D, "地球の中心から %s を通過（静止衛星の軌道より内側）。探査機からは %s", "It passes %s from Earth's center, inside the geostationary orbit. Distance from the spacecraft: %s") \
     X(VOY_NEAR, "%sの近くを通過", "Passing near %s") \
     X(VOY_NEAR_D, "シミュレータの中の距離 %s（衛星の位置には誤差があり、実際の距離とは異なることがあります）", "%s in this simulator (moon positions are approximate, so the real distance may differ)") \
     X(VOY_ARRIVED, "%sに到着", "Arrived at %s") \
@@ -137,6 +139,8 @@
     X(EV_COMET_NOTE, "1980〜2070 年の彗星の近日点と地球への最接近、連星の近星点。尾の長さは見た目の演出です", "Comet perihelia and closest approaches to Earth, and binary-star periastra, 1980-2070. Tail lengths are illustrative") \
     X(EV_PERIHELION, "%sが近日点を通過", "%s at perihelion") \
     X(EV_COMET_EARTH, "%sが地球に最接近", "%s: closest approach to Earth") \
+    X(EV_ASTEROID_EARTH, "小惑星%sが地球に最接近（宇宙から）", "Asteroid %s: closest approach to Earth (from space)") \
+    X(EV_ASTEROID_EARTH_GROUND, "小惑星%sが地球に最接近（地上から）", "Asteroid %s: closest approach to Earth (from the ground)") \
     X(EV_FROM_SUN, "太陽から %s", "%s from the Sun") \
     X(EV_PERIASTRON, "%sの連星が最接近（近星点）", "%s binary at periastron") \
     X(EV_SEPARATION, "間隔 %s", "%s apart") \

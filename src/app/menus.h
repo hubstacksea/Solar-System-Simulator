@@ -954,7 +954,7 @@ static void GoSelectedEvent(App& app) {
     const AstroEvent& ev = app.events[app.eventSel];
     if (ev.kind == EV_VOYAGE) {
         app.eventsOpen = false;
-        StartVoyage(app, ev.probe, 0, NAN);
+        StartVoyage(app, ev.probe, std::max(1, ev.moon), 0, NAN);
         return;
     }
     StopVoyage(app);

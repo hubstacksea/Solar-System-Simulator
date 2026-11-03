@@ -101,9 +101,10 @@ def check_voyages(exe):
             voyages[name].append(line.strip())
     for n, st in voyages.items():
         times = [s[:16] for s in st]
-        if len(st) < 2 or times != sorted(times) or "Earth" not in st[0]:
+        # 最初の旅は地球の出発から（延長ミッション " leg2" は地球スイングバイから）
+        if len(st) < 2 or times != sorted(times) or (" leg" not in n and "Earth" not in st[0]):
             bad.append(n)
-    if len(voyages) < 19:
+    if len(voyages) < 21:
         bad.append("only %d voyages" % len(voyages))
     bepi = voyages.get("BepiColombo", [""])[-1]
     if not bepi.startswith("2026-11-21") or "Arrived at Mercury" not in bepi:

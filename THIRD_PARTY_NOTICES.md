@@ -76,8 +76,10 @@ Solar System Dynamics Group, https://ssd.jpl.nasa.gov/horizons/). Positions and 
 thinned out. The Rosetta trajectory in Horizons comes from ESA, the Hayabusa2 trajectory from JAXA navigation; while
 Hayabusa2 stays at Ryugu it is replaced by the home position (20 km from Ryugu toward Earth). For missions in flight
 (BepiColombo, JUICE, Europa Clipper, Lucy, Psyche) the Horizons trajectories include planned future paths. Near the
-asteroids Gaspra, Ida, Dinkinesh, Donaldjohanson, Eurybates, Polymele, Leucus, Orus and Patroclus, positions relative
-to the asteroid are the differences of the Horizons positions of the spacecraft and the asteroid. Use of
+asteroids Gaspra, Ida, Dinkinesh, Donaldjohanson, Eurybates, Polymele, Leucus, Orus, Patroclus, Torifune and Apophis,
+positions relative
+to the asteroid are the differences of the Horizons positions of the spacecraft and the asteroid. The file also holds the
+Horizons trajectory of asteroid 99942 Apophis for 2024–2060 (Earth-centered around its April 2029 Earth encounter). Use of
 NASA data does not imply endorsement by NASA or JPL.
 
 ## Milky Way (assets/milkyway.jpg)

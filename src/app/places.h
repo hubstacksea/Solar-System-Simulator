@@ -171,6 +171,7 @@ static std::string ShareQuery(const App& app) {
 static std::string VoyageQuery(const App& app) {
     char q[200];
     std::string name = UrlEncode(app.B[app.voyProbe].d.en);
+    if (app.voyLeg > 1) name += "&leg=" + std::to_string(app.voyLeg);
     int last = (int)app.voySteps.size() - 1;
     if (app.voyCard == last) snprintf(q, sizeof q, "?voyage=%s&scene=arrive", name.c_str());
     else if (app.voyCard >= 0) snprintf(q, sizeof q, "?voyage=%s&scene=%d", name.c_str(), app.voyCard + 1);
@@ -228,6 +229,7 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
     if (kv.count("voyage")) {   // 探査機の旅: 探査機の一覧ができてから StartPendingVoyage で始める
         app.pendingVoyage = kv["voyage"];
         app.pendingScene = kv["scene"];
+        app.pendingLeg = kv.count("leg") ? std::max(1, atoi(kv["leg"].c_str())) : 1;
         if (kv.count("t")) app.pendingVoyageT = atof(kv["t"].c_str());
         return true;
     }

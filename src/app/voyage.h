@@ -47,6 +47,46 @@ static const VoyageGoal* FindVoyageGoal(const BodyDef& d) {
     return nullptr;
 }
 
+// 延長ミッションの旅（2 番目の区間）: 地球スイングバイ（試料のカプセルの分離）から次の目標まで
+struct VoyageLeg {
+    const char* probe;
+    const char* start;      // 出発にする地球への最接近の日付 "YYYYMMDD"（±3 日で探す）
+    const char* body;       // 目標の天体の英語名
+    const char* nameJp;
+    const char* nameEn;
+    const char* startTitleJp;
+    const char* startTitleEn;
+    const char* startTextJp;
+    const char* startTextEn;
+    const char* endTitleJp;
+    const char* endTitleEn;
+    const char* endTextJp;
+    const char* endTextEn;
+};
+static const VoyageLeg VOYAGE_LEGS[] = {
+    {"Hayabusa2", "20201205", "Torifune", "はやぶさ2（延長ミッション）", "Hayabusa2 (extended mission)",
+     "カプセルを届けて延長ミッションへ", "Capsule delivered; on to the extended mission",
+     "リュウグウの試料の入ったカプセルを分離してオーストラリアに届け、本体は地球をかすめて次の旅へ",
+     "It released the capsule with the Ryugu samples, which landed in Australia, and swung past Earth on to its next voyage",
+     "小惑星トリフネの近くを通過", "Flyby of asteroid Torifune",
+     "延長ミッションで最初に近づく小惑星。このあと 2031 年に小惑星 1998 KY26 に着く予定",
+     "The first asteroid of the extended mission; it is due to reach asteroid 1998 KY26 in 2031"},
+    {"OSIRIS-REx", "20230924", "Apophis", "OSIRIS-APEX（延長ミッション）", "OSIRIS-APEX (extended mission)",
+     "カプセルを届けて延長ミッションへ", "Capsule delivered; on to the extended mission",
+     "ベンヌの試料の入ったカプセルを分離してユタ州に届け、本体は OSIRIS-APEX と名前を変えてアポフィスへ",
+     "It released the capsule with the Bennu samples, which landed in Utah, and set off for Apophis as OSIRIS-APEX",
+     "アポフィスに到着", "Arrived at Apophis",
+     "2029 年 4 月 13 日に地球の中心から 3.8 万 km を通ったばかりのアポフィスに着き、\n地球の重力で表面や自転がどう変わったかを調べる",
+     "It reaches Apophis just after its 13 April 2029 pass 38,000 km from Earth's center,\nto study how Earth's gravity changed its surface and spin"},
+};
+// 探査機 d の区間 leg（1 が最初の旅、2 以降が延長ミッション）
+static const VoyageLeg* FindVoyageLeg(const BodyDef& d, int leg) {
+    int n = 1;
+    for (const VoyageLeg& l : VOYAGE_LEGS)
+        if (std::strcmp(l.probe, d.en) == 0 && ++n == leg) return &l;
+    return nullptr;
+}
+
 // 地球から出発する軌跡を持つ探査機か（地球を回る人工衛星は除く）
 static bool VoyageCapable(const App& app, int i) {
     const BodyDef& d = app.B[i].d;
@@ -55,12 +95,38 @@ static bool VoyageCapable(const App& app, int i) {
     return !S.empty() && S.front().body == B_EARTH;
 }
 
+// 区間の出発の時刻（最初の旅は軌跡の始まり、延長ミッションは地球への最接近の 6 時間前）。見つからなければ NaN
+static double VoyageStart(const App& app, int i, int leg) {
+    const std::vector<ProbeSeg>& S = g_probes[app.B[i].d.probe].segs;
+    if (leg <= 1) return S.front().t.front();
+    const VoyageLeg* l = FindVoyageLeg(app.B[i].d, leg);
+    if (!l) return NAN;
+    double day = ParseDateDigits(l->start);
+    for (const AstroEvent& ev : app.probeEvents)
+        if (ev.probe == i && ev.kind == EV_FLYBY && ev.body == B_EARTH && std::fabs(ev.t - day) < 3) return ev.t - 0.25;
+    return NAN;
+}
+
 // 旅の終点: 時刻・目標の天体・できごとの種類（EV_ARRIVE / EV_FLYBY / EV_IMPACT。到着しないものは EV_END）
-static bool VoyageEnd(const App& app, int i, double* t, int* body, int* kind) {
+static bool VoyageEnd(const App& app, int i, int leg, double* t, int* body, int* kind) {
     const std::vector<ProbeSeg>& S = g_probes[app.B[i].d.probe].segs;
     double dataEnd = S.back().t.back();
     *body = -1;
     *kind = EV_END;
+    if (leg > 1) {   // 延長ミッション: 出発より後の、目標の天体への到着か最接近
+        const VoyageLeg* l = FindVoyageLeg(app.B[i].d, leg);
+        double t0 = VoyageStart(app, i, leg);
+        if (!l || !std::isfinite(t0)) return false;
+        for (const AstroEvent& ev : app.probeEvents)
+            if (ev.probe == i && ev.t > t0 && (ev.kind == EV_ARRIVE || ev.kind == EV_FLYBY) &&
+                std::strcmp(app.B[ev.body].d.en, l->body) == 0) {
+                *t = ev.t;
+                *body = ev.body;
+                *kind = ev.kind;
+                return true;
+            }
+        return false;
+    }
     if (const VoyageGoal* g = FindVoyageGoal(app.B[i].d)) {
         *t = g->date && g->date[0] ? ParseDateDigits(g->date) : dataEnd - 1.0 / 86400;
         if (g->body)
@@ -89,15 +155,15 @@ static bool VoyageEnd(const App& app, int i, double* t, int* body, int* kind) {
 }
 
 // 行程を作る。巡航中は 1 日ごと、惑星の近くでは 30 分ごとに調べる
-static void BuildVoyage(const App& app, int i, std::vector<VoyageStep>* steps, double* length) {
+static void BuildVoyage(const App& app, int i, int leg, std::vector<VoyageStep>* steps, double* length) {
     steps->clear();
     *length = 0;
     const BodyDef& d = app.B[i].d;
     const std::vector<ProbeSeg>& S = g_probes[d.probe].segs;
-    double t0 = S.front().t.front(), tEnd;
+    double t0 = VoyageStart(app, i, leg), tEnd;
     int endBody, endKind;
-    if (!VoyageEnd(app, i, &tEnd, &endBody, &endKind)) return;
-    const VoyageGoal* goal = FindVoyageGoal(d);
+    if (!std::isfinite(t0) || !VoyageEnd(app, i, leg, &tEnd, &endBody, &endKind)) return;
+    const VoyageGoal* goal = leg <= 1 ? FindVoyageGoal(d) : nullptr;
     std::vector<Body> B = app.B;
     for (Body& b : B) b.orbit.clear();   // 軌道の線は引かないので計算を省く
     auto distTo = [&](int k, double t) {
@@ -121,7 +187,7 @@ static void BuildVoyage(const App& app, int i, std::vector<VoyageStep>* steps, d
     // スイングバイ・到着（探査機のできごとの一覧から）。速さの変化は惑星の影響圏の出入りで比べる
     int swingbys = 0;
     for (const AstroEvent& ev : app.probeEvents) {
-        if (ev.probe != i || ev.kind != EV_FLYBY || ev.t >= tEnd - 1e-6) continue;
+        if (ev.probe != i || ev.kind != EV_FLYBY || ev.t >= tEnd - 1e-6 || ev.t <= t0 + 0.5) continue;
         VoyageStep st;
         if (ev.body > B_PLUTO) {   // 小惑星: 実際の軌跡での距離（スイングバイではない）
             st.kind = VS_FLYBY;
@@ -143,6 +209,18 @@ static void BuildVoyage(const App& app, int i, std::vector<VoyageStep>* steps, d
         steps->push_back(st);
         swingbys++;
     }
+
+    // 目標の小惑星そのものが途中で地球に最接近する（アポフィス）
+    for (const AstroEvent& ev : app.cometEvents)
+        if (ev.kind == EV_COMET_EARTH && ev.moon != 1 && ev.body == endBody && ev.t > t0 && ev.t < tEnd) {
+            VoyageStep st;
+            st.kind = VS_TARGET_EARTH;
+            st.t = ev.t;
+            st.body = ev.body;
+            st.dist = ev.dist;
+            st.vIn = distTo(ev.body, ev.t);   // 探査機からの距離
+            steps->push_back(st);
+        }
 
     // 地球の重力圏の脱出・目的外の天体への接近・飛行距離: 軌跡をたどって調べる
     bool wantEscape = !goal || goal->escape, escaped = false;
@@ -249,24 +327,28 @@ static void SampleVoyageTrack(App& app) {
 }
 
 // イベント一覧の「探査機の旅」のページ。ev.t は出発、ev.body は目標、ev.dist は到着の時刻
+// ev.moon は区間（1 が最初の旅、2 以降が延長ミッション）
 static std::vector<AstroEvent> FindVoyages(const App& app) {
     std::vector<AstroEvent> out;
     for (size_t i = 0; i < app.B.size(); i++) {
         if (!VoyageCapable(app, (int)i)) continue;
-        AstroEvent ev;
-        int kind;
-        if (!VoyageEnd(app, (int)i, &ev.dist, &ev.body, &kind)) continue;
-        ev.kind = EV_VOYAGE;
-        ev.probe = (int)i;
-        ev.t = g_probes[app.B[i].d.probe].segs.front().t.front();
-        out.push_back(ev);
+        for (int leg = 1; leg == 1 || FindVoyageLeg(app.B[i].d, leg); leg++) {
+            AstroEvent ev;
+            int kind;
+            ev.t = VoyageStart(app, (int)i, leg);
+            if (!std::isfinite(ev.t) || !VoyageEnd(app, (int)i, leg, &ev.dist, &ev.body, &kind)) continue;
+            ev.kind = EV_VOYAGE;
+            ev.probe = (int)i;
+            ev.moon = leg;
+            out.push_back(ev);
+        }
     }
     std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
     return out;
 }
 
-static std::string VoyageTargetName(const App& app, int i, int body) {
-    if (const VoyageGoal* g = FindVoyageGoal(app.B[i].d)) return TR(g->targetJp, g->targetEn);
+static std::string VoyageTargetName(const App& app, int i, int leg, int body) {
+    if (const VoyageGoal* g = leg <= 1 ? FindVoyageGoal(app.B[i].d) : nullptr) return TR(g->targetJp, g->targetEn);
     return body >= 0 ? TR(app.B[body].d.jp, app.B[body].d.en) : "";
 }
 
@@ -355,12 +437,18 @@ static void VoyageJump(App& app, double t) {
     PlaceVoyageCamera(app, app.voyAim);
 }
 
-// 探査機 i の旅を始める。scene: 場面の番号（0 が出発、負なら末尾から）。t が有効ならその時刻から
-static bool StartVoyage(App& app, int i, int scene, double t) {
+// 旅の名前（延長ミッションはその名前）
+static std::string VoyageName(const App& app, int i, int leg) {
+    if (const VoyageLeg* l = leg > 1 ? FindVoyageLeg(app.B[i].d, leg) : nullptr) return TR(l->nameJp, l->nameEn);
+    return TR(app.B[i].d.jp, app.B[i].d.en);
+}
+
+// 探査機 i の区間 leg の旅を始める。scene: 場面の番号（0 が出発、負なら末尾から）。t が有効ならその時刻から
+static bool StartVoyage(App& app, int i, int leg, int scene, double t) {
     if (!VoyageCapable(app, i)) return false;
     std::vector<VoyageStep> steps;
     double length;
-    BuildVoyage(app, i, &steps, &length);
+    BuildVoyage(app, i, leg, &steps, &length);
     if (steps.size() < 2) return false;
     if (app.tourOn) app.tourOn = false;
     app.autopilot = false;
@@ -370,6 +458,7 @@ static bool StartVoyage(App& app, int i, int scene, double t) {
     app.voySavedCockpit = app.voyageOn ? app.voySavedCockpit : app.cockpit;
     app.voyageOn = true;
     app.voyProbe = i;
+    app.voyLeg = leg;
     app.voySteps = steps;
     app.voyLength = length;
     app.voyLocal.assign(steps.size(), App::VoyLocal());
@@ -410,7 +499,7 @@ static void StartPendingVoyage(App& app) {
     const std::string& sc = app.pendingScene;
     if (sc == "arrive" || sc == "end") scene = -1;
     else if (!sc.empty() && sc != "launch") scene = std::max(1, atoi(sc.c_str())) - 1;
-    if (who < 0 || !StartVoyage(app, who, scene, app.pendingVoyageT)) Toast(app, T(UI_VOY_NOT_FOUND));
+    if (who < 0 || !StartVoyage(app, who, std::max(1, app.pendingLeg), scene, app.pendingVoyageT)) Toast(app, T(UI_VOY_NOT_FOUND));
     app.pendingVoyage.clear();
 }
 
@@ -492,6 +581,11 @@ static void VoyageCardText(const App& app, const VoyageStep& st, std::string* ti
     *text = "";
     switch (st.kind) {
         case VS_LAUNCH:
+            if (const VoyageLeg* l = FindVoyageLeg(pr, app.voyLeg)) {
+                *title = TR(l->startTitleJp, l->startTitleEn);
+                *text = TR(l->startTextJp, l->startTextEn);
+                break;
+            }
             *title = T(UI_VOY_LAUNCH);
             snprintf(b, sizeof b, T(UI_VOY_LAUNCH_D), TR(pr.jp, pr.en));
             *text = b;
@@ -513,6 +607,12 @@ static void VoyageCardText(const App& app, const VoyageStep& st, std::string* ti
             snprintf(b, sizeof b, T(UI_VOY_FLYBY_D), FmtDist(st.dist).c_str(), app.B[st.body].d.radius * 2);
             *text = b;
             break;
+        case VS_TARGET_EARTH:
+            snprintf(b, sizeof b, T(UI_VOY_TARGET_EARTH), name(st.body).c_str());
+            *title = b;
+            snprintf(b, sizeof b, T(UI_VOY_TARGET_EARTH_D), FmtDist(st.dist).c_str(), FmtDist(st.vIn).c_str());
+            *text = b;
+            break;
         case VS_NEAR:
             snprintf(b, sizeof b, T(UI_VOY_NEAR), name(st.body).c_str());
             *title = b;
@@ -520,8 +620,11 @@ static void VoyageCardText(const App& app, const VoyageStep& st, std::string* ti
             *text = b;
             break;
         default: {
-            const VoyageGoal* g = FindVoyageGoal(pr);
-            if (g) {
+            const VoyageGoal* g = app.voyLeg <= 1 ? FindVoyageGoal(pr) : nullptr;
+            if (const VoyageLeg* l = FindVoyageLeg(pr, app.voyLeg)) {
+                *title = TR(l->endTitleJp, l->endTitleEn);
+                *text = TR(l->endTextJp, l->endTextEn);
+            } else if (g) {
                 *title = TR(g->titleJp, g->titleEn);
                 *text = TR(g->textJp, g->textEn);
             } else {
@@ -725,7 +828,7 @@ static void DrawVoyageHud(const App& app) {
     float panelH = lh * (nextIdx >= 0 ? 5 : 4) + 34;
     DrawRectangleRounded({6, 6, 460, panelH}, 0.06f, 6, {0, 10, 25, 170});
     float x = 16, y = 12;
-    snprintf(b, sizeof b, T(UI_VOY_HEAD), TR(p.d.jp, p.d.en));
+    snprintf(b, sizeof b, T(UI_VOY_HEAD), VoyageName(app, app.voyProbe, app.voyLeg).c_str());
     Txt(b, x, y, fs + 3, {255, 220, 120, 255}); y += lh + 6;
     double elapsed = std::max(0.0, app.tDays - app.voySteps.front().t);
     snprintf(b, sizeof b, T(UI_VOY_DATE), FmtDate(app.tDays).c_str());

@@ -154,15 +154,17 @@ int main(int argc, char** argv) {
         tmp.B = InitBodies();
         UpdateBodies(tmp.B, 0);
         tmp.probeEvents = FindProbeEvents(tmp);
+        tmp.cometEvents = FindCometEvents(tmp);
         for (const AstroEvent& ev : FindVoyages(tmp)) {
             std::vector<VoyageStep> steps;
             double len;
             clock_t wall0 = clock();
-            BuildVoyage(tmp, ev.probe, &steps, &len);
+            BuildVoyage(tmp, ev.probe, ev.moon, &steps, &len);
             tmp.voyProbe = ev.probe;
+            tmp.voyLeg = ev.moon;
             tmp.voySteps = steps;
             tmp.voyLength = len;
-            printf("VOYAGE %s steps %d length %.1f AU build %.0f ms\n", tmp.B[ev.probe].d.en, (int)steps.size(), len / AU_KM, (clock() - wall0) * 1000.0 / CLOCKS_PER_SEC);
+            printf("VOYAGE %s%s steps %d length %.1f AU build %.0f ms\n", tmp.B[ev.probe].d.en, ev.moon > 1 ? (" leg" + std::to_string(ev.moon)).c_str() : "", (int)steps.size(), len / AU_KM, (clock() - wall0) * 1000.0 / CLOCKS_PER_SEC);
             for (const VoyageStep& st : steps) {
                 std::string title, text;
                 VoyageCardText(tmp, st, &title, &text);
@@ -337,6 +339,7 @@ int main(int argc, char** argv) {
     for (const StarName& n : app.sky.names) allText += n.jp;
     for (const TourStop& st : TOUR) allText += st.jp;
     for (const VoyageGoal& g : VOYAGE_GOALS) allText += std::string(g.targetJp) + g.titleJp + g.textJp;
+    for (const VoyageLeg& l : VOYAGE_LEGS) allText += std::string(l.nameJp) + l.startTitleJp + l.startTextJp + l.endTitleJp + l.endTextJp;
     for (const HistoricEclipse& h : HISTORY) allText += std::string(h.jp) + h.placeJp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();

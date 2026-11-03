@@ -22,7 +22,7 @@ struct AstroEvent {
 };
 
 // 探査機の旅（src/app/voyage.h）の場面
-enum VoyageStepKind { VS_LAUNCH, VS_ESCAPE, VS_SWINGBY, VS_FLYBY, VS_NEAR, VS_ARRIVE };
+enum VoyageStepKind { VS_LAUNCH, VS_ESCAPE, VS_SWINGBY, VS_FLYBY, VS_NEAR, VS_TARGET_EARTH, VS_ARRIVE };
 struct VoyageStep {
     int kind = VS_LAUNCH;
     double t = 0;
@@ -115,7 +115,7 @@ struct App {
     bool frameLock = false;               // 基準系を自機に固定（Shift+F）: 近くの天体と一緒に動かず、太陽に対してその場にとどまる
     bool tourOn = false;                  // 自動ツアー（U キー）
     bool voyageOn = false;                // 探査機の旅
-    int voyProbe = -1, voyCard = -1;
+    int voyProbe = -1, voyCard = -1, voyLeg = 1;   // voyLeg: 区間（1 が最初の旅、2 以降が延長ミッション）
     std::vector<VoyageStep> voySteps;
     double voyCruise = 86400, voyRate = 1, voyLength = 0;
     bool voyDone = false, voySavedCockpit = false, voySavedPhysics = false;
@@ -134,6 +134,7 @@ struct App {
     double voyLookYaw = 0, voyLookPitch = 0, voyLookHold = 0;   // 旅の途中で見回した角度と、自動の向きに戻るまでの秒
     std::string pendingVoyage, pendingScene;   // URL で指定された旅（起動の最後に始める）
     double pendingVoyageT = NAN;
+    int pendingLeg = 1;
     std::vector<AstroEvent> voyageEvents;
     int tourIdx = 0;
     double tourTime = 0;                  // 今の場面に着いてからの実時間 秒

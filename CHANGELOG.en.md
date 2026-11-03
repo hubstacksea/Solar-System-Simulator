@@ -4,6 +4,14 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.28.0 (2026-11-03)
+
+- Asteroid Apophis's Earth encounter on 13 April 2029: it passes 38,000 km from Earth's center, inside the geostationary orbit. Two scenes on the comets and binaries page of the event list, from space and from the ground directly below. Around the encounter it follows its JPL Horizons trajectory
+- Extended-mission voyages: Hayabusa2 (from the Earth flyby that delivered its capsule to asteroid Torifune) and OSIRIS-APEX (three Earth flybys on the way to Apophis, including Apophis's own Earth encounter). URLs such as `?voyage=Hayabusa2&leg=2`
+- Added the asteroids Torifune and Apophis
+- The release build now opens the browser version in headless Chrome and saves its screen and console output (`tools/web_smoke.py`)
+- Finer spacecraft trajectories near asteroids (thinning tolerance reduced from 0.5 km to 50 m)
+
 ## 2.27.0 (2026-11-03)
 
 - Spacecraft voyages: near a planet or asteroid, the map at the top right switches to a close-up centered on that body

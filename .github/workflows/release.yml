@@ -4,7 +4,8 @@
 # タグ（v1.2.3 の形）を push すると:
 #   1. Linux (.deb / .rpm)・Windows (.7z、Linux からクロスビルド)・macOS (.zip、Apple Silicon と Intel の両対応)・
 #      ブラウザ版 (Emscripten) を作る
-#      Linux と macOS は実際に起動してスクリーンショットを撮る（screenshots-* として保存。失敗してもリリースは止めない）
+#      Linux と macOS は実際に起動してスクリーンショットを撮る（screenshots-* として保存。失敗してもリリースは止めない）。
+#      ブラウザ版もヘッドレスの Chrome で開いて撮る（screenshots-web。コンソールの出力も保存）
 #   2. GitHub のリリースを作ってパッケージを添付する
 #   3. ブラウザ版を gh-pages ブランチへ置き、GitHub Pages で公開する
 # Actions タブから手動で動かした時（workflow_dispatch）は、ビルドだけしてリリースと公開はしない
@@ -154,6 +155,18 @@ jobs:
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Release
           cmake --build build-web -j
+      - name: Launch test in headless Chrome (screenshots)
+        continue-on-error: true
+        run: |
+          (cd build-web && python3 -m http.server 8000 > /dev/null 2>&1 &)
+          sleep 2
+          timeout 900 python3 tools/web_smoke.py shots-web http://localhost:8000/index.html \
+            "" "?voyage=BepiColombo&scene=arrive" "?voyage=Lucy&scene=5"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots-web
+          path: shots-web/
       - uses: actions/upload-artifact@v7
         with:
           name: web

@@ -200,6 +200,29 @@ static std::vector<AstroEvent> FindCometEvents(const App& app) {
             }
         }
     }
+    // 軌跡を持つ小惑星（アポフィス）の地球への最接近: 地球中心の区間で一番近い時刻。宇宙からと地上からの 2 場面
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const BodyDef& d = app.B[i].d;
+        if (d.track < 0) continue;
+        for (const ProbeSeg& sg : g_probes[d.track].segs) {
+            if (sg.body != B_EARTH) continue;
+            auto f = [&](double t) { return Len(SegPos(sg, t)); };
+            double t0 = sg.t.front(), t1 = sg.t.back(), tb = t0;
+            for (int k = 1; k <= 4000; k++) {
+                double t = t0 + (t1 - t0) * k / 4000;
+                if (f(t) < f(tb)) tb = t;
+            }
+            double h = (t1 - t0) / 4000;
+            AstroEvent ev;
+            ev.kind = EV_COMET_EARTH;
+            ev.t = MinimizeT(f, std::max(t0, tb - h), std::min(t1, tb + h));
+            ev.body = (int)i;
+            ev.dist = f(ev.t);
+            out.push_back(ev);
+            ev.moon = 1;   // 地上から
+            out.push_back(ev);
+        }
+    }
     // 連星の近星点通過（論文の軌道の近点通過の時刻 T から周期 P ごと。年は 365.25 日で J2000 からの日数に）
     for (size_t i = 0; i < app.B.size(); i++) {
         int si = app.B[i].d.star;
@@ -552,6 +575,7 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
     return out;
 }
 
+static std::string VoyageName(const App& app, int i, int leg);
 static std::string EventTitle(const App& app, const AstroEvent& ev) {
     auto name = [&](int i) { return TR(app.B[i].d.jp, app.B[i].d.en); };
     char b[200];
@@ -569,7 +593,13 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
         case EV_CONJ: snprintf(b, sizeof b, T(UI_EV_CONJ), name(ev.body), name(ev.body2)); break;
         case EV_OPPOSITION: snprintf(b, sizeof b, T(UI_EV_OPPOSITION), name(ev.body)); break;
         case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_PERIHELION), name(ev.body)); break;
-        case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_COMET_EARTH), name(ev.body)); break;
+        case EV_COMET_EARTH:
+            if (!app.B[ev.body].d.comet) {   // 小惑星（アポフィス）: 宇宙から / 地上から
+                snprintf(b, sizeof b, T(ev.moon == 1 ? UI_EV_ASTEROID_EARTH_GROUND : UI_EV_ASTEROID_EARTH), name(ev.body));
+                break;
+            }
+            snprintf(b, sizeof b, T(UI_EV_COMET_EARTH), name(ev.body));
+            break;
         case EV_FLYBY: snprintf(b, sizeof b, T(UI_EV_FLYBY), name(ev.probe), name(ev.body)); break;
         case EV_ARRIVE:
             snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_ARRIVE_SMALL : UI_EV_ARRIVE), name(ev.probe), name(ev.body));
@@ -584,13 +614,13 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
         }
         case EV_VIEW: snprintf(b, sizeof b, T(UI_EV_VIEW), name(g_jp ? ev.body : ev.body2), name(g_jp ? ev.body2 : ev.body)); break;
         case EV_HISTORY: return TR(HISTORY[ev.moon].jp, HISTORY[ev.moon].en);
-        case EV_VOYAGE: return name(ev.probe);
+        case EV_VOYAGE: return VoyageName(app, ev.probe, ev.moon);
         default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
 }
 
-static std::string VoyageTargetName(const App& app, int i, int body);
+static std::string VoyageTargetName(const App& app, int i, int leg, int body);
 static std::string EventDetail(const App& app, const AstroEvent& ev) {
     char b[160];
     switch (ev.kind) {
@@ -598,7 +628,7 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
             long long y;
             int m, d;
             CivilFromJdn((long long)std::floor(ev.dist + 2451545.5), &y, &m, &d);
-            snprintf(b, sizeof b, T(UI_EV_VOYAGE_D), VoyageTargetName(app, ev.probe, ev.body).c_str(), (int)y);
+            snprintf(b, sizeof b, T(UI_EV_VOYAGE_D), VoyageTargetName(app, ev.probe, ev.moon, ev.body).c_str(), (int)y);
             return b;
         }
         case EV_FLYBY:
@@ -703,6 +733,25 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         app.ship.ref = B_SUN;
         app.ship.local = aim + n * (len * 0.8);
         app.ship.q = QuatFromBasis(n * -1.0, Cross(anti, n * -1.0) * -1.0);
+        app.target = ev.body;
+    } else if (ev.kind == EV_COMET_EARTH && !app.B[ev.body].d.comet && ev.moon == 1) {
+        // 小惑星の地上から: 最接近の時に小惑星の真下になる地点（高度 300 m）から、真上の小惑星を見上げる
+        const Body& a = app.B[ev.body];
+        double lat, lon;
+        LatLonOf(earth, Norm(a.pos - earth.pos), &lat, &lon);
+        PlaceAt(app, B_EARTH, lat, lon, 0.3);
+        V3 sw = ShipWorld(app), up = Norm(sw - earth.pos);
+        V3 north = Norm(earth.pole - up * Dot(earth.pole, up));
+        app.ship.q = QuatFromBasis(Norm(a.pos - sw), north);
+        app.target = ev.body;
+    } else if (ev.kind == EV_COMET_EARTH && !app.B[ev.body].d.comet) {
+        // 小惑星の宇宙から: 小惑星のすぐ外側（地球と反対側の斜め横 1.5 km）から、小惑星越しに地球を見る
+        const Body& a = app.B[ev.body];
+        V3 out = Norm(a.pos - earth.pos), side = Norm(Cross(out, earth.pole));
+        app.ship.ref = ev.body;
+        app.ship.speed = 0;
+        app.ship.local = (out * 0.8 + side * 0.6) * 1.5;   // 小惑星の影響圏の中（外だと地球の基準系に移って置いていかれる）
+        app.ship.q = QuatFromBasis(Norm(earth.pos - (a.pos + app.ship.local)), earth.pole);
         app.target = ev.body;
     } else if (ev.kind == EV_COMET_EARTH) {
         // 地球のすぐ外から彗星を見る（地球から見た尾の向きと長さ）
