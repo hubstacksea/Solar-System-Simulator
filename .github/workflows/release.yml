@@ -4,7 +4,8 @@
 # タグ（v1.2.3 の形）を push すると:
 #   1. Linux (.deb / .rpm)・Windows (.7z、Linux からクロスビルド)・macOS (.zip、Apple Silicon と Intel の両対応)・
 #      ブラウザ版 (Emscripten) を作る
-#      Linux と macOS は実際に起動してスクリーンショットを撮る（screenshots-* として保存。失敗してもリリースは止めない）。
+#      Linux は実際に起動してスクリーンショットを撮る（screenshots-linux として保存。失敗してもリリースは止めない）。
+#      macOS はデータを読めるかだけ確かめる（GitHub の Mac の仮想マシンは GPU が無く、OpenGL のウィンドウを作れない）。
 #      ブラウザ版もヘッドレスの Chrome で開いて撮る（screenshots-web。コンソールの出力も保存）
 #   2. GitHub のリリースを作ってパッケージを添付する
 #   3. ブラウザ版を gh-pages ブランチへ置き、GitHub Pages で公開する
@@ -103,39 +104,6 @@ jobs:
           APP=$(echo build-mac/check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager)
           "$APP" --check-assets | tee check.txt
           echo "::notice title=check-assets::$(sed 's/%/%25/g' check.txt | awk '{printf "%s%%0A", $0}')"
-      - name: Launch test (screenshots)
-        continue-on-error: true
-        run: |
-          # GitHub の Mac の仮想マシンは GPU が無く OpenGL のウィンドウを作れない（NSGL: Failed to find a suitable
-          # pixel format）ため、今は失敗する。実機に近い環境で動くようになった時のために残しておく
-          # 配布する .zip から展開した .app を起動する（macOS には timeout が無いので perl の alarm で打ち切る）
-          mkdir -p shots
-          APP=$(echo build-mac/check/*/SolarSystemVoyager.app/Contents/MacOS/SolarSystemVoyager)
-          # GitHub の Mac の仮想マシンは MSAA 付きの OpenGL を作れないので --no-msaa で起動する
-          shot() { name=$1; shift; perl -e 'alarm 300; exec @ARGV' "$APP" --no-msaa --shot "$PWD/shots/$name.png" --frames 60 "$@" \
-                     > "shots/$name.log" 2>&1 || echo "$name: exit $?"; }
-          shot earth --lang ja
-          shot mars --lang ja --share "?t=9800.25&at=Mars,5500,1500,0,-0.96,-0.27,0,-0.27,0.96,0&tg=Phobos&ts=3"
-          shot map --lang ja --map
-          shot settings_en --lang en --settings
-          ls -la shots
-          if [ ! -s shots/earth.png ]; then   # 起動できない時は、デバッガで止まった場所を調べる
-            lldb --batch -o run -k "bt 30" -k "register read pc" -k quit -- "$APP" --no-msaa --shot "$PWD/shots/lldb.png" --frames 5 \
-              > shots/lldb.log 2>&1 || true
-            msg=$(grep -vE "^INFO" shots/lldb.log | tail -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-            echo "::notice title=lldb backtrace::${msg}"
-          fi
-          # ログの要点を注釈に出す（実行結果のページと API から、ログイン無しで読める）
-          for f in shots/*.log; do
-            msg=$(grep -viE "^INFO:     >|^INFO: (SHADER|TEXTURE|VAO|VBO|IMAGE)" "$f" | head -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-            echo "::notice title=$(basename "$f")::${msg:-(empty log)}"
-          done
-          test -s shots/earth.png
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: screenshots-macos
-          path: shots/
       - uses: actions/upload-artifact@v7
         with:
           name: macos

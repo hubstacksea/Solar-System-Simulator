@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.28.2 (2026-11-03)
+
+- Reverted the 2.28.1 change to raylib (it only changed how the app fails in rare environments that cannot open a window, which did not justify modifying an external library)
+- The release build no longer launches the macOS version for screenshots (GitHub's Mac virtual machines have no GPU, so it always failed); the data check remains
+
 ## 2.28.1 (2026-11-03)
 
 - Where an OpenGL 3.3 window cannot be created (such as Mac virtual machines without a GPU), the macOS version crashed silently; it now prints a message and exits (a fix applied to raylib 5.5)
