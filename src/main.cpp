@@ -645,8 +645,9 @@ int main(int argc, char** argv) {
             static bool have = false;
             V3 f = app.cam.fwd, l = app.ship.local;
             if (have)
-                printf("VOYTRACE %s card=%d turn=%.3f deg move=%.2f m fov=%.2f->%.2f rate=%.0f\n", FmtDate(app.tDays).c_str(), app.voyCard,
-                       std::acos(std::max(-1.0, std::min(1.0, Dot(pf, f)))) / DEG, Len(l - pl) * 1000, pfov / DEG, app.cam.fovy / DEG, app.voyRate);
+                printf("VOYTRACE %s card=%d turn=%.3f deg yaw=%+.3f move=%.2f m fov=%.2f->%.2f rate=%.0f\n", FmtDate(app.tDays).c_str(), app.voyCard,
+                       std::acos(std::max(-1.0, std::min(1.0, Dot(pf, f)))) / DEG, std::asin(std::max(-1.0, std::min(1.0, Dot(Cross(pf, f), app.cam.up)))) / DEG,
+                       Len(l - pl) * 1000, pfov / DEG, app.cam.fovy / DEG, app.voyRate);
             pf = f;
             pl = l;
             pfov = app.cam.fovy;

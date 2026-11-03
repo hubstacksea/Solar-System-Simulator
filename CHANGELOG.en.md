@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.30.1 (2026-11-03)
+
+- Spacecraft voyages: when cruising toward a moon (such as Ganymede for Europa Clipper), the camera no longer sways from side to side following the moon as it circles its planet many times under fast time. It looks at the planet while that happens and turns to the moon as time slows down
+
 ## 2.30.0 (2026-11-03)
 
 - The ESA probe Hera: from its October 2024 launch through the March 2025 Mars flyby to its arrival at Didymos on 27 October 2026, also as a spacecraft voyage (`?voyage=Hera&scene=arrive`)

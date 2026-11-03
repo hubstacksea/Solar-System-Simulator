@@ -398,11 +398,24 @@ static V3 VoyageAimDir(const App& app, int* bodyOut = nullptr) {
             if (facing < 0 && Len(side) > 1e-9) {
                 auto smooth = [](double x) { x = std::max(0.0, std::min(1.0, x)); return x * x * (3 - 2 * x); };
                 double w = smooth(-facing / 0.3) * smooth((o.d.radius * 8 - r) / (o.d.radius * 2));
-                V3 aim = o.pos + Norm(side) * (o.d.radius * w) - p.pos;
-                if (Len(aim) > 1e-6) return Norm(aim);
+                d = o.pos + Norm(side) * (o.d.radius * w) - p.pos;
             }
         }
-        if (r > 1e-6) return Norm(d);
+        // 衛星: 時間を速めている間は母天体のまわりを何周も回り、追うとカメラが左右に振れる。画面の上で
+        // 1 周が短く（10 秒より短い）、振れの見かけの大きさ（衛星の軌道の見かけの半径）も見て分かる間は
+        // 母天体の方を見て、時間が遅くなるにつれて衛星へ寄せる
+        if (o.d.parent > 0 && o.d.moonA > 0 && o.d.moonPeriod > 0 && r > 1e-6) {
+            auto ramp = [](double x, double lo, double hi) {
+                x = std::max(0.0, std::min(1.0, (x - lo) / (hi - lo)));
+                return x * x * (3 - 2 * x);
+            };
+            const Body& host = app.B[o.d.parent];
+            double perSec = app.voyRate / (o.d.moonPeriod * 86400);              // 画面の 1 秒あたりの周回数
+            double swing = std::atan(std::min(1.0, o.d.moonA / r)) / DEG;        // 振れの見かけの大きさ deg
+            double w = 1 - ramp(perSec, 0.02, 0.1) * ramp(swing, 0.02, 0.08);
+            d = host.pos + (p.pos + d - host.pos) * w - p.pos;
+        }
+        if (Len(d) > 1e-6) return Norm(d);
     }
     return Len(p.pos - app.B[B_SUN].pos) > 1e-6 ? Norm(app.voyAim) : V3(1, 0, 0);   // 目標のない巡航は今の向きのまま
 }
