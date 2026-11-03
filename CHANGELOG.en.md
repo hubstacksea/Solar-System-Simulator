@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.28.1 (2026-11-03)
+
+- Where an OpenGL 3.3 window cannot be created (such as Mac virtual machines without a GPU), the macOS version crashed silently; it now prints a message and exits (a fix applied to raylib 5.5)
+
 ## 2.28.0 (2026-11-03)
 
 - Asteroid Apophis's Earth encounter on 13 April 2029: it passes 38,000 km from Earth's center, inside the geostationary orbit. Two scenes on the comets and binaries page of the event list, from space and from the ground directly below. Around the encounter it follows its JPL Horizons trajectory

@@ -26,9 +26,11 @@ if(NOT raylib_FOUND)
     set(PLATFORM Web CACHE STRING "" FORCE)
     set(OPENGL_VERSION "ES 3.0" CACHE STRING "" FORCE)
   endif()
+  # cmake/patch_raylib.cmake: ウィンドウを作れない時に落ちないようにする修正（-DFETCHCONTENT_SOURCE_DIR_RAYLIB の時は当たらない）
   FetchContent_Declare(raylib
     URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    PATCH_COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_raylib.cmake)
   FetchContent_MakeAvailable(raylib)
 endif()
 
