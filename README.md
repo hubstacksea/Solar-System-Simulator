@@ -110,11 +110,11 @@ open build/SolarSystemVoyager.app
 
 ### 自動ビルドとリリース（GitHub Actions）
 
-`v2.31.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。Linux 版は実際に起動してスクリーンショット（地球・火星・全体図・英語の設定画面）とログを撮り、実行結果の `screenshots-linux` に保存します（起動に失敗してもリリースは止めません）。macOS 版はデータを読めるかだけ確かめます（GitHub の Mac の仮想マシンは GPU が無く、ウィンドウを作れないため）。ブラウザ版もヘッドレスの Chrome で開き（`tools/web_smoke.py`、探査機の旅のリンクと、キー・クリック・ドラッグの操作も）、画面とコンソールの出力を `screenshots-web` に保存します。
+`v2.32.0` のようなタグを push すると、`.github/workflows/release.yml` が Linux (.deb / .rpm)・Windows (.7z)・macOS (.zip)・ブラウザ版を作り、GitHub のリリースにパッケージを添付し、ブラウザ版を `gh-pages` ブランチへ置いて GitHub Pages で公開します。Linux 版は実際に起動してスクリーンショット（地球・火星・全体図・英語の設定画面）とログを撮り、実行結果の `screenshots-linux` に保存します（起動に失敗してもリリースは止めません）。macOS 版はデータを読めるかだけ確かめます（GitHub の Mac の仮想マシンは GPU が無く、ウィンドウを作れないため）。ブラウザ版もヘッドレスの Chrome で開き（`tools/web_smoke.py`、探査機の旅のリンクと、キー・クリック・ドラッグの操作も）、画面とコンソールの出力を `screenshots-web` に保存します。
 
 ```sh
-git tag v2.31.0
-git push origin master v2.31.0
+git tag v2.32.0
+git push origin master v2.32.0
 ```
 
 ### リリース前の確認
