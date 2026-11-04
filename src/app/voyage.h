@@ -86,6 +86,177 @@ static const struct { const char* probe; const char* jp; const char* en; } VOYAG
      "ESA's probe to study Dimorphos after DART's 2022 impact: the size and depth of the crater and whether the impact\nreshaped it, together with two CubeSats (Milani and Juventas)"},
 };
 
+// 巡航中に順に出すひとこと（探査機そのもの・目的・エピソード）。leg: 区間（1 が最初の旅、2 が延長ミッション）
+static const struct VoyageTip { const char* probe; int leg; const char* jp; const char* en; } VOYAGE_TIPS[] = {
+    {"Pioneer 10", 1, "重さ 258 kg。太陽から遠く太陽電池では電気が足りないので、プルトニウムの崩壊熱で発電する\n原子力電池（RTG）を 4 基積んでいる",
+     "It weighs 258 kg. Sunlight is too weak out there for solar panels, so four RTGs make electricity\nfrom the heat of decaying plutonium"},
+    {"Pioneer 10", 1, "初めて小惑星帯を通り抜けた探査機。通る前は、ちりにぶつかって壊れるのではと心配されていた",
+     "The first spacecraft to cross the asteroid belt. Before it did, many feared dust impacts would destroy it"},
+    {"Pioneer 10", 1, "機体には、人の姿と太陽系の中の地球の場所を刻んだ金属の板（パイオニア銘板）が付いている",
+     "It carries a metal plaque engraved with human figures and the location of Earth in the solar system"},
+    {"Pioneer 10", 1, "最後に信号を受けたのは 2003 年 1 月。今はおうし座のアルデバランの方向へ進み続けている",
+     "Its last signal was received in January 2003. It is still coasting toward Aldebaran in Taurus"},
+
+    {"Pioneer 11", 1, "パイオニア10号の双子の探査機。同じ形で、パイオニア銘板も同じものを積んでいる",
+     "The twin of Pioneer 10, with the same design and the same plaque"},
+    {"Pioneer 11", 1, "木星の重力で向きを変えて土星へ向かった、初めての探査機。土星では細い F 環を見つけた",
+     "The first spacecraft to use Jupiter's gravity to head for Saturn, where it discovered the narrow F ring"},
+    {"Pioneer 11", 1, "1995 年に電力が尽きて運用を終えた。今はわし座の方向へ進んでいる",
+     "Its power ran out in 1995. It is now heading toward the constellation Aquila"},
+
+    {"Voyager 2", 1, "木星・土星・天王星・海王星が同じ側に並ぶ、約 175 年に一度の配置を使った「グランドツアー」。\n天王星と海王星を訪れた探査機は今もボイジャー2号だけ",
+     "Its \"Grand Tour\" used an alignment of Jupiter, Saturn, Uranus and Neptune that comes about once in 175 years.\nIt is still the only spacecraft to have visited Uranus and Neptune"},
+    {"Voyager 2", 1, "打ち上げはボイジャー1号より 16 日早い。ボイジャー1号の方が速い軌道で、先に木星に着いた",
+     "It launched 16 days before Voyager 1, which took a faster path and reached Jupiter first"},
+    {"Voyager 2", 1, "地球の音や画像、55 の言語のあいさつ、世界の音楽を収めた金色のレコード（ゴールデンレコード）を積んでいる",
+     "It carries the Golden Record: sounds and images of Earth, greetings in 55 languages and music from around the world"},
+    {"Voyager 2", 1, "2018 年 11 月、太陽風の届く範囲（太陽圏）を出て恒星間空間に入った",
+     "In November 2018 it left the heliosphere, the bubble of the solar wind, and entered interstellar space"},
+
+    {"Voyager 1", 1, "土星では衛星タイタンのそばを通ることを選び、その重力で惑星の並ぶ面から北へはじき出された。\nそのため土星が最後の惑星になった",
+     "At Saturn it was sent close to Titan, whose gravity flung it north out of the plane of the planets,\nso Saturn was its last planet"},
+    {"Voyager 1", 1, "1990 年 2 月、約 60 億 km 先から振り返って地球を撮った。光の筋の中の小さな点の写真は\n「ペイル・ブルー・ドット」と呼ばれる",
+     "In February 1990 it looked back from about 6 billion km and photographed Earth as a tiny dot in a sunbeam,\nthe \"Pale Blue Dot\""},
+    {"Voyager 1", 1, "2012 年 8 月、人工物で初めて恒星間空間に入った。地球から最も遠くにある人工物で、今も信号を送っている",
+     "In August 2012 it became the first human-made object in interstellar space. It is the most distant one\nand still sends signals home"},
+
+    {"Galileo", 1, "スペースシャトル・アトランティスから打ち上げた。上段のロケットの力が足りなかったので、金星と地球で 3 回の\nスイングバイを重ねて木星へ向かった",
+     "It was launched from the Space Shuttle Atlantis. With a weak upper stage, it needed three gravity assists\nat Venus and Earth to reach Jupiter"},
+    {"Galileo", 1, "途中で傘のような主アンテナが開かなくなり、小さなアンテナとデータの圧縮で観測を続けた",
+     "Its umbrella-like main antenna failed to open, so it carried on with a small antenna and data compression"},
+    {"Galileo", 1, "1993 年、小惑星イダのまわりを回る小さな衛星ダクティルを見つけた。小惑星の衛星の初めての発見",
+     "In 1993 it found Dactyl circling the asteroid Ida, the first known moon of an asteroid"},
+    {"Galileo", 1, "1994 年、シューメーカー・レビー第 9 彗星のかけらが木星にぶつかるのを、地球からは見えない側を直接見た",
+     "In 1994 it had a direct view of fragments of Comet Shoemaker-Levy 9 striking the side of Jupiter hidden from Earth"},
+    {"Galileo", 1, "木星に着く 5 か月前に切り離した突入機が、木星の大気に入って直接測った。\n2003 年には、生命がいるかもしれないエウロパを汚さないよう、本体も木星に突入させて運用を終えた",
+     "A probe released five months before arrival plunged into Jupiter's atmosphere and measured it directly.\nIn 2003 the orbiter itself was sent into Jupiter so it could never contaminate Europa"},
+
+    {"Cassini", 1, "NASA・ESA・イタリア宇宙機関の共同の探査機。燃料を入れると約 5.7 トンで、惑星探査機でも最大級",
+     "A joint mission of NASA, ESA and the Italian Space Agency. Fully fuelled it weighed about 5.7 tonnes,\none of the largest planetary probes"},
+    {"Cassini", 1, "ESA の着陸機ホイヘンスを積んでいて、2005 年 1 月にタイタンに降ろした。地球の月以外の衛星への初めての着陸",
+     "It carried ESA's Huygens probe, which landed on Titan in January 2005, the first landing on a moon other than ours"},
+    {"Cassini", 1, "木星のそばを通った時は、木星を回っていたガリレオと同時に木星を観測した",
+     "Passing Jupiter, it observed the planet together with Galileo, which was orbiting there"},
+    {"Cassini", 1, "燃料が尽きる前の 2017 年 9 月、衛星を汚さないよう土星の大気に飛び込んで運用を終えた（グランドフィナーレ）",
+     "In September 2017, before its fuel ran out, it dived into Saturn's atmosphere so it could never contaminate\nthe moons (the Grand Finale)"},
+
+    {"Rosetta", 1, "名前は古代エジプトの文字を読む手がかりになったロゼッタ・ストーンから。着陸機フィラエの名前も、\n解読を助けたオベリスクのあるナイル川の島から",
+     "It is named after the Rosetta Stone, the key to Egyptian hieroglyphs. Its lander Philae is named after\nthe Nile island whose obelisk also helped the decipherment"},
+    {"Rosetta", 1, "太陽から遠いところでは電気が足りないので、2011 年 6 月から 2014 年 1 月まで 31 か月の冬眠をした",
+     "Far from the Sun its solar power was too weak, so it hibernated for 31 months from June 2011 to January 2014"},
+    {"Rosetta", 1, "途中で小惑星シュテインス（2008 年）とルテティア（2010 年）のそばを通って撮影した",
+     "On the way it flew past and imaged the asteroids Steins (2008) and Lutetia (2010)"},
+    {"Rosetta", 1, "2016 年 9 月、2 年あまり回った彗星の核の表面にゆっくり降りて運用を終えた",
+     "In September 2016, after more than two years in orbit, it was set down gently on the comet's nucleus"},
+
+    {"New Horizons", 1, "地球を出る時の速さは、打ち上げた探査機で最も速い。月の軌道を 9 時間ほどで横切った",
+     "It left Earth faster than any other spacecraft launched, crossing the Moon's orbit in about nine hours"},
+    {"New Horizons", 1, "冥王星を見つけたクライド・トンボーの遺灰の一部を積んでいる",
+     "It carries some of the ashes of Clyde Tombaugh, who discovered Pluto"},
+    {"New Horizons", 1, "打ち上げから 7 か月後の 2006 年 8 月、冥王星は惑星から準惑星に分け直された",
+     "Seven months after launch, in August 2006, Pluto was reclassified from planet to dwarf planet"},
+    {"New Horizons", 1, "木星のスイングバイで冥王星までの旅が約 3 年短くなった。冥王星のあと、2019 年 1 月 1 日に\nカイパーベルト天体アロコスのそばも通った",
+     "The Jupiter flyby cut about three years off the trip. After Pluto it flew past the Kuiper belt object Arrokoth\non 1 January 2019"},
+
+    {"Juno", 1, "木星まで行った探査機で初めて、太陽電池だけで動く。長さ約 9 m の太陽電池パネルが 3 枚",
+     "The first spacecraft to work at Jupiter on solar power alone, with three solar arrays about 9 m long"},
+    {"Juno", 1, "木星の強い放射線から電子機器を守るため、壁の厚さ約 1 cm のチタンの箱に入れている",
+     "Its electronics sit in a titanium vault with walls about 1 cm thick to survive Jupiter's radiation"},
+    {"Juno", 1, "木星の極の上を通る細長い軌道を回り、雲の下の構造や重力、磁場を調べる。\n機体にはガリレオ・ガリレイ、ユーピテル、ユーノーの 3 体のレゴ人形が乗っている",
+     "From a long orbit over Jupiter's poles it studies the planet's interior, gravity and magnetic field.\nIt also carries three LEGO figures: Galileo Galilei, Jupiter and Juno"},
+
+    {"Hayabusa2", 1, "イオンエンジンで小惑星リュウグウへ向かった。初代はやぶさのトラブルの経験を生かして作られた",
+     "Ion engines carried it to the asteroid Ryugu. It was built on the lessons of the troubled first Hayabusa"},
+    {"Hayabusa2", 1, "2018 年、小型ローバー MINERVA-II1 の 2 台が、小惑星の表面を初めて跳ねて移動した",
+     "In 2018 its two MINERVA-II1 rovers became the first to hop across the surface of an asteroid"},
+    {"Hayabusa2", 1, "2019 年、2 kg の銅の塊を秒速 2 km で撃ち込んで人工のクレーターを作り、その近くに降りて\n地下から飛び出した物質も集めた",
+     "In 2019 it fired a 2 kg copper projectile at 2 km/s to make an artificial crater, then touched down nearby\nto collect material thrown up from below the surface"},
+    {"Hayabusa2", 1, "地球に届けた試料は約 5.4 g。アミノ酸などの有機物が見つかった",
+     "It delivered about 5.4 g of samples, in which amino acids and other organic molecules were found"},
+    {"Hayabusa2", 2, "延長ミッションの最後の目標、小惑星 1998 KY26 は 10 分ほどで 1 回転する、とても速く自転する小さな小惑星",
+     "The final target of the extended mission, 1998 KY26, is a small asteroid that spins once about every 10 minutes"},
+    {"Hayabusa2", 2, "1998 KY26 に着くまでに、地球のスイングバイを 2 回重ねる",
+     "It will swing past Earth twice more before reaching 1998 KY26"},
+
+    {"OSIRIS-REx", 1, "目標のベンヌは、22 世紀後半に地球にぶつかる可能性がわずかにある小惑星",
+     "Its target Bennu is an asteroid with a small chance of hitting Earth in the late 22nd century"},
+    {"OSIRIS-REx", 1, "2020 年 10 月の採取で腕の先を表面に押し当てると、表面は思ったよりずっと柔らかく、\nそのまま沈み込みかけた。ベンヌの表面は固まっていない石の山だった",
+     "When it pressed its sampling head to the surface in October 2020, the ground was far softer than expected\nand it began to sink in. Bennu's surface is loosely packed rubble"},
+    {"OSIRIS-REx", 1, "試料が多く取れすぎてふたがきちんと閉まらず、少しこぼれていた。地球に届いたのは約 122 g",
+     "It collected so much that the lid could not close properly and some escaped. About 122 g reached Earth"},
+    {"OSIRIS-REx", 2, "アポフィスは 2004 年の発見の直後、2029 年に地球にぶつかる確率が 2.7% と計算されて注目された\n（今は衝突しないことがわかっている）",
+     "Soon after its discovery in 2004, Apophis was briefly given a 2.7% chance of hitting Earth in 2029\n(it is now known it will not)"},
+    {"OSIRIS-REx", 2, "2029 年 4 月 13 日の接近では、アポフィスはヨーロッパやアフリカから肉眼で見えるほど明るくなる",
+     "During the 13 April 2029 approach, Apophis will be visible to the naked eye from Europe and Africa"},
+
+    {"Parker Solar Probe", 1, "太陽側に厚さ約 11 cm の炭素の熱シールドがあり、表面が 1,000℃ を超えても、陰の機器は室温ほどに保たれる",
+     "A carbon heat shield about 11 cm thick faces the Sun. Its front exceeds 1,000 °C while the instruments\nbehind it stay near room temperature"},
+    {"Parker Solar Probe", 1, "名前は太陽風を予言した物理学者ユージン・パーカーから。存命中の人の名前が付いた初めての NASA の探査機",
+     "It is named after Eugene Parker, who predicted the solar wind, the first NASA spacecraft named after a living person"},
+    {"Parker Solar Probe", 1, "2021 年 4 月、初めて太陽のコロナの中に入った。最も近い所では秒速 190 km を超える",
+     "In April 2021 it became the first spacecraft to fly through the Sun's corona. At its closest it moves\nat more than 190 km/s"},
+
+    {"BepiColombo", 1, "ESA の MPO と JAXA の「みお」の 2 機の水星探査機を重ねて運び、水星に着いてから分かれる",
+     "It carries two Mercury orbiters stacked together, ESA's MPO and JAXA's Mio, which separate on arrival"},
+    {"BepiColombo", 1, "太陽に向かって落ちると速くなりすぎるので、地球 1 回・金星 2 回・水星 6 回のスイングバイで\n少しずつブレーキをかける",
+     "Falling toward the Sun makes it too fast, so it brakes with gravity assists: one at Earth, two at Venus\nand six at Mercury"},
+    {"BepiColombo", 1, "名前は、水星の自転と公転の関係を解き明かし、マリナー10号が水星に何度も近づける軌道を考えたジュゼッペ・コロンボから",
+     "It is named after Giuseppe Colombo, who explained Mercury's spin-orbit resonance and devised\nthe orbit that let Mariner 10 return to Mercury again and again"},
+    {"BepiColombo", 1, "電気推進のエンジンの不調で、水星を回る軌道に入るのは 2025 年 12 月から 2026 年 11 月に延びた",
+     "A problem with its electric propulsion delayed its arrival in Mercury orbit from December 2025 to November 2026"},
+
+    {"Lucy", 1, "名前は約 320 万年前の人類の祖先の化石「ルーシー」から。トロヤ群小惑星は惑星ができた頃の\n「化石」と考えられている",
+     "It is named after \"Lucy\", the 3.2-million-year-old fossil of a human ancestor; the Trojan asteroids\nare thought to be fossils of planet formation"},
+    {"Lucy", 1, "直径 7 m あまりの円い太陽電池パネルを 2 枚、扇のように広げている",
+     "It unfurled two round solar arrays, each more than 7 m across, like folding fans"},
+    {"Lucy", 1, "2023 年 11 月、小惑星ディンキネシュに小さな衛星セラムを見つけた。セラムは 2 つの塊がくっついた形だった",
+     "In November 2023 it found that the asteroid Dinkinesh has a small moon, Selam, which turned out\nto be two lobes stuck together"},
+    {"Lucy", 1, "1 機でこれまでで最も多くの小惑星を訪れる。木星の前と後ろの 2 つのトロヤ群を両方巡る",
+     "It will visit more asteroids than any other mission, touring both Trojan swarms ahead of and behind Jupiter"},
+
+    {"DART", 1, "小惑星の軌道を体当たりで変えられるかを確かめる、初めての惑星防衛の実験",
+     "The first planetary defence test: can an impact change an asteroid's orbit?"},
+    {"DART", 1, "衝突の様子は、15 日前に切り離したイタリアの小型衛星 LICIACube が撮影した",
+     "The Italian CubeSat LICIACube, released 15 days earlier, photographed the impact"},
+    {"DART", 1, "2022 年 9 月 26 日の衝突で、ディモルフォスがディディモスを回る周期は約 33 分短くなった",
+     "The impact on 26 September 2022 shortened Dimorphos's orbit around Didymos by about 33 minutes"},
+
+    {"James Webb Space Telescope", 1, "主鏡は金でおおった 18 枚の六角形の鏡を合わせた直径 6.5 m。ロケットに入るよう折りたたんで打ち上げた",
+     "Its 6.5 m mirror is made of 18 gold-coated hexagonal segments, folded to fit inside the rocket"},
+    {"James Webb Space Telescope", 1, "テニスコートほどの 5 層の日よけで太陽・地球・月の光と熱をさえぎり、赤外線で遠い宇宙の\n初期の銀河を見る",
+     "A five-layer sunshield the size of a tennis court blocks the light and heat of the Sun, Earth and Moon,\nso it can see the earliest galaxies in infrared"},
+    {"James Webb Space Telescope", 1, "2021 年 12 月 25 日にアリアン 5 で打ち上げた。軌道がとても正確で燃料が節約でき、\n20 年以上観測できる見込み",
+     "It launched on an Ariane 5 on 25 December 2021. The launch was so accurate that the saved fuel\nshould let it work for more than 20 years"},
+
+    {"JUICE", 1, "ESA の木星氷衛星探査機。最後はガニメデを回る、地球の月以外の衛星を回る初めての探査機になる",
+     "ESA's Jupiter Icy Moons Explorer. It will end up orbiting Ganymede, the first spacecraft to orbit a moon\nother than ours"},
+    {"JUICE", 1, "2024 年 8 月、月と地球のそばを 1 日おいて続けて通る、初めての「月・地球スイングバイ」をした",
+     "In August 2024 it made the first lunar-Earth flyby, passing the Moon and then Earth a day later"},
+    {"JUICE", 1, "打ち上げ後、長さ 16 m のレーダーのアンテナが引っかかって開かず、機体を揺らすなどして 1 か月後に開いた",
+     "After launch its 16 m radar antenna was stuck; it was freed a month later, in part by jolting the spacecraft"},
+
+    {"Psyche", 1, "目標の小惑星プシケは、惑星になりかけた天体の金属の核がむき出しになったものかもしれない",
+     "Its target, asteroid Psyche, may be the exposed metal core of a planet-building body"},
+    {"Psyche", 1, "ホール効果スラスターという電気推進で進む。キセノンを使い、青い光を出す",
+     "It is driven by Hall-effect thrusters, electric engines that use xenon and glow blue"},
+    {"Psyche", 1, "レーザー光で地球と通信する実験（深宇宙光通信）も載せていて、2023 年 12 月には約 3,100 万 km 先から猫の動画を送った",
+     "It also carries a laser communication experiment (Deep Space Optical Communications) that in December 2023\nsent a cat video from about 31 million km away"},
+
+    {"Hera", 1, "ESA の初めての惑星防衛のミッション。名前はギリシア神話の女神ヘラから",
+     "ESA's first planetary defence mission, named after the Greek goddess Hera"},
+    {"Hera", 1, "2025 年 3 月の火星スイングバイで、火星の小さな衛星ダイモスを撮影した",
+     "During its March 2025 Mars flyby it imaged the small Martian moon Deimos"},
+    {"Hera", 1, "DART の衝突で、ディモルフォスがどれほど重く、どれほど動いたかを測り、体当たりの効果を確かめる",
+     "It will measure Dimorphos's mass and how much it moved, to work out exactly how effective DART's impact was"},
+
+    {"Europa Clipper", 1, "NASA が作った惑星探査機で最大。太陽電池パネルを広げると端から端まで約 30 m",
+     "The largest planetary spacecraft NASA has built: about 30 m across with its solar arrays deployed"},
+    {"Europa Clipper", 1, "エウロパの氷の下の海が生命のすめる環境かを調べる。木星を回りながらエウロパのそばを約 50 回通る",
+     "It will investigate whether the ocean under Europa's ice could support life, flying past Europa about 50 times\nwhile orbiting Jupiter"},
+    {"Europa Clipper", 1, "機体には詩人エイダ・リモンが書いた詩と、世界中から寄せられた 260 万人あまりの名前が載っている",
+     "It carries a poem by Ada Limón and the names of more than 2.6 million people from around the world"},
+};
+
 // 探査機 d の区間 leg（1 が最初の旅、2 以降が延長ミッション）
 static const VoyageLeg* FindVoyageLeg(const BodyDef& d, int leg) {
     int n = 1;
@@ -217,9 +388,9 @@ static void BuildVoyage(const App& app, int i, int leg, std::vector<VoyageStep>*
         swingbys++;
     }
 
-    // 目標の小惑星そのものが途中で地球に最接近する（アポフィス）
+    // 目標の小惑星そのものが途中で地球の静止衛星の軌道（中心から 42,164 km）より内側を通る（アポフィス）
     for (const AstroEvent& ev : app.cometEvents)
-        if (ev.kind == EV_COMET_EARTH && ev.moon != 1 && ev.body == endBody && ev.t > t0 && ev.t < tEnd) {
+        if (ev.kind == EV_COMET_EARTH && ev.moon != 1 && ev.body == endBody && ev.t > t0 && ev.t < tEnd && ev.dist < 42164) {
             VoyageStep st;
             st.kind = VS_TARGET_EARTH;
             st.t = ev.t;
@@ -983,6 +1154,55 @@ static void DrawVoyageMap(const App& app) {
     draw(shown, f < 1 ? f : 1.0f);
 }
 
+// 巡航中のひとこと（できごとの知らせと同じ左下に）。1 つを VOY_TIP_SEC 秒ずつ順に出し、知らせの間は消える。
+// 止めている間は進めない。知らせで途中までしか出せなかったひとことは、次の巡航でもう一度出す
+static const double VOY_TIP_SEC = 14.0;
+static void DrawVoyageTip(const App& app, bool want, float px, float w) {
+    std::vector<const VoyageTip*> tips;
+    const BodyDef& pr = app.B[app.voyProbe].d;
+    for (const VoyageTip& t : VOYAGE_TIPS)
+        if (t.leg == app.voyLeg && std::strcmp(t.probe, pr.en) == 0) tips.push_back(&t);
+    static int key = -1, idx = 0;
+    static double shown = 0;
+    static float vis = 0;
+    int k = app.voyProbe * 16 + app.voyLeg;
+    if (key != k) {
+        key = k;
+        idx = 0;
+        shown = 0;
+        vis = 0;
+    }
+    if (tips.empty()) return;
+    float dt = GetFrameTime();
+    if (want && !app.paused) shown += dt;
+    if (!want && shown > VOY_TIP_SEC * 0.5) {   // ほぼ読めたものは済んだことにする
+        idx++;
+        shown = 0;
+    }
+    if (shown >= VOY_TIP_SEC) {
+        idx++;
+        shown = 0;
+    }
+    vis = want ? std::min(1.0f, vis + dt * 3) : std::max(0.0f, vis - dt * 5);
+    if (vis <= 0) return;
+    // 1 つずつの入れ替わりもフェードで
+    float a = vis * (float)std::max(0.0, std::min(1.0, std::min(shown / 0.5, (VOY_TIP_SEC - shown) / 0.5)));
+    if (!want) a = vis;
+    const VoyageTip& t = *tips[idx % tips.size()];
+    std::vector<std::string> lines = SplitLines(TR(t.jp, t.en));
+    const Cam& c = app.cam;
+    char b[96];
+    snprintf(b, sizeof b, T(UI_VOY_TIP), TR(pr.jp, pr.en), idx % (int)tips.size() + 1, (int)tips.size());
+    float tw = TxtW(b, 14);
+    for (const std::string& l : lines) tw = std::max(tw, TxtW(l.c_str(), 16));
+    w = std::min(w, tw + 40);   // 短いひとことは枠も狭く
+    float h = 44 + lines.size() * 22.0f, py = c.H - 60 - h;
+    DrawRectangleRounded({px, py, w, h}, 0.08f, 6, Alpha({0, 8, 20, 190}, vis));
+    DrawRectangleRoundedLinesEx({px, py, w, h}, 0.08f, 6, 1.2f, Alpha({70, 100, 140, 220}, vis));
+    Txt(b, px + 18, py + 10, 14, Alpha({150, 185, 225, 255}, a));
+    for (size_t i = 0; i < lines.size(); i++) Txt(lines[i].c_str(), px + 18, py + 34 + i * 22.0f, 16, Alpha({215, 228, 245, 255}, a));
+}
+
 static void DrawVoyageHud(const App& app) {
     const Cam& c = app.cam;
     const Body& p = app.B[app.voyProbe];
@@ -1034,6 +1254,7 @@ static void DrawVoyageHud(const App& app) {
         Txt(title.c_str(), px + 18, py + 32, 22, {255, 220, 120, 255});
         for (size_t i = 0; i < lines.size(); i++) Txt(lines[i].c_str(), px + 18, py + 64 + i * 22.0f, 16, {215, 228, 245, 255});
     }
+    DrawVoyageTip(app, !showCard && !app.voyDone, px, w);
     DrawVoyageTimeline(app);
     const char* keys = T(app.voyDone ? UI_VOY_KEYS_DONE : UI_VOY_KEYS);
     Txt(keys, 14, c.H - 22, 13, {150, 170, 200, 230});

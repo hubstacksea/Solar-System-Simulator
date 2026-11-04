@@ -128,6 +128,7 @@
     X(VOY_KEYS, "Enter / Shift+Enter : 次 / 前の場面   下の棒 : 場面へ   [ ] : 速さ   P : 停止   F2 : リンク   F3 : 全体図   ドラッグ・矢印 : 見回す   Esc : やめる", "Enter / Shift+Enter : next / previous scene   bar below : jump   [ ] : speed   P : pause   F2 : link   F3 : map   drag / arrows : look   Esc : quit") \
     X(VOY_KEYS_DONE, "旅は完了しました   Enter / Esc : 終わる   F2 : この場面のリンク", "Voyage complete   Enter / Esc : finish   F2 : link to this scene") \
     X(VOY_MAP, "全体図（真上から）", "Map (from above)") \
+    X(VOY_TIP, "%s のこと  %d / %d", "About %s  %d / %d") \
     X(VOY_SPEED_SLOW, "ゆっくり", "slow") \
     X(VOY_SPEED_NORMAL, "標準", "normal") \
     X(VOY_SPEED_FAST, "速い", "fast") \

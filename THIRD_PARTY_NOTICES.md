@@ -114,6 +114,12 @@ U.S. Government (NASA / USGS) except where noted; use does not imply endorsement
   hemispheres only), as distributed by the JPL Solar System Simulator (https://space.jpl.nasa.gov/tmaps/uranus.html;
   Caltech/JPL/USGS). Courtesy NASA/JPL-Caltech; used under the JPL Image Use Policy
   (https://www.jpl.nasa.gov/jpl-image-use-policy). Use does not imply endorsement by Caltech, JPL or NASA.
+- Saturn: Cassini ISS global maps of Saturn in the RED, GRN and BL1 filters (11 August 2011), from "Cassini ISS
+  Global Maps of Jupiter and Saturn" (Li, L., West, R., Jiang, X., Knowles, B., 2023), NASA PDS Planetary Atmospheres
+  Node, doi:10.17189/rkkb-6y30 (https://atmos.nmsu.edu/data_and_services/atmospheres_data/Cassini/sat_global_map.html).
+  Combined into one color map: the pattern is the mean brightness of the three filters, the color is the zonal mean
+  color at half strength, and the band from the equator to 6° S is dropped. Credit: NASA/JPL-Caltech/Space Science
+  Institute.
 - Mars elevation: Mars Global Surveyor MOLA Mission Experiment Gridded Data Record (MEGDR), 4 pixels per degree,
   NASA PDS Geosciences Node (https://pds-geosciences.wustl.edu/missions/mgs/megdr.html).
 

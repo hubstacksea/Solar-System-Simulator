@@ -554,7 +554,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     return h;
 }
 
-// 地図のあるガス惑星（木星）: 雲の模様を貼る。地図は mapInfo2.y だけ回す（大赤斑を今の経度に合わせる）
+// 地図のあるガス惑星（木星・土星）: 雲の模様を貼る。撮影されていない所は手続き的な雲。地図は mapInfo2.y だけ回す（大赤斑を今の経度に合わせる）
 vec3 gasMap(vec3 p, vec3 o) {
     vec3 pb = gas(p, int(mapInfo2.x + 0.5), o);
     float lat = asin(clamp(p.y, -1.0, 1.0));

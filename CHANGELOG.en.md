@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.32.0 (2026-11-04)
+
+- Spacecraft voyages: during cruise, notes about the spacecraft (its design, its goals and stories from the mission) appear one by one at the bottom left, 14 seconds each (20 spacecraft and 2 extended missions, 2 to 5 notes each)
+- Spacecraft voyages: the Rosetta voyage no longer has a scene claiming its comet passes "inside the geostationary orbit" when it passes 1.4 AU from Earth; the scene now appears only for real passes inside it (Apophis)
+- Saturn now has a global map from Cassini images (NASA PDS Atmospheres Node, August 2011, showing the aftermath of the great northern storm). The poles and the band from the equator to 17° S, hidden by the ring shadow, keep procedural clouds
+- The README's description of surfaces now lists the five Uranian moons that got maps in 2.31.0
+
 ## 2.31.0 (2026-11-04)
 
 - The five major moons of Uranus (Miranda, Ariel, Umbriel, Titania and Oberon) now have USGS maps from Voyager 2 images (only the imaged southern hemispheres; the northern hemispheres keep the procedural surface)

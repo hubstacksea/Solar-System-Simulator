@@ -340,6 +340,7 @@ int main(int argc, char** argv) {
     for (const TourStop& st : TOUR) allText += st.jp;
     for (const VoyageGoal& g : VOYAGE_GOALS) allText += std::string(g.targetJp) + g.titleJp + g.textJp;
     for (const auto& a : VOYAGE_ARRIVAL_TEXT) allText += a.jp;
+    for (const VoyageTip& t : VOYAGE_TIPS) allText += t.jp;
     for (const VoyageLeg& l : VOYAGE_LEGS) allText += std::string(l.nameJp) + l.startTitleJp + l.startTextJp + l.endTitleJp + l.endTextJp;
     for (const HistoricEclipse& h : HISTORY) allText += std::string(h.jp) + h.placeJp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
