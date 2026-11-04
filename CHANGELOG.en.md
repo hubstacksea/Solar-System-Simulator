@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.32.1 (2026-11-04)
+
+- Spacecraft voyages: on narrow screens such as phone browsers, the cruise notes ran off the edge of the screen as single lines; they now wrap to the width of their panel
+- Spacecraft voyages: clearer wording of Rosetta's notes on its name and its hibernation
+
 ## 2.32.0 (2026-11-04)
 
 - Spacecraft voyages: during cruise, notes about the spacecraft (its design, its goals and stories from the mission) appear one by one at the bottom left, 14 seconds each (20 spacecraft and 2 extended missions, 2 to 5 notes each)

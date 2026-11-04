@@ -140,10 +140,10 @@ static const struct VoyageTip { const char* probe; int leg; const char* jp; cons
     {"Cassini", 1, "燃料が尽きる前の 2017 年 9 月、衛星を汚さないよう土星の大気に飛び込んで運用を終えた（グランドフィナーレ）",
      "In September 2017, before its fuel ran out, it dived into Saturn's atmosphere so it could never contaminate\nthe moons (the Grand Finale)"},
 
-    {"Rosetta", 1, "名前は古代エジプトの文字を読む手がかりになったロゼッタ・ストーンから。着陸機フィラエの名前も、\n解読を助けたオベリスクのあるナイル川の島から",
+    {"Rosetta", 1, "名前は、古代エジプトの文字を解読する手がかりになったロゼッタ・ストーンから。\n着陸機フィラエの名前は、解読を助けたオベリスクが見つかったナイル川のフィラエ島から",
      "It is named after the Rosetta Stone, the key to Egyptian hieroglyphs. Its lander Philae is named after\nthe Nile island whose obelisk also helped the decipherment"},
-    {"Rosetta", 1, "太陽から遠いところでは電気が足りないので、2011 年 6 月から 2014 年 1 月まで 31 か月の冬眠をした",
-     "Far from the Sun its solar power was too weak, so it hibernated for 31 months from June 2011 to January 2014"},
+    {"Rosetta", 1, "電気は太陽電池でつくるので、太陽から遠く離れて電気が足りなくなる間は、ほとんどの機器を止めて眠った。\n眠っていたのは 2011 年 6 月から 2014 年 1 月までの 31 か月。目覚めの合図が届いた時、管制室は歓声に包まれた",
+     "It ran on solar power, so while it was too far from the Sun it shut nearly everything down and slept for\n31 months, June 2011 to January 2014. The control room cheered when its wake-up signal arrived"},
     {"Rosetta", 1, "途中で小惑星シュテインス（2008 年）とルテティア（2010 年）のそばを通って撮影した",
      "On the way it flew past and imaged the asteroids Steins (2008) and Lutetia (2010)"},
     {"Rosetta", 1, "2016 年 9 月、2 年あまり回った彗星の核の表面にゆっくり降りて運用を終えた",
@@ -1157,6 +1157,38 @@ static void DrawVoyageMap(const App& app) {
 // 巡航中のひとこと（できごとの知らせと同じ左下に）。1 つを VOY_TIP_SEC 秒ずつ順に出し、知らせの間は消える。
 // 止めている間は進めない。知らせで途中までしか出せなかったひとことは、次の巡航でもう一度出す
 static const double VOY_TIP_SEC = 14.0;
+// 幅に収まらない行を折り返す（英語は空白で、日本語は句読点の後を優先して文字の間で）
+static std::vector<std::string> WrapLine(const std::string& s, float size, float maxw) {
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (start < s.size()) {
+        if (TxtW(s.substr(start).c_str(), size) <= maxw) {
+            out.push_back(s.substr(start));
+            break;
+        }
+        size_t fit = start, brk = 0, i = start;
+        while (i < s.size()) {
+            size_t n = i + 1;
+            while (n < s.size() && (s[n] & 0xC0) == 0x80) n++;
+            if (TxtW(s.substr(start, n - start).c_str(), size) > maxw) break;
+            if (s[i] == ' ' && !g_jp) brk = i;
+            else if (s.compare(i, 3, "、") == 0 || s.compare(i, 3, "。") == 0) brk = n;
+            fit = i = n;
+        }
+        size_t end = brk > start ? brk : fit;
+        // 日本語の「2014 年 1 月」のような数字と単位の間では切らない
+        auto ascii = [&](size_t k) { return k < s.size() && (unsigned char)s[k] < 0x80; };
+        if (g_jp && brk <= start)
+            while (end > start + 1 && (ascii(end) || ascii(end - 1)))
+                do end--; while (end > start && (s[end] & 0xC0) == 0x80);
+        if (end <= start) end = std::max(fit, start + 1);
+        out.push_back(s.substr(start, end - start));
+        start = end;
+        while (start < s.size() && s[start] == ' ') start++;
+    }
+    return out;
+}
+
 static void DrawVoyageTip(const App& app, bool want, float px, float w) {
     std::vector<const VoyageTip*> tips;
     const BodyDef& pr = app.B[app.voyProbe].d;
@@ -1189,7 +1221,15 @@ static void DrawVoyageTip(const App& app, bool want, float px, float w) {
     float a = vis * (float)std::max(0.0, std::min(1.0, std::min(shown / 0.5, (VOY_TIP_SEC - shown) / 0.5)));
     if (!want) a = vis;
     const VoyageTip& t = *tips[idx % tips.size()];
+    // 狭い画面（スマホのブラウザなど）で収まらない時は、改行をつないで枠の幅で折り返し直す
     std::vector<std::string> lines = SplitLines(TR(t.jp, t.en));
+    bool fits = true;
+    for (const std::string& l : lines) fits = fits && TxtW(l.c_str(), 16) <= w - 36;
+    if (!fits) {
+        std::string all;
+        for (const std::string& l : lines) all += (all.empty() || g_jp ? "" : " ") + l;
+        lines = WrapLine(all, 16, w - 36);
+    }
     const Cam& c = app.cam;
     char b[96];
     snprintf(b, sizeof b, T(UI_VOY_TIP), TR(pr.jp, pr.en), idx % (int)tips.size() + 1, (int)tips.size());
