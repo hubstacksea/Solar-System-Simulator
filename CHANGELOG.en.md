@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.34.1 (2026-11-05)
+
+- Browser version: page views are now counted with Cloudflare Web Analytics (no cookies; no personal information or details of what you do in the app are sent). The PC and macOS versions send nothing
+
 ## 2.34.0 (2026-11-05)
 
 - Spacecraft voyages: 56 more cruise notes (size, mass, builder, launch vehicle and date, Cassini's 22 dives between Saturn and its rings, Philae's two bounces and more), 4 to 8 per spacecraft
