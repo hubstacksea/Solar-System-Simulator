@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SolarSystemVoyager VERSION 2.33.0 LANGUAGES C CXX)
+project(SolarSystemVoyager VERSION 2.34.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
