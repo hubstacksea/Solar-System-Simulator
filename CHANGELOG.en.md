@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.34.0 (2026-11-05)
+
+- Spacecraft voyages: 56 more cruise notes (size, mass, builder, launch vehicle and date, Cassini's 22 dives between Saturn and its rings, Philae's two bounces and more), 4 to 8 per spacecraft
+- Browser version: rebuilt the Japanese font; 28 characters used by the 2.32.0 notes and elsewhere were missing and not shown
+- The pre-release checks (`tools/run_checks.py`) now verify that the browser version's font has every character shown on screen
+
 ## 2.33.0 (2026-11-05)
 
 - The display language can be set in the URL with `lang=ja` or `lang=en` (also on share links; the browser version's loading message follows it). Without it, the saved setting is used as before, or Japanese if there is none. The language given in the URL is not saved

@@ -124,7 +124,7 @@ git push origin master v2.33.0
 python3 tools/run_checks.py build/solar_voyager   # --no-display without a screen
 ```
 
-It checks the embedded data, 9 solar eclipses against NASA's catalog, the number of historic events, warps to every body (arriving facing it and staying still) and light-speed flights just above the oblate planets (the surface must not vanish), printing PASS / FAIL for each (about 10 minutes in all).
+It checks the embedded data, 9 solar eclipses against NASA's catalog, the number of historic events, that the browser version's font has every character shown on screen (if not, rebuild it with `tools/make_web_font.py`), warps to every body (arriving facing it and staying still) and light-speed flights just above the oblate planets (the surface must not vanish), printing PASS / FAIL for each (about 10 minutes in all).
 
 ### Browser version (Emscripten)
 

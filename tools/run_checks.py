@@ -7,9 +7,11 @@
   2. 日食: 9 件の日食（紀元前 763 年〜2950 年）が NASA の日食表（Espenak & Meeus, Five Millennium Catalog of
      Solar Eclipses）と、時刻 6 分・食の中心 6° 以内で合うか
   3. 歴史: イベント一覧の「歴史」のページの件数
-  4. ワープ（画面が要る）: すべての天体へワープ演出を通してワープし、着いた後にターゲットが正面（2.5° 以内）にあり、
+  4. 探査機の旅: 全機体の行程が時刻の順に並び、出発から到達までそろっているか
+  5. ブラウザ版のフォント: web/NotoSansJP-subset.ttf に、画面に出る文字（src の文字列と星の名前）がすべて入っているか
+  6. ワープ（画面が要る）: すべての天体へワープ演出を通してワープし、着いた後にターゲットが正面（2.5° 以内）にあり、
      1 秒間で機首が動かず、位置が数値として壊れていないか
-  5. 地表すれすれの光速飛行（画面が要る）: 扁平な惑星の北緯 45° の高度 20 km から光速エンジンで飛び出し、
+  7. 地表すれすれの光速飛行（画面が要る）: 扁平な惑星の北緯 45° の高度 20 km から光速エンジンで飛び出し、
      まだ地表すれすれ（高度 30 km 以下）にいる間に、画面の下側の明るさが急に落ちる（表面が消える）フレームがないか。
      （上昇して地平線が画面から外れたことによる暗さは数えない）
 
@@ -124,6 +126,47 @@ def check_voyage_link(exe):
     return ok, " / ".join(l.split(" ", 2)[1] for l in lines) if ok else "; ".join(lines) or "no output"
 
 
+def font_chars(path):
+    """TrueType フォントの cmap（形式 4 と 12）にある文字の集合（外部ライブラリなしで読む）"""
+    data = open(path, "rb").read()
+    n = struct.unpack(">H", data[4:6])[0]
+    cmap = next(struct.unpack(">I", data[12 + 16 * i + 8:12 + 16 * i + 12])[0]
+                for i in range(n) if data[12 + 16 * i:12 + 16 * i + 4] == b"cmap")
+    out = set()
+    for i in range(struct.unpack(">H", data[cmap + 2:cmap + 4])[0]):
+        off = cmap + struct.unpack(">I", data[cmap + 4 + 8 * i + 4:cmap + 4 + 8 * i + 8])[0]
+        fmt = struct.unpack(">H", data[off:off + 2])[0]
+        if fmt == 4:
+            seg = struct.unpack(">H", data[off + 6:off + 8])[0] // 2
+            ends = struct.unpack(">%dH" % seg, data[off + 14:off + 14 + 2 * seg])
+            starts = struct.unpack(">%dH" % seg, data[off + 16 + 2 * seg:off + 16 + 4 * seg])
+            for s, e in zip(starts, ends):
+                out.update(range(s, e + 1))   # グリフ 0 への割り当ては無いものとして扱う（部分集合のフォントには無い）
+        elif fmt == 12:
+            for g in range(struct.unpack(">I", data[off + 12:off + 16])[0]):
+                s, e, _ = struct.unpack(">III", data[off + 16 + 12 * g:off + 28 + 12 * g])
+                out.update(range(s, e + 1))
+    return out
+
+
+def shown_chars():
+    """画面に出る文字（src の文字列リテラルの中身と assets/sky.txt。コメントは除く）"""
+    chars = set(open("assets/sky.txt", encoding="utf-8").read())
+    files = [os.path.join(d, f) for d, _, fs in os.walk("src") for f in fs if f.endswith((".h", ".cpp"))]
+    for path in files:
+        for s in re.findall(r'"((?:[^"\\\n]|\\.)*)"|//[^\n]*|/\*.*?\*/|\'(?:[^\'\\\n]|\\.)*\'',
+                            open(path, encoding="utf-8").read(), re.S):
+            chars |= set(s)
+    return {c for c in chars if ord(c) > 127 and c.isprintable()}
+
+
+def check_webfont(exe):
+    # ブラウザ版の日本語フォント（tools/make_web_font.py で作る部分集合）に、画面に出る文字がすべて入っているか
+    miss = sorted(shown_chars() - {chr(c) for c in font_chars("web/NotoSansJP-subset.ttf")})
+    return not miss, ("missing %d: %s (run tools/make_web_font.py)" % (len(miss), "".join(miss[:40]))) if miss \
+        else "%d characters" % len(shown_chars())
+
+
 def body_count(exe):
     out = run(exe, ["--check-assets"])
     m = re.search(r"bodies (\d+)", out)
@@ -212,7 +255,8 @@ def main():
     exe = next((a for a in args if not a.startswith("--") and not a.isdigit()), "build/solar_voyager")
     display = "--no-display" not in args
     jobs = int(args[args.index("--jobs") + 1]) if "--jobs" in args else 3
-    checks = [("assets", check_assets), ("eclipses", check_eclipses), ("history", check_history), ("voyages", check_voyages)]
+    checks = [("assets", check_assets), ("eclipses", check_eclipses), ("history", check_history), ("voyages", check_voyages),
+              ("webfont", check_webfont)]
     if display:
         checks += [("voyagelink", check_voyage_link), ("warps", lambda e: check_warps(e, jobs)), ("skim", lambda e: check_skim(e, jobs))]
     failed = 0
