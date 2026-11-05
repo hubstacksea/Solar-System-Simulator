@@ -345,7 +345,7 @@ int main(int argc, char** argv) {
     for (const HistoricEclipse& h : HISTORY) allText += std::string(h.jp) + h.placeJp;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
-    // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）
+    // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）。共有リンクの lang= は後で
     std::string lang = opt.lang ? opt.lang : GetSetting("lang");
     SetLanguage(lang != "en");
     // 画質: 起動オプション > 保存された設定 > 高
@@ -480,8 +480,12 @@ int main(int argc, char** argv) {
         if (share.empty()) share = q;
         free(q);
 #endif
-        if (!share.empty()) ApplyShareQuery(app, share);
-        else if ((!opt.shot || opt.resume) && app.resumeMode > 0 && !GetSetting("resume").empty())   // 前回の続きから
+        // 言語: 起動オプション > URL の lang=ja / en > 保存された設定 > 日本語。URL の指定は保存しない
+        std::string urlLang = ParseQuery(share)["lang"];
+        if (!opt.lang && (urlLang == "ja" || urlLang == "en")) SetLanguage(urlLang == "ja");
+        // lang だけのリンクなど、場面の項目が無い時は前回の続きから
+        bool shared = !share.empty() && ApplyShareQuery(app, share);
+        if (!shared && (!opt.shot || opt.resume) && app.resumeMode > 0 && !GetSetting("resume").empty())   // 前回の続きから
             ApplyShareQuery(app, ResumeQuery(GetSetting("resume"), app.resumeMode == 2), UI_RESUMED);
     }
     if (opt.engine >= 0) app.ship.engine = std::min(opt.engine, ENGINE_COUNT - 1);

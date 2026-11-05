@@ -212,8 +212,8 @@ static void SaveResume(const App& app) {
     SaveSettings();
 }
 
-// 共有リンクの場面にする（起動時に一度）。読めた項目だけ使う
-static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENED) {
+// 共有リンクの ? の後を キー → 値 に
+static std::map<std::string, std::string> ParseQuery(std::string q) {
     size_t qm = q.find('?');
     if (qm != std::string::npos) q = q.substr(qm + 1);
     std::map<std::string, std::string> kv;
@@ -226,6 +226,12 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
         if (eq != std::string::npos) kv[item.substr(0, eq)] = UrlDecode(item.substr(eq + 1));
         i = amp + 1;
     }
+    return kv;
+}
+
+// 共有リンクの場面にする（起動時に一度）。読めた項目だけ使う。場面の項目が無ければ false
+static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENED) {
+    std::map<std::string, std::string> kv = ParseQuery(q);
     if (kv.count("voyage")) {   // 探査機の旅: 探査機の一覧ができてから StartPendingVoyage で始める
         app.pendingVoyage = kv["voyage"];
         app.pendingScene = kv["scene"];

@@ -20,6 +20,13 @@
 <div id="credit">Solar System Voyager — (c) 2026 hubstacksea — MIT License —
   <a href="https://github.com/hubstacksea/Solar-System-Simulator">github.com/hubstacksea/Solar-System-Simulator</a></div>
 <script>
+  // URL の lang=en / ja（言語の指定）に読み込み中の表示も合わせる。
+  // 圧縮で関数の囲みが外されるので、変数は index.js の名前（lang など）とぶつからない名前に
+  const shellLang = new URLSearchParams(location.search).get('lang');
+  if (shellLang === 'en' || shellLang === 'ja') {
+    document.documentElement.lang = shellLang;
+    document.getElementById('msg').textContent = shellLang === 'en' ? 'Loading…' : '読み込み中…';
+  }
   // 描画の大きさはプログラムがページの大きさに合わせて決め、CSS で画面いっぱいに表示する
   var Module = {
     canvas: document.getElementById('canvas'),

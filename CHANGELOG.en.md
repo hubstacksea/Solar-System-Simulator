@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.33.0 (2026-11-05)
+
+- The display language can be set in the URL with `lang=ja` or `lang=en` (also on share links; the browser version's loading message follows it). Without it, the saved setting is used as before, or Japanese if there is none. The language given in the URL is not saved
+- A link without a scene (such as just `?lang=en`) now starts from where you left off
+
 ## 2.32.1 (2026-11-04)
 
 - Spacecraft voyages: on narrow screens such as phone browsers, the cruise notes ran off the edge of the screen as single lines; they now wrap to the width of their panel

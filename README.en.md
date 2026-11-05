@@ -64,6 +64,7 @@ Try it in your browser without installing anything: **https://hubstacksea.github
 - If it runs slowly, lower the quality with F9
 - High-resolution screens (phones, Retina) are drawn at the device pixel ratio (up to 1440 pixels high). At Low quality the 3D view keeps its pixel count and only text and the HUD are drawn sharper
 - **F2 (or "Share" on touch screens) copies a link to the current scene** (date, place, view, target and time scale; the address bar shows the same link). Opening the link starts from that scene. F2 in the PC version copies a link to the browser version
+- **The display language can be set in the URL with `lang=ja` or `lang=en`** (for example `https://hubstacksea.github.io/Solar-System-Simulator/?lang=en`, or `&lang=en` added to a share link). Without it, the language chosen with J or in the settings is used (Japanese on the first visit). The language given in the URL is not saved
 
 ## macOS version
 
