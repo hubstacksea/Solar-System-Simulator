@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.1 (2026-11-07)
+
+- Markers: asteroids, spacecraft and satellites more than 1 AU away show no name or marker (the target still does), so distant small bodies no longer crowd the screen
+
 ## 2.37.0 (2026-11-07)
 
 - Apollo program: engine burns are now drawn. The Saturn V first stage shows a bright flame that lengthens and spreads as the air thins (ignition 8.9 seconds before liftoff); the second and third stages and the engines of the command and service module and the lunar module show faint plumes in vacuum; small course corrections fire from the attitude control thrusters. The times and directions come from the burns of the trajectory computation (115 in all)

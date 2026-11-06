@@ -450,6 +450,9 @@ static void DrawMarkers(const App& app) {
         if (farAway && d.kind != KIND_STAR && solar((int)i)) continue;
         // 1 光年より遠い天体は、恒星のほかは出さない（ターゲットは上で出している）
         if (d.kind != KIND_STAR && Len(CamRel(c, app.B[i].pos)) > LY_KM) continue;
+        // 小惑星・探査機・人工衛星は 1 AU より遠ければ出さない
+        int cls = BodyClass(app, (int)i);
+        if ((cls == BC_ASTEROID || cls == BC_PROBE || cls == BC_SAT) && Len(CamRel(c, app.B[i].pos)) > AU_KM) continue;
         if (app.apolloMission >= 0) {   // アポロ計画: 太陽・地球・月とアポロの機体だけ（降り立った天体はすぐ下にあるので出さない）
             if ((int)i != B_SUN && (int)i != B_EARTH && (int)i != B_MOON && d.apollo < 0) continue;
             if (d.radius > 100 && SurfaceDist(app.B[i], c.pos) < d.radius * 0.02) continue;
