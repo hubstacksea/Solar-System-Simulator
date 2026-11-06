@@ -207,7 +207,9 @@ static bool Occluded(const App& app, V3 from, V3 to, int self) {
         V3 oc = app.B[i].pos - from;
         double t = Dot(oc, d);
         if (t < 0 || t > L) continue;
-        if (Len(oc - d * t) < app.B[i].d.radius) return true;
+        // 両端のどちらかが天体の表面にある時（地上のロケットなど）は、球を少し縮めて比べる（扁平な天体では球より内側にいる）
+        double r = std::min(app.B[i].d.radius, 0.9995 * std::min(Len(oc), Len(app.B[i].pos - to)));
+        if (Len(oc - d * t) < r) return true;
     }
     return false;
 }
@@ -446,6 +448,10 @@ static void DrawMarkers(const App& app) {
         const BodyDef& d = app.B[i].d;
         if ((int)i == app.target || !app.B[i].active) continue;
         if (farAway && d.kind != KIND_STAR && solar((int)i)) continue;
+        if (app.apolloMission >= 0) {   // アポロ計画: 太陽・地球・月とアポロの機体だけ（降り立った天体はすぐ下にあるので出さない）
+            if ((int)i != B_SUN && (int)i != B_EARTH && (int)i != B_MOON && d.apollo < 0) continue;
+            if (d.radius > 100 && SurfaceDist(app.B[i], c.pos) < d.radius * 0.02) continue;
+        }
         if (d.probe >= 0) {
             // 探査機: 衛星マーカーと一緒に切り替え。近く（1,000 万 km 以内）か画面内に見える時だけ
             if (!app.showMoonMarkers) continue;
@@ -944,6 +950,9 @@ static std::vector<InfoLine> InfoLines(const App& app) {
     } else if (d.tleN > 0) {
         double alt = Len(b.pos - app.B[B_EARTH].pos) - app.B[B_EARTH].d.radius;
         L.push_back({T(UI_INFO_ALT), FmtDist(alt) + " / " + FmtDuration(86400 / d.tleN)});
+    } else if (d.apollo >= 0 && d.apollo < (int)g_apollo.size() && !g_apollo[d.apollo].segs.empty()) {
+        const auto& segs = g_apollo[d.apollo].segs;
+        L.push_back({T(UI_INFO_DATA), FmtMinute(segs.front().t.front()) + " - " + FmtMinute(segs.back().t.back())});
     } else if (d.probe >= 0 && d.probe < (int)g_probes.size() && !g_probes[d.probe].segs.empty()) {
         const auto& segs = g_probes[d.probe].segs;
         L.push_back({T(UI_INFO_DATA), FmtDay(segs.front().t.front()) + " - " + FmtDay(segs.back().t.back())});

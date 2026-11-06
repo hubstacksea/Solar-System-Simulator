@@ -18,6 +18,7 @@ EmbeddedFile MoonDataPng();    // 月の標高 16 bit: グレー=上位, アル�
 EmbeddedFile IconPng();         // ウィンドウのアイコン (256px)
 EmbeddedFile StarsBin();        // 恒星 (ヒッパルコス星表、8 等級まで)。形式は tools/make_sky_assets.py
 EmbeddedFile ProbesBin();       // 探査機の軌跡 (JPL Horizons)。形式は tools/make_probe_assets.py
+EmbeddedFile ApolloBin();       // アポロ計画の宇宙船の軌跡 (NASA の飛行記録から計算)。形式は tools/make_apollo_assets.py
 EmbeddedFile SkyTxt();          // 星座線・星座名・恒星の固有名。形式は tools/make_sky_assets.py
 EmbeddedFile ShapesBin();       // 彗星・小惑星の形 (ISAS/JAXA, ESA/Rosetta/NAVCAM)。形式は tools/make_shape_assets.py
 EmbeddedFile MapsBin();         // 惑星・衛星の地図 (USGS / NASA)。形式は tools/make_planet_maps.py

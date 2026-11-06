@@ -229,8 +229,111 @@ private:
 enum ProbeModel {
     PM_VOYAGER = 0, PM_PIONEER, PM_GALILEO, PM_GALILEO_PROBE, PM_CASSINI, PM_CASSINI_HUYGENS, PM_NEW_HORIZONS, PM_PARKER,
     PM_JUNO, PM_ROSETTA, PM_HAYABUSA2, PM_OSIRIS_REX, PM_DART, PM_JWST, PM_ISS, PM_HUBBLE,
-    PM_BEPICOLOMBO, PM_JUICE, PM_EUROPA_CLIPPER, PM_LUCY, PM_PSYCHE, PM_HERA, PM_COUNT
+    PM_BEPICOLOMBO, PM_JUICE, PM_EUROPA_CLIPPER, PM_LUCY, PM_PSYCHE, PM_HERA,
+    // アポロ計画（-Z が前: ロケットと司令船は先端、月着陸船は天頂の側）。22・23 は天体の定義で使う番号
+    PM_APOLLO_CSM, PM_APOLLO_LM, PM_SATURN_V, PM_SATURN_SII_LES, PM_SATURN_SII, PM_SATURN_SIVB, PM_APOLLO_CSM_LM, PM_APOLLO_CSM_LMA,
+    PM_LM_ASCENT, PM_LM_DESCENT, PM_APOLLO_CM, PM_CM_DROGUE, PM_CM_MAIN, PM_APOLLO_CM_LM, PM_COUNT
 };
+
+// アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
+// 司令・機械船（CSM）: 機械船（直径 3.9 m・長さ 7.5 m、主エンジンのノズル、反動制御の噴射口 4 組、高利得アンテナ）と
+// 円錐の司令船（高さ 3.2 m）。withNozzle: 主エンジンのノズルを描く
+inline float ApolloCSM(ShipMeshBuilder& mb, float z0, bool withNozzle = true) {
+    const Color sm = {208, 210, 214, 255}, cm = {222, 224, 228, 255}, dark = {40, 40, 44, 255}, metal = {120, 122, 128, 255};
+    if (withNozzle) mb.Revolve(0, 0, {{z0 + 2.9f, 1.25f}, {z0 + 1.6f, 0.95f}, {z0 + 0.4f, 0.55f}, {z0 + 0.05f, 0.5f}}, 24, dark, SM_NOZZLE);
+    mb.Tube({0, 0, z0}, {0, 0, z0 - 7.5f}, 1.956f, 32, sm, SM_METAL);
+    for (int i = 0; i < 6; i++) {   // 放熱板の帯
+        float a = 2 * PI * i / 6;
+        mb.OBox({cosf(a) * 1.96f, sinf(a) * 1.96f, z0 - 3.0f}, {cosf(a) * 0.01f, sinf(a) * 0.01f, 0}, {-sinf(a) * 0.35f, cosf(a) * 0.35f, 0},
+                {0, 0, 2.2f}, {170, 172, 178, 255}, SM_PAINT);
+    }
+    for (int i = 0; i < 4; i++) {   // 反動制御の噴射口（RCS クアッド）
+        float a = PI / 4 + PI / 2 * i;
+        mb.Box({cosf(a) * 2.05f, sinf(a) * 2.05f, z0 - 5.6f}, {0.18f, 0.18f, 0.35f}, metal, SM_METAL);
+    }
+    mb.Tube({1.4f, -1.4f, z0 + 0.2f}, {2.4f, -2.4f, z0 + 1.0f}, 0.04f, 6, metal, SM_METAL);   // 高利得アンテナ
+    for (int i = 0; i < 4; i++)
+        mb.Dish({2.4f + 0.3f * ((i & 1) ? 1 : -1), -2.4f + 0.3f * ((i & 2) ? 1 : -1), z0 + 1.2f}, {0.7f, -0.7f, 0}, 0.31f, 0.1f, {230, 230, 230, 255}, SM_PAINT);
+    float b = z0 - 7.5f;
+    mb.Revolve(0, 0, {{b + 0.05f, 1.956f}, {b - 0.2f, 1.93f}, {b - 2.9f, 0.45f}, {b - 3.2f, 0.42f}, {b - 3.25f, 0.0f}}, 32, cm, SM_METAL);
+    mb.Tube({0, 0, b - 3.2f}, {0, 0, b - 3.6f}, 0.1f, 8, metal, SM_METAL);   // ドッキングの探り棒
+    return b - 3.6f;
+}
+// 司令船だけ（底の耐熱シールドが z0）
+inline float ApolloCM(ShipMeshBuilder& mb, float z0) {
+    const Color cm = {222, 224, 228, 255}, shield = {120, 96, 70, 255};
+    mb.Revolve(0, 0, {{z0 + 0.3f, 0.0f}, {z0 + 0.25f, 1.2f}, {z0 + 0.1f, 1.85f}, {z0, 1.956f}}, 32, shield, SM_PAINT);
+    mb.Revolve(0, 0, {{z0, 1.956f}, {z0 - 0.2f, 1.93f}, {z0 - 2.9f, 0.45f}, {z0 - 3.2f, 0.42f}, {z0 - 3.25f, 0.0f}}, 32, cm, SM_METAL);
+    return z0 - 3.25f;
+}
+// 月着陸船。上昇段（不規則な形の乗員室と燃料タンク）と下降段（金色の八角形の箱と 4 本の脚）。
+// 天頂の向きは dir（-1: -Z、+1: +Z）、zb は脚の接地点の高さ（ドッキングした形では上昇段の上の口が先端になる）
+inline void ApolloLM(ShipMeshBuilder& mb, float zb, float dir, bool ascent, bool descent) {
+    const Color gold = {196, 156, 64, 255}, dark = {52, 54, 58, 255}, grey = {150, 150, 156, 255}, black = {30, 30, 32, 255};
+    auto Z = [&](float h) { return zb + dir * h; };   // 接地点からの高さ h → z（dir が -1 なら天頂は -Z）
+    if (descent) {
+        mb.Prism({0, 0, Z(0.85f)}, {0, 0, Z(2.5f)}, 2.25f, 8, PI / 8, gold, SM_METAL);
+        mb.Revolve(0, 0, {{Z(0.85f), 0.5f}, {Z(0.4f), 0.75f}}, 16, black, SM_NOZZLE);   // 下降エンジンのノズル
+        for (int i = 0; i < 4; i++) {
+            float a = PI / 4 + PI / 2 * i;
+            Vector3 foot = {cosf(a) * 4.2f, sinf(a) * 4.2f, Z(0.1f)};
+            mb.Tube({cosf(a) * 2.0f, sinf(a) * 2.0f, Z(2.2f)}, foot, 0.08f, 6, gold, SM_METAL);
+            mb.Tube({cosf(a) * 2.0f, sinf(a) * 2.0f, Z(1.0f)}, foot, 0.06f, 6, grey, SM_METAL);
+            mb.Revolve(cosf(a) * 4.2f, sinf(a) * 4.2f, {{Z(0.0f), 0.0f}, {Z(0.02f), 0.47f}, {Z(0.2f), 0.4f}, {Z(0.25f), 0.1f}}, 12, gold, SM_METAL);
+        }
+    }
+    if (ascent) {
+        mb.Tube({0, -1.1f, Z(3.9f)}, {0, 1.3f, Z(3.9f)}, 1.17f, 20, grey, SM_METAL);   // 乗員室（前後に寝かせた円柱）
+        mb.Box({0, -0.3f, Z(3.2f)}, {1.8f, 1.2f, 0.65f}, dark, SM_METAL);                // 下の機器室と燃料タンク
+        mb.Box({-1.6f, 0.4f, Z(3.4f)}, {0.5f, 0.6f, 0.6f}, dark, SM_METAL);
+        mb.Box({1.6f, 0.4f, Z(3.4f)}, {0.5f, 0.6f, 0.6f}, dark, SM_METAL);
+        mb.Box({0, 1.6f, Z(3.6f)}, {0.8f, 0.6f, 0.9f}, {90, 90, 96, 255}, SM_METAL);     // 後ろの機器室
+        mb.Tube({0, 0, Z(4.8f)}, {0, 0, Z(5.4f)}, 0.5f, 16, grey, SM_METAL);              // 上の口（ドッキング）
+        mb.Box({0, -2.25f, Z(3.9f)}, {0.45f, 0.05f, 0.45f}, black, SM_GLASS);             // 前の窓
+        for (int i = 0; i < 4; i++) {   // 反動制御の噴射口
+            float a = PI / 4 + PI / 2 * i;
+            mb.Box({cosf(a) * 2.0f, sinf(a) * 2.0f, Z(4.2f)}, {0.15f, 0.15f, 0.15f}, grey, SM_METAL);
+        }
+        mb.Tube({0.9f, 1.2f, Z(4.6f)}, {1.3f, 1.6f, Z(5.6f)}, 0.03f, 6, grey, SM_METAL);   // ランデブー用レーダーとアンテナ
+        mb.Dish({1.3f, 1.6f, Z(5.6f)}, {0.3f, 0.3f, -dir}, 0.45f, 0.15f, {230, 230, 230, 255}, SM_PAINT);
+    }
+}
+// サターン V の段（z0 が底、-Z に積む）。S-IC（直径 10.1 m・長さ 42 m）、S-II（24.9 m）、S-IVB（直径 6.6 m・17.8 m）、
+// 計器リング、宇宙船アダプター（月着陸船が入っている円錐）
+inline float SaturnStage(ShipMeshBuilder& mb, float z0, int stage) {
+    const Color white = {236, 236, 232, 255}, black = {28, 28, 30, 255}, dark = {40, 40, 44, 255}, metal = {130, 132, 138, 255};
+    if (stage == 1) {
+        for (int i = 0; i < 5; i++) {   // F-1 エンジン 5 基
+            float x = i == 4 ? 0 : cosf(PI / 4 + PI / 2 * i) * 3.0f, y = i == 4 ? 0 : sinf(PI / 4 + PI / 2 * i) * 3.0f;
+            mb.Revolve(x, y, {{z0 + 5.8f, 1.85f}, {z0 + 2.0f, 1.2f}, {z0 + 0.1f, 0.7f}}, 20, dark, SM_NOZZLE);
+        }
+        for (int i = 0; i < 4; i++) {   // 安定翼
+            float a = PI / 4 + PI / 2 * i;
+            mb.OBox({cosf(a) * 5.8f, sinf(a) * 5.8f, z0 - 1.5f}, {cosf(a) * 1.2f, sinf(a) * 1.2f, 0}, {-sinf(a) * 0.15f, cosf(a) * 0.15f, 0},
+                    {0, 0, 2.2f}, black, SM_PAINT);
+        }
+        mb.Tube({0, 0, z0}, {0, 0, z0 - 42.0f}, 5.05f, 40, white, SM_PAINT);
+        for (int k = 0; k < 4; k++)   // 黒い縞
+            mb.Tube({0, 0, z0 - 2.0f - k * 9.5f}, {0, 0, z0 - 4.5f - k * 9.5f}, 5.07f, 40, (k & 1) ? white : black, SM_PAINT);
+        return z0 - 42.0f;
+    }
+    if (stage == 2) {
+        for (int i = 0; i < 5; i++) {   // J-2 エンジン 5 基
+            float x = i == 4 ? 0 : cosf(PI / 4 + PI / 2 * i) * 2.6f, y = i == 4 ? 0 : sinf(PI / 4 + PI / 2 * i) * 2.6f;
+            mb.Revolve(x, y, {{z0 + 3.4f, 1.0f}, {z0 + 1.0f, 0.6f}, {z0 + 0.1f, 0.4f}}, 16, dark, SM_NOZZLE);
+        }
+        mb.Tube({0, 0, z0}, {0, 0, z0 - 24.9f}, 5.05f, 40, white, SM_PAINT);
+        mb.Tube({0, 0, z0 - 23.0f}, {0, 0, z0 - 24.9f}, 5.07f, 40, black, SM_PAINT);
+        return z0 - 24.9f;
+    }
+    // S-IVB と計器リング、宇宙船アダプター
+    mb.Revolve(0, 0, {{z0 + 3.4f, 1.0f}, {z0 + 1.0f, 0.6f}, {z0 + 0.1f, 0.4f}}, 16, dark, SM_NOZZLE);
+    mb.Revolve(0, 0, {{z0, 3.3f}, {z0 - 17.8f, 3.3f}}, 36, white, SM_PAINT);
+    mb.Tube({0, 0, z0 - 1.0f}, {0, 0, z0 - 5.0f}, 3.32f, 36, black, SM_PAINT);
+    mb.Tube({0, 0, z0 - 17.8f}, {0, 0, z0 - 18.7f}, 3.3f, 36, metal, SM_METAL);
+    mb.Revolve(0, 0, {{z0 - 18.7f, 3.3f}, {z0 - 27.2f, 1.956f}}, 36, white, SM_PAINT);
+    return z0 - 27.2f;
+}
 
 inline Mesh GenProbeMesh(int model) {
     ShipMeshBuilder mb;
@@ -588,6 +691,74 @@ inline Mesh GenProbeMesh(int model) {
             float sx = i ? 1.0f : -1.0f;
             mb.Tube({sx * 0.8f, 0, 0}, {sx * 1.1f, 0, 0}, 0.04f, 6, metal, SM_METAL);
             for (int k = 0; k < 3; k++) mb.Box({sx * (1.65f + k * 1.15f), 0, 0}, {0.55f, 0.015f, 0.85f}, panel, SM_GLASS);
+        }
+        break;
+    }
+    case PM_APOLLO_CSM:
+        ApolloCSM(mb, 3.75f);
+        break;
+    case PM_APOLLO_LM:
+        ApolloLM(mb, 0.0f, -1, true, true);   // 原点が接地点（月面に降りた時に軌跡の点が月面になる）
+        break;
+    case PM_LM_ASCENT:
+        ApolloLM(mb, 0.0f, -1, true, false);   // 下降段の上に載った位置のまま
+        break;
+    case PM_LM_DESCENT:
+        ApolloLM(mb, 0.0f, -1, false, true);   // 月面に残る下降段: 原点が接地点
+        break;
+    case PM_APOLLO_CSM_LM:
+    case PM_APOLLO_CSM_LMA: {
+        // ドッキングした形: 司令船の先端に、月着陸船の上の口（天頂の側を +Z に向けて）。月から戻った後は上昇段だけ
+        float tip = ApolloCSM(mb, 3.75f);
+        ApolloLM(mb, tip - 5.4f, 1, true, model == PM_APOLLO_CSM_LM);
+        break;
+    }
+    case PM_APOLLO_CM_LM: {
+        // 機械船を切り離した後、月着陸船とつながったままの司令船（13 号）
+        float tip = ApolloCM(mb, 1.5f);
+        mb.Tube({0, 0, tip + 0.05f}, {0, 0, tip - 0.35f}, 0.1f, 8, {120, 122, 128, 255}, SM_METAL);
+        ApolloLM(mb, tip - 0.35f - 5.4f, 1, true, true);
+        break;
+    }
+    case PM_APOLLO_CM:
+    case PM_CM_DROGUE:
+    case PM_CM_MAIN: {
+        float tip = ApolloCM(mb, 1.5f);
+        const Color canopy = {232, 112, 48, 255}, white2 = {236, 236, 232, 255}, line = {200, 200, 196, 255};
+        if (model != PM_APOLLO_CM) {
+            // パラシュート: ドローグ 2 つ（直径 5 m）か主パラシュート 3 つ（直径 25 m）
+            int n = model == PM_CM_DROGUE ? 2 : 3;
+            float R = model == PM_CM_DROGUE ? 2.5f : 12.7f, L = model == PM_CM_DROGUE ? 18.0f : 35.0f;
+            for (int i = 0; i < n; i++) {
+                float a = 2 * PI * i / n + 0.3f, off = n == 2 ? R * 1.1f : R * 1.05f;
+                float cx = cosf(a) * off, cy = sinf(a) * off, cz = tip - L;
+                std::vector<Vector2> dome;
+                for (int k = 0; k <= 6; k++) {
+                    float u = PI / 2 * k / 6;
+                    dome.push_back({cz - sinf(u) * R * 0.45f, cosf(u) * R + 0.001f});
+                }
+                mb.Revolve(cx, cy, dome, 24, (i & 1) ? white2 : canopy, SM_PAINT);
+                for (int k = 0; k < 6; k++) {   // 吊りひも
+                    float b = 2 * PI * k / 6;
+                    mb.Tube({0, 0, tip}, {cx + cosf(b) * R, cy + sinf(b) * R, cz}, 0.03f, 3, line, SM_PAINT);
+                }
+            }
+        }
+        break;
+    }
+    case PM_SATURN_V:
+    case PM_SATURN_SII_LES:
+    case PM_SATURN_SII:
+    case PM_SATURN_SIVB: {
+        // 原点が機体の底（打ち上げの軌跡の点）。S-IC を切り離した後は S-II の底、その後は S-IVB の底
+        float z = 0;
+        if (model == PM_SATURN_V) z = SaturnStage(mb, -5.9f, 1);   // 発射台では、エンジンのノズルの下端が原点
+        if (model != PM_SATURN_SIVB) z = SaturnStage(mb, z, 2);
+        z = SaturnStage(mb, z, 3);
+        z = ApolloCSM(mb, z, false);
+        if (model == PM_SATURN_V || model == PM_SATURN_SII_LES) {   // 打ち上げ脱出用のロケット（S-II の点火の後に切り離す）
+            mb.Tube({0, 0, z}, {0, 0, z - 4.5f}, 0.35f, 8, {150, 150, 156, 255}, SM_METAL);
+            mb.Revolve(0, 0, {{z - 4.5f, 0.35f}, {z - 7.5f, 0.35f}, {z - 9.0f, 0.0f}}, 12, {200, 60, 40, 255}, SM_PAINT);
         }
         break;
     }

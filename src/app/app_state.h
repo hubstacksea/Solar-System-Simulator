@@ -9,7 +9,9 @@ enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TO
                  EV_TRANSIT, EV_CONJ, EV_OPPOSITION, EV_PERIHELION, EV_COMET_EARTH, EV_ECLIPSE_GROUND, EV_METEOR,
                  EV_PERIASTRON, EV_VIEW,   // 連星の近星点通過（body: 主星, body2: 伴星）、ツアーの眺め（body の近くから body2 の方を見る）
                  EV_HISTORY,               // 歴史上の日食・月食（moon: HISTORY の番号、body2: 食の種類、lat・lon: 史実の場所）
-                 EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT, EV_VOYAGE };
+                 EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT, EV_VOYAGE,
+                 EV_APOLLO };              // アポロ計画の飛行（moon: APOLLO_MISSIONS の番号）
+static const int EV_PAGES = 6;   // イベント一覧のページの数
 struct AstroEvent {
     int kind = 0;
     double t = 0;          // 最大の時刻（J2000 からの日数）
@@ -22,7 +24,8 @@ struct AstroEvent {
 };
 
 // 探査機の旅（src/app/voyage.h）の場面
-enum VoyageStepKind { VS_LAUNCH, VS_ESCAPE, VS_SWINGBY, VS_FLYBY, VS_NEAR, VS_TARGET_EARTH, VS_ARRIVE };
+enum VoyageStepKind { VS_LAUNCH, VS_ESCAPE, VS_SWINGBY, VS_FLYBY, VS_NEAR, VS_TARGET_EARTH, VS_ARRIVE,
+                      VS_APOLLO };   // アポロ計画のできごと（count: APOLLO_MISSIONS の events の番号）
 struct VoyageStep {
     int kind = VS_LAUNCH;
     double t = 0;
@@ -31,6 +34,7 @@ struct VoyageStep {
     double vIn = 0, vOut = 0; // スイングバイの前後の太陽に対する速さ km/s
     int count = 0;            // 到着: スイングバイの回数
     int evKind = EV_ARRIVE;   // 到着: 到着の種類
+    int mapBody = -1;         // 右上の拡大図の中心にする天体（-1: body）
 };
 
 struct App {
@@ -93,7 +97,7 @@ struct App {
     };
     std::vector<Meteor> meteors;
     int resumeMode = 1;                   // 起動時に前回の続きから 0: しない, 1: 場所だけ, 2: 場所と日時
-    int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星・連星, 2: 探査機のできごと, 3: 歴史（Tab で切り替え）
+    int eventsPage = 0;                   // 0: 天文イベント, 1: 彗星・連星, 2: 探査機のできごと, 3: 歴史, 4: 探査機の旅, 5: アポロ計画（Tab で切り替え）
     std::vector<AstroEvent> historyEvents;   // 歴史上の日食・月食（起動時に求める）
     std::vector<V3> sl9Dirs;                 // シューメーカー・レビー第 9 彗星の衝突痕の木星に固定した向き（起動時に求める）
     int locScars = -1, locScarCount = -1;   // シェーダの scars / scarInfo
@@ -140,6 +144,10 @@ struct App {
     double pendingVoyageT = NAN;
     int pendingLeg = 1;
     std::vector<AstroEvent> voyageEvents;
+    int apolloMission = -1;               // アポロ計画の飛行を追っている間は APOLLO_MISSIONS の番号（探査機の旅の仕組みで見せる）
+    std::vector<V3> voyMoonTrack;         // その間の月の位置（地球中心。右上の全体図に描く）
+    std::vector<AstroEvent> apolloEvents; // イベント一覧の「アポロ計画」のページ
+    std::string pendingApollo;            // URL で指定されたアポロの飛行
     int tourIdx = 0;
     double tourTime = 0;                  // 今の場面に着いてからの実時間 秒
     std::vector<AstroEvent> tourEvents;
@@ -154,6 +162,7 @@ struct App {
     std::vector<Mesh> shapeMesh;          // 実際の形（g_shapes と同じ並び）
     Mesh shipMesh{};
     Mesh probeMesh[PM_COUNT]{};
+    float probeOuter[PM_COUNT]{};          // 機体の形の大きさ（原点から最も遠い頂点まで）km
     Material shipMat{};
     Shader shipShader{};
     int locSunDir = -1, locSunColor = -1, locFillDir = -1, locFillColor = -1, locEngColor = -1, locEngGlow = -1, locNavBlink = -1;

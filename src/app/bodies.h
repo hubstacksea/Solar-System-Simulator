@@ -590,14 +590,16 @@ static void LoadProbeTracks() {
     }
 }
 
-// 区間内の位置（基準天体から）
-static V3 SegPos(const ProbeSeg& s, double t) {
-    size_t i = std::upper_bound(s.t.begin(), s.t.end(), t) - s.t.begin();
-    i = std::max<size_t>(1, std::min(i, s.t.size() - 1));
-    double t0 = s.t[i - 1], h = s.t[i] - t0, u = (t - t0) / h;
+// 点列（時刻・位置・速度）の 3 次エルミート補間
+static V3 HermiteAt(const std::vector<double>& T, const std::vector<V3>& P, const std::vector<V3>& Vel, double t) {
+    size_t i = std::upper_bound(T.begin(), T.end(), t) - T.begin();
+    i = std::max<size_t>(1, std::min(i, T.size() - 1));
+    double t0 = T[i - 1], h = T[i] - t0, u = (t - t0) / h;
     double h00 = 2 * u * u * u - 3 * u * u + 1, h10 = u * u * u - 2 * u * u + u, h01 = -2 * u * u * u + 3 * u * u, h11 = u * u * u - u * u;
-    return s.p[i - 1] * h00 + s.v[i - 1] * (h * h10) + s.p[i] * h01 + s.v[i] * (h * h11);
+    return P[i - 1] * h00 + Vel[i - 1] * (h * h10) + P[i] * h01 + Vel[i] * (h * h11);
 }
+// 区間内の位置（基準天体から）
+static V3 SegPos(const ProbeSeg& s, double t) { return HermiteAt(s.t, s.p, s.v, t); }
 
 static double BlendIn(double x) {   // x = 0 で 1、x >= 1 で 0（滑らかに）
     if (x >= 1) return 0;
@@ -628,6 +630,126 @@ static V3 ProbePosAt(const BodyDef& d, double t, F planetAt, bool* active, int* 
     if (k > 0 && S[k - 1].body > 0) pos = pos + S[k - 1].deltaEnd * BlendIn((t - s.t.front()) / PROBE_BLEND_DAYS);
     if (k + 1 < S.size() && S[k + 1].body > 0) pos = pos + S[k + 1].deltaStart * BlendIn((s.t.back() - t) / PROBE_BLEND_DAYS);
     return pos + s.v.back() * coast;
+}
+
+// ---------------------------------------------------------------- アポロ計画の宇宙船の軌跡
+// assets/apollo.bin（tools/make_apollo_assets.py、NASA の飛行記録の位置と速度から計算）。区間ごとに地球中心か月中心の
+// 慣性座標の点列、または天体固定座標（打ち上げ・月面への降下と上昇・突入と着水）の点列を持ち、点の間は 3 次エルミート補間。
+// 月中心の区間は「シミュレータの月 + 相対位置」。前後の地球中心の区間には、境目でのずれ（シミュレータの月 − 実際の月）を
+// APOLLO_BLEND_DAYS かけて足し込む。天体固定と慣性の区間の境目のずれ（地球の自転の式の違いなど 1 km 以下）も同じように埋める
+struct ApolloSeg {
+    int body = B_EARTH;       // 基準天体（地球か月）
+    bool fixed = false;       // 天体固定座標（x: 経度 0°, y: 東経 90°, z: 北極）
+    V3 moonStart, moonEnd;    // 区間の始まり・終わりでの実際の月の位置（地球中心）
+    V3 deltaStart, deltaEnd;  // 同じ時刻のシミュレータの月 − 実際の月（地球中心）
+    std::vector<double> t;    // J2000 からの日数（UTC）
+    std::vector<V3> p, v;     // 慣性: 描画座標 km, km/日。天体固定: その座標 km, km/日
+};
+struct ApolloTrack {
+    std::string flight, name;   // 飛行の名前（"Apollo 11"）と機体の名前（"Columbia"）
+    std::vector<ApolloSeg> segs;
+};
+static std::vector<ApolloTrack> g_apollo;
+static const double APOLLO_BLEND_DAYS = 0.25, APOLLO_FRAME_BLEND_DAYS = 120.0 / 86400;
+
+static void LoadApolloTracks() {
+    EmbeddedFile f = ApolloBin();
+    const unsigned char* q = f.data;
+    const unsigned char* end = f.data + f.size;
+    auto rd = [&](void* dst, size_t n) {
+        if (q + n > end) return false;
+        std::memcpy(dst, q, n);
+        q += n;
+        return true;
+    };
+    auto ecl = [](const double* a) { return EclToRender(a[0], a[1], a[2]); };
+    uint32_t nf = 0;
+    if (!f.data || !rd(&nf, 4)) return;
+    for (uint32_t i = 0; i < nf; i++) {
+        char fname[16];
+        uint32_t nt = 0;
+        if (!rd(fname, 16) || !rd(&nt, 4)) return;
+        for (uint32_t j = 0; j < nt; j++) {
+            char tname[16];
+            uint32_t ns = 0;
+            if (!rd(tname, 16) || !rd(&ns, 4)) return;
+            ApolloTrack tr;
+            tr.flight = std::string(fname, strnlen(fname, 16));
+            tr.name = std::string(tname, strnlen(tname, 16));
+            for (uint32_t k = 0; k < ns; k++) {
+                ApolloSeg sg;
+                int32_t body, frame;
+                double e[6];
+                uint32_t n;
+                if (!rd(&body, 4) || !rd(&frame, 4) || !rd(e, sizeof e) || !rd(&n, 4)) return;
+                sg.body = body;
+                sg.fixed = frame == 1;
+                sg.moonStart = ecl(e);
+                sg.moonEnd = ecl(e + 3);
+                for (uint32_t m = 0; m < n; m++) {
+                    double tp[4];
+                    float v[3];
+                    if (!rd(tp, sizeof tp) || !rd(v, sizeof v)) return;
+                    sg.t.push_back(tp[0]);
+                    if (sg.fixed) {   // 天体固定: そのまま（km/s → km/日）
+                        sg.p.push_back(V3(tp[1], tp[2], tp[3]));
+                        sg.v.push_back(V3(v[0], v[1], v[2]) * 86400.0);
+                    } else {
+                        sg.p.push_back(ecl(tp + 1));
+                        sg.v.push_back(EclToRender(v[0] * 86400.0, v[1] * 86400.0, v[2] * 86400.0));
+                    }
+                }
+                if (sg.t.size() >= 2) tr.segs.push_back(sg);
+            }
+            g_apollo.push_back(tr);
+        }
+    }
+}
+
+// 天体固定座標 f（x: 経度 0°, y: 東経 90°, z: 北極）→ 描画座標の向き（自転角 spin のとき）
+static V3 FixedToRender(const Body& b, double spin, V3 f) {
+    double cs = std::cos(spin), sn = std::sin(spin);
+    V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;
+    return X * f.x - Z * f.y + b.pole * f.z;
+}
+
+// アポロの宇宙船の位置。bodyAt(番号) はその時刻の地球・月の位置、spinAt(番号) は自転角。データの範囲外では *active = false
+template <class F, class G>
+static V3 ApolloPosAt(const std::vector<Body>& B, int track, double t, F bodyAt, G spinAt, bool* active) {
+    *active = false;
+    if (track < 0 || track >= (int)g_apollo.size() || g_apollo[track].segs.empty()) return V3(1e15, 0, 0);
+    const std::vector<ApolloSeg>& S = g_apollo[track].segs;
+    // 軌跡の始まりの少し前（2 分まで）は始まりの位置に置く（切り離しの時刻と、司令船の点から写した軌跡の始まりとの、
+    // 刻みや時刻の丸めの差で、切り離しの瞬間に機体が消えないように）
+    if (t < S.front().t.front() && t > S.front().t.front() - 120.0 / 86400) t = S.front().t.front();
+    if (t < S.front().t.front() || t > S.back().t.back()) return V3(1e15, 0, 0);
+    *active = true;
+    size_t k = 0;
+    while (k + 1 < S.size() && S[k].t.back() < t) k++;
+    // 区間 j の時刻 tt での位置（境目のずれを埋める前）
+    auto raw = [&](size_t j, double tt) {
+        const ApolloSeg& s = S[j];
+        V3 p = HermiteAt(s.t, s.p, s.v, tt);
+        if (s.fixed) return bodyAt(s.body) + FixedToRender(B[s.body], spinAt(s.body), p);
+        return bodyAt(s.body) + p;
+    };
+    const ApolloSeg& s = S[k];
+    V3 pos = raw(k, t);
+    // 月中心の区間に隣り合う地球中心の慣性の区間: シミュレータの月と実際の月のずれを足し込む
+    if (!s.fixed && s.body == B_EARTH) {
+        if (k > 0 && S[k - 1].body == B_MOON && !S[k - 1].fixed)
+            pos = pos + S[k - 1].deltaEnd * BlendIn((t - s.t.front()) / APOLLO_BLEND_DAYS);
+        if (k + 1 < S.size() && S[k + 1].body == B_MOON && !S[k + 1].fixed)
+            pos = pos + S[k + 1].deltaStart * BlendIn((s.t.back() - t) / APOLLO_BLEND_DAYS);
+    }
+    // 天体固定と慣性の区間の境目: 慣性の側を天体固定の側の位置へ寄せる（ずれは境目から離れるにつれて消える）
+    if (!s.fixed) {
+        if (k > 0 && S[k - 1].fixed && S[k - 1].body == s.body)
+            pos = pos + (raw(k - 1, s.t.front()) - raw(k, s.t.front())) * BlendIn((t - s.t.front()) / APOLLO_FRAME_BLEND_DAYS);
+        if (k + 1 < S.size() && S[k + 1].fixed && S[k + 1].body == s.body)
+            pos = pos + (raw(k + 1, s.t.back()) - raw(k, s.t.back())) * BlendIn((s.t.back() - t) / APOLLO_FRAME_BLEND_DAYS);
+    }
+    return pos;
 }
 
 // 地球を回る人工衛星の地球中心の位置 km（描画座標）。TLE の平均軌道要素を 2 体問題で進め、地球の扁平（J2）による
@@ -769,7 +891,10 @@ static std::vector<Body> InitBodies() {
             b.primeOffset = std::atan2(-Dot(Q, b.ez), Dot(Q, b.ex));
         }
         b.outer = RingOf((int)i) ? RingOf((int)i)->outer : d.radius;   // 環のある惑星は環の外側まで
-        if (d.probe >= 0 || d.tleN > 0) {
+        if (d.apolloTrack) {
+            b.soi = 20;      // 近くにいる自機は宇宙船と一緒に移動する（月を回る間に月面の近くを飛ぶ自機を連れて行かないよう狭く）
+            b.outer = 0.03;
+        } else if (d.probe >= 0 || d.tleN > 0) {
             b.soi = 2000;    // 近くにいる自機は探査機と一緒に移動する
             b.outer = d.tleN > 0 ? 0.06 : 0.03;  // 機体の大きさ（ISS は端から端まで 109 m。ワープの到着距離に使う）
         } else if (d.parent == 0) {
@@ -842,6 +967,16 @@ static std::vector<Body> InitBodies() {
     for (Body& b : B)
         for (size_t k = 0; k < g_probes.size(); k++)
             if (b.d.kind != KIND_PROBE && b.d.probe < 0 && g_probes[k].name == b.d.en && !g_probes[k].segs.empty()) b.d.track = (int)k;
+    // アポロ計画の宇宙船: 軌跡を名前で結び付け、月中心の区間の境目での、シミュレータの月と実際の月の差を求める
+    if (g_apollo.empty()) LoadApolloTracks();
+    for (Body& b : B)
+        for (size_t k = 0; b.d.apolloTrack && k < g_apollo.size(); k++)
+            if (g_apollo[k].flight + "/" + g_apollo[k].name == b.d.apolloTrack) b.d.apollo = (int)k;
+    for (ApolloTrack& tr : g_apollo)
+        for (ApolloSeg& sg : tr.segs) {
+            sg.deltaStart = MoonGeoPos(sg.t.front()) - sg.moonStart;
+            sg.deltaEnd = MoonGeoPos(sg.t.back()) - sg.moonEnd;
+        }
     // 人工衛星は軌跡の代わりに軌道要素で動く。探査機と同じ扱いにするため、空の軌跡の番号を割り当てる
     for (Body& b : B)
         if (b.d.tleN > 0 && b.d.probe < 0) {
@@ -901,6 +1036,9 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
         } else if (d.tleN > 0) {
             b.pos = B[B_EARTH].pos + SatellitePos(d, t);
             b.active = t >= d.launch;
+        } else if (d.apollo >= 0) {
+            // 地球と月は先に更新済み（宇宙船は配列の後ろ）
+            b.pos = ApolloPosAt(B, d.apollo, t, [&](int i) { return B[i].pos; }, [&](int i) { return B[i].spin; }, &b.active);
         } else if (d.probe >= 0) {
             // 惑星は先に更新済み（探査機は配列の最後）
             b.pos = ProbePosAt(d, t, [&](int i) { return B[i].pos; }, &b.active);
@@ -974,12 +1112,17 @@ static double SurfaceDist(const Body& b, V3 p) {
     double d = Len(rel);
     return d > 0 ? d - SurfaceRadius(b, rel * (1.0 / d)) : -b.d.radius;
 }
+static double SpinAt(const std::vector<Body>& B, int i, double t);
 // 時刻 t の天体の位置と自転角（UpdateBodies と同じ式を 1 天体分だけ。出入りの時刻を探すのに何百回も呼ぶ）
 static V3 PosAt(const std::vector<Body>& B, int i, double t) {
     const BodyDef& d = B[i].d;
     if (d.star >= 0) return StarPos(d, t);
     if (d.parent < 0) return V3();
     if (d.tleN > 0) return PosAt(B, B_EARTH, t) + SatellitePos(d, t);
+    if (d.apollo >= 0) {
+        bool act;
+        return ApolloPosAt(B, d.apollo, t, [&](int k) { return PosAt(B, k, t); }, [&](int k) { return SpinAt(B, k, t); }, &act);
+    }
     if (d.probe >= 0) {
         bool act;
         return ProbePosAt(d, t, [&](int k) { return PosAt(B, k, t); }, &act);

@@ -627,6 +627,7 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
         case EV_VIEW: snprintf(b, sizeof b, T(UI_EV_VIEW), name(g_jp ? ev.body : ev.body2), name(g_jp ? ev.body2 : ev.body)); break;
         case EV_HISTORY: return TR(HISTORY[ev.moon].jp, HISTORY[ev.moon].en);
         case EV_VOYAGE: return VoyageName(app, ev.probe, ev.moon);
+        case EV_APOLLO: return TR(APOLLO_MISSIONS[ev.moon].jp, APOLLO_MISSIONS[ev.moon].en);
         default: snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_END_LAND : UI_EV_END), name(ev.probe), name(ev.body)); break;
     }
     return b;
@@ -636,6 +637,7 @@ static std::string VoyageTargetName(const App& app, int i, int leg, int body);
 static std::string EventDetail(const App& app, const AstroEvent& ev) {
     char b[160];
     switch (ev.kind) {
+        case EV_APOLLO: return TR(APOLLO_MISSIONS[ev.moon].noteJp, APOLLO_MISSIONS[ev.moon].noteEn);
         case EV_VOYAGE: {
             long long y;
             int m, d;
@@ -1137,9 +1139,9 @@ static void OpenEventsPage(App& app) {
         return;
     }
     app.events = app.eventsPage == 1 ? app.cometEvents : app.eventsPage == 3 ? app.historyEvents
-                 : app.eventsPage == 4 ? app.voyageEvents : app.probeEvents;
+                 : app.eventsPage == 4 ? app.voyageEvents : app.eventsPage == 5 ? app.apolloEvents : app.probeEvents;
     app.eventSel = 0;
-    if (app.eventsPage == 4) return;
+    if (app.eventsPage >= 4) return;
     for (size_t i = 0; i < app.events.size(); i++)
         if (std::fabs(app.events[i].t - app.tDays) < std::fabs(app.events[app.eventSel].t - app.tDays)) app.eventSel = (int)i;
 }

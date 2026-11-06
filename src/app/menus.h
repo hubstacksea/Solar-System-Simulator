@@ -355,6 +355,13 @@ static double ProbeVisitTime(const App& app, int i) {
         for (const AstroEvent& ev : app.probeEvents)
             if (ev.probe == i && ev.kind == kind) return ev.t;
     if (d.tleN > 0) return d.launch + 30;
+    int mission, vehicle;   // アポロ: 月面にいた間（司令船は月を回っている）
+    if (d.apollo >= 0 && ApolloVehicleOf(app, i, &mission, &vehicle)) {
+        const ApolloMission& m = APOLLO_MISSIONS[mission];
+        if (m.liftoff) return ApolloT(m, m.liftoff) - 1.0 / 24;
+        const auto& segs = g_apollo[d.apollo].segs;   // 月面に降りなかった飛行: その機体の軌跡の中ほど
+        return (segs.front().t.front() + segs.back().t.back()) / 2;
+    }
     if (d.probe >= 0 && d.probe < (int)g_probes.size() && !g_probes[d.probe].segs.empty())
         return (g_probes[d.probe].segs.front().t.front() + g_probes[d.probe].segs.back().t.back()) / 2;
     return app.tDays;
@@ -957,6 +964,11 @@ static void GoSelectedEvent(App& app) {
         StartVoyage(app, ev.probe, std::max(1, ev.moon), 0, NAN);
         return;
     }
+    if (ev.kind == EV_APOLLO) {
+        app.eventsOpen = false;
+        StartApollo(app, ev.moon, 0, NAN);
+        return;
+    }
     StopVoyage(app);
     StartWarp(app, EventBody(ev), false);
     app.warpEvent = app.eventSel;
@@ -1036,7 +1048,7 @@ static bool HandleModalInput(App& app) {
             return true;
         }
         if (app.tapPos.y < y + 64) {
-            app.eventsPage = (app.eventsPage + 1) % 5;
+            app.eventsPage = (app.eventsPage + 1) % EV_PAGES;
             OpenEventsPage(app);
             return true;
         }
@@ -1083,7 +1095,7 @@ static bool HandleModalInput(App& app) {
         }
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_K)) app.eventsOpen = false;
         if (IsKeyPressed(KEY_TAB)) {
-            app.eventsPage = (app.eventsPage + (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? 4 : 1)) % 5;
+            app.eventsPage = (app.eventsPage + (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? EV_PAGES - 1 : 1)) % EV_PAGES;
             OpenEventsPage(app);
             return true;
         }
@@ -1124,8 +1136,10 @@ static void DrawModalPanels(const App& app) {
         float w = std::min(c.W - 20, 900.0f), h = 96 + rows * 28.0f, x = (c.W - w) / 2, y = (c.H - h) / 2;
         DrawRectangleRounded({x, y, w, h}, 0.04f, 6, {0, 8, 20, 230});
         DrawRectangleRoundedLinesEx({x, y, w, h}, 0.04f, 6, 1.5f, {90, 130, 180, 255});
-        static const UiId TITLE[5] = {UI_EV_TITLE, UI_EV_COMET_TITLE, UI_EV_PROBE_TITLE, UI_EV_HISTORY_TITLE, UI_EV_VOYAGE_TITLE};
-        static const UiId NOTE[5] = {UI_EV_NOTE, UI_EV_COMET_NOTE, UI_EV_PROBE_NOTE, UI_EV_HISTORY_NOTE, UI_EV_VOYAGE_NOTE};
+        static const UiId TITLE[EV_PAGES] = {UI_EV_TITLE, UI_EV_COMET_TITLE, UI_EV_PROBE_TITLE, UI_EV_HISTORY_TITLE, UI_EV_VOYAGE_TITLE,
+                                             UI_EV_APOLLO_TITLE};
+        static const UiId NOTE[EV_PAGES] = {UI_EV_NOTE, UI_EV_COMET_NOTE, UI_EV_PROBE_NOTE, UI_EV_HISTORY_NOTE, UI_EV_VOYAGE_NOTE,
+                                            UI_EV_APOLLO_NOTE};
         TxtC(T(TITLE[app.eventsPage]), c.W * 0.5f, y + 10, 22, {255, 220, 120, 255});
         TxtC(T(UI_EV_KEYS), c.W * 0.5f, y + 40, 15, {170, 200, 230, 255});
         if (n == 0) TxtC(T(UI_EV_NONE), c.W * 0.5f, y + 72, 18, {215, 228, 245, 255});

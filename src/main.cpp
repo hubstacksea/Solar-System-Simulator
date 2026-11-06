@@ -89,6 +89,7 @@ EM_JS(int, WebViewH, (), {
 #include "app/sky.h"
 #include "app/ship_settings.h"
 #include "app/app_state.h"
+#include "app/apollo.h"
 #include "app/places.h"
 #include "app/events.h"
 #include "app/voyage.h"
@@ -133,7 +134,7 @@ int main(int argc, char** argv) {
         struct { const char* name; EmbeddedFile f; } files[] = {
             {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
             {"earth_clouds.jpg", EarthCloudsJpg()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
-            {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"sky.txt", SkyTxt()},
+            {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"sky.txt", SkyTxt()},
             {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},
             {"saturn_rings.png", SaturnRingsPng()}, {"milkyway.jpg", MilkyWayJpg()}};
         int missing = 0;
@@ -343,6 +344,10 @@ int main(int argc, char** argv) {
     for (const VoyageTip& t : VOYAGE_TIPS) allText += t.jp;
     for (const VoyageLeg& l : VOYAGE_LEGS) allText += std::string(l.nameJp) + l.startTitleJp + l.startTextJp + l.endTitleJp + l.endTextJp;
     for (const HistoricEclipse& h : HISTORY) allText += std::string(h.jp) + h.placeJp;
+    for (const ApolloMission& m : APOLLO_MISSIONS) {
+        allText += std::string(m.jp) + m.noteJp;
+        for (int k = 0; k < m.eventCount; k++) allText += std::string(m.events[k].jp) + m.events[k].textJp;
+    }
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
     // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）。共有リンクの lang= は後で
@@ -433,7 +438,15 @@ int main(int argc, char** argv) {
     app.shipMat = LoadMaterialDefault();
     app.shipMat.shader = app.shipShader;
     app.shipMesh = GenShipMesh();
-    for (int i = 0; i < PM_COUNT; i++) app.probeMesh[i] = GenProbeMesh(i);
+    for (int i = 0; i < PM_COUNT; i++) {
+        app.probeMesh[i] = GenProbeMesh(i);
+        float r2 = 0;
+        for (int k = 0; k < app.probeMesh[i].vertexCount; k++) {
+            const float* v = app.probeMesh[i].vertices + 3 * k;
+            r2 = std::max(r2, v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        }
+        app.probeOuter[i] = std::sqrt(r2) * 0.001f;
+    }
     // 探査機の大きさ（ワープで着く距離に使う）は、模型の頂点の中心からの最大の距離 km
     for (Body& b : app.B) {
         int pm = b.d.probeModel;
@@ -496,7 +509,7 @@ int main(int argc, char** argv) {
     app.showHelp = opt.help;
     app.photoMode = std::max(0, std::min(2, opt.photo));
     app.settingsOpen = opt.settings;
-    if ((GetSetting("intro") != "1" && !opt.shot && app.pendingVoyage.empty()) || opt.intro) app.introPage = 0;   // 初回だけ案内を出す
+    if ((GetSetting("intro") != "1" && !opt.shot && app.pendingVoyage.empty() && app.pendingApollo.empty()) || opt.intro) app.introPage = 0;   // 初回だけ案内を出す
     if (opt.touch) app.touchUI = true;
     if (app.physics || opt.physics) {   // 重力モードで始める時は、今いる天体のまわりの円軌道に乗せる
         app.physics = false;
@@ -506,9 +519,10 @@ int main(int argc, char** argv) {
     app.cometEvents = FindCometEvents(app);
     app.historyEvents = FindHistoryEvents(app);
     app.voyageEvents = FindVoyages(app);
+    app.apolloEvents = FindApolloFlights(app);
     StartPendingVoyage(app);
     app.sl9Dirs = Sl9FixedDirs(app.B);
-    app.eventsPage = std::max(0, std::min(4, opt.eventsPage));
+    app.eventsPage = std::max(0, std::min(EV_PAGES - 1, opt.eventsPage));
     if (opt.showEvents) {
         OpenEventsPage(app);
         if (app.eventsPage == 0) app.eventSel = 5;

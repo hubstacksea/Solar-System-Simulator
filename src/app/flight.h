@@ -223,7 +223,7 @@ static bool PadMenus(App& app, const PadState& pad) {
         if (n > 0 && pad.timeDown) app.eventSel = (app.eventSel + 1) % n;
         if (n > 0 && pad.timeUp) app.eventSel = (app.eventSel + n - 1) % n;
         if (pad.nextTarget || pad.rb) {
-            app.eventsPage = (app.eventsPage + 1) % 5;
+            app.eventsPage = (app.eventsPage + 1) % EV_PAGES;
             OpenEventsPage(app);
         }
         if (pad.autopilot) GoSelectedEvent(app);

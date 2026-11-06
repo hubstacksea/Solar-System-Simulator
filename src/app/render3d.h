@@ -979,14 +979,48 @@ static const double GALILEO_PROBE_RELEASE = -1633.27;  // 1995-07-13 05:30 UTC: 
 static const double HUYGENS_RELEASE = 1819.58;         // 2004-12-25 02:00 UTC: カッシーニがホイヘンスを切り離す
 static void DrawProbes(App& app) {
     const Cam& c = app.cam;
+    // アポロ計画: 月面に残った下降段（離陸した後）
+    for (int m = 0; m < APOLLO_COUNT; m++) {
+        V3 pos, up;
+        if (!ApolloDescentStage(app, m, &pos, &up)) continue;
+        V3 rel = ViewRel(app, pos);
+        double dist = Len(rel);
+        if (0.01 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -0.02) continue;
+        SetPassProjection(c, std::max(1e-5, (dist - 0.01) * 0.5), dist + 0.01);
+        ClearDepth();
+        SetShipLighting(app, pos);
+        Vector3 fillDir = ToF(Norm(c.pos - pos)), fillColor = {0.3f, 0.3f, 0.32f}, zero = {0, 0, 0};
+        float off = 0;
+        SetShaderValue(app.shipShader, app.locFillDir, &fillDir, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shipShader, app.locFillColor, &fillColor, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shipShader, app.locEngColor, &zero, SHADER_UNIFORM_VEC3);
+        SetShaderValue(app.shipShader, app.locEngGlow, &off, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(app.shipShader, app.locNavBlink, &off, SHADER_UNIFORM_FLOAT);
+        V3 east = Cross(app.B[B_MOON].pole, up);
+        Quaternion q = QuatFromBasis(up, Len(east) > 1e-9 ? Norm(east) : V3(1, 0, 0));
+        Matrix model = MatrixMultiply(MatrixMultiply(MatrixScale(0.001f, 0.001f, 0.001f), QuaternionToMatrix(q)),
+                                      MatrixTranslate((float)rel.x, (float)rel.y, (float)rel.z));
+        rlDisableBackfaceCulling();
+        DrawMesh(app.probeMesh[PM_LM_DESCENT], app.shipMat, model);
+        rlEnableBackfaceCulling();
+    }
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        if (b.d.probe < 0 || !b.active) continue;
+        if ((b.d.probe < 0 && b.d.apollo < 0) || !b.active) continue;
+        // アポロ: 時刻に応じた機体の形（つながっている間の月着陸船は司令船の側で描く）
+        int apModel = -1;
+        if (b.d.apollo >= 0) {
+            int mission, vehicle;
+            if (!ApolloVehicleOf(app, (int)i, &mission, &vehicle)) continue;
+            apModel = ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays);
+            if (apModel < 0) continue;
+        }
+        double size = apModel >= 0 ? std::max(0.02, (double)app.probeOuter[apModel] * 1.1) : 0.02;
         V3 rel = ViewRel(app, b.pos);
         double dist = Len(rel);
-        if (0.015 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -0.02) continue;
+        if (0.015 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -size) continue;
         if (Occluded(app, c.pos, b.pos, (int)i)) continue;
-        SetPassProjection(c, std::max(1e-5, (dist - 0.02) * 0.5), dist + 0.02);
+        SetPassProjection(c, std::max(1e-5, (dist - size) * 0.5), dist + size);
         ClearDepth();
         SetShipLighting(app, b.pos);
         // 太陽の反対側から見ると真っ黒な影絵になるので、視点側から弱い補助光を当てる
@@ -1009,6 +1043,10 @@ static void DrawProbes(App& app) {
         if (pm == PM_GALILEO && app.tDays < GALILEO_PROBE_RELEASE) pm = PM_GALILEO_PROBE;
         if (pm == PM_CASSINI && app.tDays < HUYGENS_RELEASE) pm = PM_CASSINI_HUYGENS;
         Quaternion q = QuatFromBasis(Len(aim) > 1e-6 ? aim : V3(1, 0, 0), upHint);
+        if (apModel >= 0) {
+            pm = apModel;
+            q = ApolloPose(app, (int)i, pm);
+        }
         Matrix model = MatrixMultiply(MatrixMultiply(MatrixScale(0.001f, 0.001f, 0.001f), QuaternionToMatrix(q)),
                                       MatrixTranslate((float)rel.x, (float)rel.y, (float)rel.z));
         rlDisableBackfaceCulling();

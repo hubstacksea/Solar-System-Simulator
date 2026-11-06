@@ -99,7 +99,11 @@
     X(EV_VOYAGE_TITLE, "探査機の旅", "Spacecraft voyages") \
     X(EV_VOYAGE_NOTE, "地球の出発から目標まで探査機のそばで追います（Enter で開始）。何もない間は時間を速め、できごとの時は等倍に", "Follow a spacecraft from Earth to its goal (Enter to start). Time speeds up in cruise and drops to real time at each event") \
     X(EV_VOYAGE_D, "→ %s  %d 年", "to %s  %d") \
+    X(EV_APOLLO_TITLE, "アポロ計画", "Apollo program") \
+    X(EV_APOLLO_NOTE, "打ち上げから着水まで宇宙船のそばで追います（Enter で開始）。軌道は NASA の飛行記録の位置と速度から計算したもの", "Follow the spacecraft from liftoff to splashdown (Enter to start). Trajectories are computed from the positions and velocities in NASA's flight records") \
     X(VOY_HEAD, "探査機の旅: %s", "Voyage of %s") \
+    X(APOLLO_HEAD, "アポロ計画: %s", "Apollo program: %s") \
+    X(APOLLO_GET, "打ち上げから %s%d:%02d:%02d  %s", "%s%d:%02d:%02d since launch  %s") \
     X(VOY_DATE, "日時 %s", "Date %s") \
     X(VOY_ELAPSED, "出発から %d 年 %d 日", "%d y %d d since launch") \
     X(VOY_NEXT, "次: %s（あと %s）", "Next: %s (in %s)") \

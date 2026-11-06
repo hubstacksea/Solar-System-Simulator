@@ -595,7 +595,21 @@ static void BuildVoyage(const App& app, int i, int leg, std::vector<VoyageStep>*
     std::stable_sort(steps->begin(), steps->end(), [](const VoyageStep& a, const VoyageStep& b) { return a.t < b.t; });
 }
 
-// 右上の小さな全体図のために、全行程の太陽中心の位置を等間隔の時刻で求めておく
+// 時刻 t に追う機体: 探査機の旅はその探査機、アポロ計画はその時刻より前の最後のできごとの機体
+static int VoyageFocusAt(const App& app, double t) {
+    if (app.apolloMission < 0) return app.voyProbe;
+    const ApolloMission& m = APOLLO_MISSIONS[app.apolloMission];
+    int v = 0;
+    for (int k = 0; k < m.eventCount; k++)
+        if (ApolloT(m, m.events[k].get) <= t + 1e-9) v = m.events[k].vehicle;
+    int b = ApolloBody(app, app.apolloMission, v);
+    return b >= 0 ? b : app.voyProbe;
+}
+
+// 右上の図の原点: 探査機の旅は太陽、アポロ計画は地球
+static int VoyageOrigin(const App& app) { return app.apolloMission >= 0 ? B_EARTH : B_SUN; }
+
+// 右上の小さな全体図のために、全行程の位置（原点から）を等間隔の時刻で求めておく。アポロ計画では月の位置も
 static void SampleVoyageTrack(App& app) {
     const int N = 1500;
     std::vector<Body> B = app.B;
@@ -604,15 +618,18 @@ static void SampleVoyageTrack(App& app) {
     app.voyTrack.clear();
     app.voyTrackT.clear();
     app.voyStepPos.clear();
+    app.voyMoonTrack.clear();
+    int o = VoyageOrigin(app);
     for (int k = 0; k <= N; k++) {
         double t = t0 + (t1 - t0) * k / N;
         UpdateBodies(B, t);
-        app.voyTrack.push_back(B[app.voyProbe].pos - B[B_SUN].pos);
+        app.voyTrack.push_back(B[VoyageFocusAt(app, t)].pos - B[o].pos);
         app.voyTrackT.push_back(t);
+        if (app.apolloMission >= 0) app.voyMoonTrack.push_back(B[B_MOON].pos - B[o].pos);
     }
     for (const VoyageStep& st : app.voySteps) {
         UpdateBodies(B, st.t);
-        app.voyStepPos.push_back(B[app.voyProbe].pos - B[B_SUN].pos);
+        app.voyStepPos.push_back(B[VoyageFocusAt(app, st.t)].pos - B[o].pos);
     }
 }
 
@@ -655,12 +672,64 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
         double y = app.voyLookYaw, p = app.voyLookPitch;
         dir = Norm((dir * std::cos(y) + right * std::sin(y)) * std::cos(p) + up * std::sin(p));
     }
-    s.q = QuatFromBasis(dir, Y_UP);
+    V3 upHint = Y_UP;
+    if (app.apolloMission >= 0) {   // アポロ: 画面の上を、近くの天体（地球か月）から外向きに
+        int ref;
+        ApolloVel(app, app.voyProbe, app.tDays, &ref);
+        V3 u = Norm(app.B[app.voyProbe].pos - app.B[ref].pos);
+        if (Len(Cross(dir, u)) > 0.05) upHint = u;
+    }
+    s.q = QuatFromBasis(dir, upHint);
     s.local = ShipFwd(s) * -0.032 - ShipRight(s) * 0.009 - ShipUp(s) * 0.005;
+    if (app.apolloMission >= 0) {
+        // アポロ: 機体の大きさ（サターン V は 110 m、月着陸船は 7 m）に合わせて離れ、機体の中ほどを見る。地面の近くでは
+        // カメラを地面より上に保つ
+        const Body& b = app.B[app.voyProbe];
+        const ApolloMission& m = APOLLO_MISSIONS[app.apolloMission];
+        int mission, vehicle;
+        int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(m, vehicle, app.tDays) : PM_APOLLO_CSM;
+        double outer = model >= 0 ? app.probeOuter[model] : 0.006;
+        double k = std::max(1.0, outer / 0.008);
+        V3 mid = V3();
+        if (model == PM_SATURN_V || model == PM_APOLLO_LM || model == PM_LM_ASCENT) {   // 原点が機体の底: 中ほどへ
+            Quaternion q = ApolloPose(app, app.voyProbe, model);
+            V3 axis = FromF(Vector3RotateByQuaternion({0, 0, -1}, q));
+            mid = axis * (outer * 0.45);
+        }
+        s.local = mid + s.local * k;
+        int gb = ApolloFixedBody(b.d, app.tDays);
+        if (gb >= 0) {
+            // 地面の近く: カメラは地面から 15 m より下には行けない（自機の視点の決まり）ので、少し離れた 16 m 以上の高さから
+            // 機体の中ほどを見下ろす。高度 600 m から 100 m までの間に、上空での見え方から滑らかに移る
+            const Body& o = app.B[gb];
+            V3 up = Norm(b.pos - o.pos);
+            double alt = SurfaceDist(o, b.pos);
+            double w = std::max(0.0, std::min(1.0, (0.6 - alt) / 0.5));
+            w = w * w * (3 - 2 * w);
+            if (w > 0) {
+                V3 h = ShipFwd(s) - up * Dot(ShipFwd(s), up);
+                h = Len(h) > 1e-9 ? Norm(h) : Norm(Cross(up, V3(1, 0, 0)));
+                V3 side = Norm(Cross(h, up));
+                V3 cam = h * (-0.045 * k) - side * (0.010 * k) + up * std::max(0.016 - alt, Dot(mid, up) + 0.004);
+                Quaternion q = QuatFromBasis(Norm(mid - cam), up);
+                s.q = QuaternionSlerp(s.q, q, (float)w);
+                s.local = s.local * (1 - w) + cam * w;
+            }
+        }
+        int fixedBody = ApolloFixedBody(b.d, app.tDays);
+        if (fixedBody >= 0) {
+            const Body& o = app.B[fixedBody];
+            V3 cam = b.pos + s.local, up = Norm(cam - o.pos);
+            double alt = SurfaceDist(o, cam), minAlt = fixedBody == B_EARTH ? 0.03 : 0.002;
+            if (alt < minAlt) s.local = s.local + up * (minAlt - alt);
+        }
+    }
 }
 
 // 今見たい方向: 知らせを出しているできごとの天体、なければ次のできごとの天体、それもなければ進む向き
+static V3 ApolloAimDir(const App& app, int* bodyOut);
 static V3 VoyageAimDir(const App& app, int* bodyOut = nullptr) {
+    if (app.apolloMission >= 0) return ApolloAimDir(app, bodyOut);
     const Body& p = app.B[app.voyProbe];
     int body = -1;
     if (app.voyCard >= 0) body = app.voySteps[app.voyCard].body;
@@ -703,6 +772,30 @@ static V3 VoyageAimDir(const App& app, int* bodyOut = nullptr) {
     return Len(p.pos - app.B[B_SUN].pos) > 1e-6 ? Norm(app.voyAim) : V3(1, 0, 0);   // 目標のない巡航は今の向きのまま
 }
 
+// アポロ計画の見る向き: 知らせを出しているか次のできごとの向き（天体か、進む向き）。地面の近く（打ち上げ・月面・突入）では
+// 水平に近い向きにして、カメラが地面の下に入らないように機体の横から見る
+static V3 ApolloAimDir(const App& app, int* bodyOut) {
+    const Body& p = app.B[app.voyProbe];
+    int look = AP_LOOK_FWD;
+    if (app.voyCard >= 0) look = app.voySteps[app.voyCard].body;
+    else
+        for (const VoyageStep& st : app.voySteps)
+            if (st.t > app.tDays) { look = st.body; break; }
+    if (bodyOut) *bodyOut = look;
+    int ref;
+    V3 v = ApolloVel(app, app.voyProbe, app.tDays, &ref);
+    V3 up = Norm(p.pos - app.B[ref].pos);
+    V3 dir = look >= 0 ? Norm(app.B[look].pos - p.pos) : Len(v) > 1e-9 ? Norm(v) : up;
+    if (ApolloFixedBody(p.d, app.tDays) >= 0) {
+        V3 h = dir - up * Dot(dir, up);
+        if (Len(h) < 0.2) h = v - up * Dot(v, up);
+        if (Len(h) < 1e-9) h = Cross(app.B[ref].pole, up);
+        double tilt = std::max(0.0, std::min(1.0, (Len(v) / 86400 - 0.005) / 0.045));   // 止まっている間（月面・発射台）は水平に
+        dir = Norm(Norm(h) + up * (0.15 * tilt * tilt * (3 - 2 * tilt)));
+    }
+    return dir;
+}
+
 static void PrepareVoyageLocal(App& app, int k);
 // 時刻 t に応じた時間の速さと、出す知らせを決める
 static void UpdateVoyageRate(App& app) {
@@ -714,10 +807,19 @@ static void UpdateVoyageRate(App& app) {
         rate = std::min(rate, std::max(1.0, (std::fabs(delta) - VOY_HOLD_SEC) / VOY_RAMP_SEC));
         if (std::fabs(delta) < VOY_CARD_LEAD_SEC) card = (int)k;
     }
+    if (app.apolloMission >= 0) {
+        // アポロ: できごとが続くので、できごとの 20 秒前から次のできごとまでそのできごとの知らせを出す（30 分たったら消す）
+        card = -1;
+        for (size_t k = 0; k < app.voySteps.size(); k++) {
+            double delta = (app.tDays - app.voySteps[k].t) * day;
+            if (delta >= -20) card = delta < 1800 ? (int)k : -1;
+        }
+    }
     if (app.voyDone) rate = 1;
     // 拡大図の軌跡は、場面に近づいた時に一度だけ求める（巡航の速さで 1 日以内）
     for (size_t k = 0; k < app.voySteps.size(); k++)
-        if (!app.voyLocal[k].ready && std::fabs(app.tDays - app.voySteps[k].t) < 3.0) PrepareVoyageLocal(app, (int)k);
+        if (!app.voyLocal[k].ready && std::fabs(app.tDays - app.voySteps[k].t) < (app.apolloMission >= 0 ? 0.25 : 3.0))
+            PrepareVoyageLocal(app, (int)k);
     if (card < 0 && app.voyDone) card = (int)app.voySteps.size() - 1;
     app.voyRate = rate;
     app.voyCard = card;
@@ -726,6 +828,7 @@ static void UpdateVoyageRate(App& app) {
 static void StopVoyage(App& app) {
     if (!app.voyageOn) return;
     app.voyageOn = false;
+    app.apolloMission = -1;
     app.cockpit = app.voySavedCockpit;
     app.timeIdx = 0;
     app.paused = false;
@@ -751,11 +854,12 @@ static void VoyageSetSpeed(App& app, int speed) {
     app.voySpeed = std::max(0, std::min(2, speed));
     if (app.voySteps.size() < 2) return;
     double days = app.voySteps.back().t - app.voySteps.front().t;
-    app.voyCruise = std::max(0.2, std::min(80.0, days / VOY_CRUISE_WALL_SEC[app.voySpeed])) * 86400.0;
+    app.voyCruise = std::max(app.apolloMission >= 0 ? 0.001 : 0.2, std::min(80.0, days / VOY_CRUISE_WALL_SEC[app.voySpeed])) * 86400.0;
 }
 
 // 旅の名前（延長ミッションはその名前）
 static std::string VoyageName(const App& app, int i, int leg) {
+    if (app.apolloMission >= 0) return TR(APOLLO_MISSIONS[app.apolloMission].jp, APOLLO_MISSIONS[app.apolloMission].en);
     if (const VoyageLeg* l = leg > 1 ? FindVoyageLeg(app.B[i].d, leg) : nullptr) return TR(l->nameJp, l->nameEn);
     return TR(app.B[i].d.jp, app.B[i].d.en);
 }
@@ -806,8 +910,78 @@ static bool StartVoyage(App& app, int i, int leg, int scene, double t) {
     return true;
 }
 
+// アポロ計画の飛行 mission を始める。scene: 場面の番号（0 が打ち上げ、負なら末尾から）。t が有効ならその時刻から
+static bool StartApollo(App& app, int mission, int scene, double t) {
+    if (mission < 0 || mission >= APOLLO_COUNT) return false;
+    const ApolloMission& m = APOLLO_MISSIONS[mission];
+    int csm = ApolloBody(app, mission, 0);
+    if (csm < 0 || app.B[csm].d.apollo < 0) return false;
+    std::vector<VoyageStep> steps;
+    for (int k = 0; k < m.eventCount; k++) {
+        const ApolloEvent& e = m.events[k];
+        VoyageStep st;
+        st.kind = VS_APOLLO;
+        st.t = ApolloT(m, e.get);
+        st.body = e.look;
+        st.count = k;
+        // 右上の拡大図: 月の影響圏の中なら月のまわり、地球の近く（高度 2,000 km まで）なら地球のまわり
+        int b = ApolloBody(app, mission, e.vehicle);
+        V3 pe = PosAt(app.B, b, st.t), pm = PosAt(app.B, B_MOON, st.t), pg = PosAt(app.B, B_EARTH, st.t);
+        st.mapBody = Len(pe - pm) < app.B[B_MOON].soi ? B_MOON : Len(pe - pg) < app.B[B_EARTH].d.radius + 2000 ? B_EARTH : -1;
+        steps.push_back(st);
+    }
+    // 打ち上げの少し前から（発射台のロケット）
+    steps.front().t = std::max(steps.front().t, ApolloLaunch(m));
+    if (app.tourOn) app.tourOn = false;
+    app.autopilot = false;
+    app.warpT = -1;
+    app.voySavedPhysics = app.voyageOn ? app.voySavedPhysics : app.physics;
+    if (app.physics) SetPhysics(app, false);
+    app.voySavedCockpit = app.voyageOn ? app.voySavedCockpit : app.cockpit;
+    if (app.mouseCaptured) {
+        app.mouseCaptured = false;
+        EnableCursor();
+    }
+    app.voyageOn = true;
+    app.apolloMission = mission;
+    app.voyProbe = csm;
+    app.voyLeg = 1;
+    app.voySteps = steps;
+    app.voyLength = 0;
+    app.voyLocal.assign(steps.size(), App::VoyLocal());
+    app.voyLookYaw = app.voyLookPitch = app.voyLookHold = 0;
+    app.cockpit = true;
+    app.paused = false;
+    app.timeIdx = 0;
+    app.eventZoom = false;
+    app.frameLock = false;
+    app.target = csm;
+    SampleVoyageTrack(app);
+    VoyageSetSpeed(app, app.voySpeed);
+    int n = (int)steps.size();
+    if (scene < 0) scene = n + scene;
+    scene = std::max(0, std::min(n - 1, scene));
+    double t0 = steps.front().t - 30.0 / 86400, t1 = steps.back().t;   // 打ち上げの 30 秒前から
+    app.voySteps.front().t = steps.front().t;
+    double start = std::isfinite(t) && t >= t0 && t <= t1 ? t : scene == 0 ? t0 : steps[scene].t - 60.0 / 86400;
+    if (!std::isfinite(t) && scene > 0) start = std::max(start, steps[scene - 1].t + 1.0 / 86400);
+    app.voyProbe = VoyageFocusAt(app, start);
+    VoyageJump(app, start);
+    return true;
+}
+
 // URL の voyage= と scene= から始める（起動時に一度）。scene: launch / arrive / 場面の番号（1 から）
 static void StartPendingVoyage(App& app) {
+    if (!app.pendingApollo.empty()) {   // アポロ計画: apollo=11 など
+        int mission = -1;
+        for (int k = 0; k < APOLLO_COUNT; k++)
+            if ("Apollo " + app.pendingApollo == APOLLO_MISSIONS[k].name || app.pendingApollo == APOLLO_MISSIONS[k].name) mission = k;
+        const std::string& sc = app.pendingScene;
+        int scene = sc == "end" || sc == "arrive" ? -1 : sc.empty() || sc == "launch" ? 0 : std::max(1, atoi(sc.c_str())) - 1;
+        if (mission < 0 || !StartApollo(app, mission, scene, app.pendingVoyageT)) Toast(app, T(UI_VOY_NOT_FOUND));
+        app.pendingApollo.clear();
+        return;
+    }
     if (app.pendingVoyage.empty()) return;
     auto lower = [](std::string v) {
         for (char& ch : v) ch = (char)std::tolower((unsigned char)ch);
@@ -917,6 +1091,7 @@ static void VoyageSkip(App& app, int dir) {
 // 毎フレーム: 時間の速さを決め、カメラを探査機に付ける
 static void UpdateVoyage(App& app, double dt) {
     if (!app.voyageOn) return;
+    if (app.apolloMission >= 0) app.voyProbe = VoyageFocusAt(app, app.tDays);   // 追う機体（司令船か月着陸船）
     // 見回した向きは、操作をやめて 3 秒たつと滑らかに自動の向きへ戻る
     if (app.voyLookHold > 0) app.voyLookHold -= dt;
     else {
@@ -996,6 +1171,12 @@ static void VoyageCardText(const App& app, const VoyageStep& st, std::string* ti
     const BodyDef& pr = app.B[app.voyProbe].d;
     *text = "";
     switch (st.kind) {
+        case VS_APOLLO: {
+            const ApolloEvent& e = APOLLO_MISSIONS[app.apolloMission].events[st.count];
+            *title = TR(e.jp, e.en);
+            *text = TR(e.textJp, e.textEn);
+            return;
+        }
         case VS_LAUNCH:
             if (const VoyageLeg* l = FindVoyageLeg(pr, app.voyLeg)) {
                 *title = TR(l->startTitleJp, l->startTitleEn);
@@ -1096,7 +1277,7 @@ static Rectangle VoyageMapRect(const Cam& c) {
 static int VoyageLocalStep(const App& app) {
     for (size_t k = 0; k < app.voySteps.size(); k++) {
         const VoyageStep& st = app.voySteps[k];
-        if (st.body <= B_SUN || !app.voyLocal[k].ready) continue;
+        if ((st.mapBody >= 0 ? st.mapBody : st.body) <= B_SUN || !app.voyLocal[k].ready) continue;
         if (std::fabs(app.tDays - st.t) < app.voyLocal[k].span) return (int)k;
     }
     return -1;
@@ -1109,34 +1290,35 @@ static void PrepareVoyageLocal(App& app, int k) {
     if (L.ready) return;
     L.ready = true;
     const VoyageStep& st = app.voySteps[k];
-    if (st.body <= B_SUN) return;
+    int body = st.mapBody >= 0 ? st.mapBody : st.body, o = VoyageOrigin(app);
+    if (body <= B_SUN) return;
     std::vector<Body> B = app.B;
     for (Body& b : B) b.orbit.clear();
     auto relAt = [&](double t) {
         UpdateBodies(B, t);
-        return B[app.voyProbe].pos - B[st.body].pos;
+        return B[VoyageFocusAt(app, t)].pos - B[body].pos;
     };
     // 最接近の距離の 4 倍（地球の出発・脱出は重力圏の半径まで）離れるまでの時間を、前後それぞれ探す
-    double d0 = std::max(Len(relAt(st.t)), app.B[st.body].d.radius * 2);
+    double d0 = std::max(Len(relAt(st.t)), app.B[body].d.radius * 2);
     double reach = st.kind == VS_LAUNCH || st.kind == VS_ESCAPE ? app.B[B_EARTH].soi * 1.3 : d0 * 4;
     double t0 = app.voySteps.front().t, t1 = app.voySteps.back().t;
     auto edge = [&](double dir) {
-        double h = 1.0 / 1440;   // 1 分から倍々に
-        while (h < 60 && Len(relAt(std::max(t0, std::min(t1, st.t + dir * h)))) < reach) h *= 2;
-        return std::min(h, 60.0);
+        double h = 1.0 / 1440, hmax = app.apolloMission >= 0 ? 2.0 / 24 : 60.0;   // 1 分から倍々に（アポロは前後 2 時間まで）
+        while (h < hmax && Len(relAt(std::max(t0, std::min(t1, st.t + dir * h)))) < reach) h *= 2;
+        return std::min(h, hmax);
     };
     double before = std::min(edge(-1), st.t - t0), after = std::min(edge(1), t1 - st.t);
     if (st.kind == VS_LAUNCH) before = 0;
     L.span = std::max(before, after);
     relAt(st.t);
-    L.center = B[st.body].pos - B[B_SUN].pos;
+    L.center = B[body].pos - B[o].pos;
     const int N = 400;
     for (int j = 0; j <= N; j++) {
         double t = st.t - before + (before + after) * j / N;
         relAt(t);
         L.t.push_back(t);
-        L.rel.push_back(B[app.voyProbe].pos - B[B_SUN].pos - L.center);
-        L.body.push_back(B[st.body].pos - B[B_SUN].pos - L.center);
+        L.rel.push_back(B[VoyageFocusAt(app, t)].pos - B[o].pos - L.center);
+        L.body.push_back(B[body].pos - B[o].pos - L.center);
     }
 }
 
@@ -1149,7 +1331,8 @@ static Color Alpha(Color c, float a) {
 // 天体の近くの拡大図（場面 ls の天体のあたりを、全体図と同じ向き・同じ見方で拡大）。fa は透明度
 static void DrawVoyageMapLocal(const App& app, Rectangle r, int ls, float fa) {
     const App::VoyLocal& L = app.voyLocal[ls];
-    const Body& o = app.B[app.voySteps[ls].body];
+    const VoyageStep& st = app.voySteps[ls];
+    const Body& o = app.B[st.mapBody >= 0 ? st.mapBody : st.body];
     // 探査機と天体の道がちょうど収まる正方形を、図の中心に置く
     double x0 = -o.d.radius, x1 = o.d.radius, z0 = -o.d.radius, z1 = o.d.radius;
     for (const std::vector<V3>* v : {&L.rel, &L.body})
@@ -1162,7 +1345,7 @@ static void DrawVoyageMapLocal(const App& app, Rectangle r, int ls, float fa) {
     double k = R / range;
     auto proj = [&](V3 p) { return Vector2{(float)(cx + (p.x - mx) * k), (float)(cy + (p.z - mz) * k)}; };
     Rectangle in = {r.x + 2, r.y + 2, r.width - 4, r.height - 4};
-    const V3 sun = app.B[B_SUN].pos;
+    const V3 sun = app.B[VoyageOrigin(app)].pos;
     // 天体の通る道（細く）と、今の天体
     Color oc = BodyColor(o, 0.9f);
     Color ol = oc;
@@ -1203,7 +1386,7 @@ static void DrawVoyageMapLocal(const App& app, Rectangle r, int ls, float fa) {
 static void DrawVoyageMapWhole(const App& app, Rectangle r, float fa) {
     double range = 0;
     for (const V3& p : app.voyTrack) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));
-    range = std::max(range * 1.08, 0.05 * AU_KM);
+    range = std::max(range * 1.08, app.apolloMission >= 0 ? 20000.0 : 0.05 * AU_KM);
     float cx = r.x + r.width * 0.5f, cy = r.y + r.height * 0.5f + 6, R = r.width * 0.5f - 10;
     double k = R / range;
     auto proj = [&](V3 p) { return Vector2{(float)(cx + p.x * k), (float)(cy + p.z * k)}; };
@@ -1215,9 +1398,17 @@ static void DrawVoyageMapWhole(const App& app, Rectangle r, float fa) {
     auto dot = [&](Vector2 a, float rad, Color col) {
         if (CheckCollisionPointRec(a, in)) DrawCircleV(a, rad, col);
     };
-    const V3 sun = app.B[B_SUN].pos;
+    const V3 sun = app.B[VoyageOrigin(app)].pos;
+    if (app.apolloMission >= 0) {   // 地球中心: 月の通る道（細く）と今の月、中心の地球
+        const Body& moon = app.B[B_MOON];
+        Color col = BodyColor(moon, 0.8f);
+        col.a = 90;
+        for (size_t j = 1; j < app.voyMoonTrack.size(); j++) line(proj(app.voyMoonTrack[j - 1]), proj(app.voyMoonTrack[j]), 1.0f, Alpha(col, fa));
+        col.a = 230;
+        dot(proj(moon.pos - sun), 3.0f, Alpha(col, fa));
+    }
     // 惑星の軌道と今の位置（全体図の外まで広がる軌道も、図の中の部分は描く）
-    for (int i = 1; i <= B_PLUTO; i++) {
+    for (int i = 1; i <= B_PLUTO && app.apolloMission < 0; i++) {
         const Body& b = app.B[i];
         if (b.orbit.size() < 2 || b.d.a_au * AU_KM * (1 - 0.25) > range * 1.5) continue;
         Color col = BodyColor(b, 0.8f);
@@ -1231,7 +1422,7 @@ static void DrawVoyageMapWhole(const App& app, Rectangle r, float fa) {
         col.a = 230;
         dot(proj(b.pos - sun), 2.5f, Alpha(col, fa));
     }
-    DrawCircleV({cx, cy}, 3.5f, Alpha({255, 220, 120, 255}, fa));
+    DrawCircleV({cx, cy}, 3.5f, app.apolloMission >= 0 ? Alpha(BodyColor(app.B[B_EARTH], 1.0f), fa) : Alpha({255, 220, 120, 255}, fa));
     // 探査機の道
     size_t now = 0;
     while (now + 1 < app.voyTrackT.size() && app.voyTrackT[now + 1] <= app.tDays) now++;
@@ -1257,6 +1448,11 @@ static void DrawVoyageMapWhole(const App& app, Rectangle r, float fa) {
     float bw = (float)(unit * k);
     char b[32];
     snprintf(b, sizeof b, "%g AU", unit / AU_KM);
+    if (app.apolloMission >= 0) {   // 地球と月のまわりは km で
+        unit = std::pow(10.0, std::floor(std::log10(range * 0.6)));
+        bw = (float)(unit * k);
+        snprintf(b, sizeof b, "%s", FmtDist(unit).c_str());
+    }
     DrawLineEx({r.x + 10, r.y + r.height - 10}, {r.x + 10 + bw, r.y + r.height - 10}, 1.5f, Alpha({170, 200, 230, 220}, fa));
     Txt(b, r.x + 14 + bw, r.y + r.height - 18, 12, Alpha({170, 200, 230, 220}, fa));
 }
@@ -1392,13 +1588,19 @@ static void DrawVoyageHud(const App& app) {
     float panelH = lh * (nextIdx >= 0 ? 5 : 4) + 34;
     DrawRectangleRounded({6, 6, 460, panelH}, 0.06f, 6, {0, 10, 25, 170});
     float x = 16, y = 12;
-    snprintf(b, sizeof b, T(UI_VOY_HEAD), VoyageName(app, app.voyProbe, app.voyLeg).c_str());
+    snprintf(b, sizeof b, T(app.apolloMission >= 0 ? UI_APOLLO_HEAD : UI_VOY_HEAD), VoyageName(app, app.voyProbe, app.voyLeg).c_str());
     Txt(b, x, y, fs + 3, {255, 220, 120, 255}); y += lh + 6;
     double elapsed = std::max(0.0, app.tDays - app.voySteps.front().t);
     snprintf(b, sizeof b, T(UI_VOY_DATE), FmtDate(app.tDays).c_str());
     Txt(b, x, y, fs, WHITE); y += lh;
-    int ey = (int)(elapsed / 365.25);
-    snprintf(b, sizeof b, T(UI_VOY_ELAPSED), ey, (int)(elapsed - ey * 365.25));
+    if (app.apolloMission >= 0) {   // 打ち上げからの経過時間（時:分:秒）
+        double get = (app.tDays - ApolloLaunch(APOLLO_MISSIONS[app.apolloMission])) * 86400;
+        int gs = (int)std::floor(std::fabs(get));
+        snprintf(b, sizeof b, T(UI_APOLLO_GET), get < 0 ? "-" : "", gs / 3600, gs / 60 % 60, gs % 60, TR(p.d.jp, p.d.en));
+    } else {
+        int ey = (int)(elapsed / 365.25);
+        snprintf(b, sizeof b, T(UI_VOY_ELAPSED), ey, (int)(elapsed - ey * 365.25));
+    }
     Txt(b, x, y, fs, {200, 220, 240, 255}); y += lh;
     std::string rate = VoyageRateText(app);
     static const UiId SPEED[3] = {UI_VOY_SPEED_SLOW, UI_VOY_SPEED_NORMAL, UI_VOY_SPEED_FAST};

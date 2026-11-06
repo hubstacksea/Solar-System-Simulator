@@ -275,6 +275,16 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 - 衛星への接近の距離は、シミュレータの衛星の位置（実際とずれることがあります）での値です
 - **リンクで開く**: ブラウザ版の URL に `?voyage=探査機の英語名` を付けると、その旅を出発から始めます。`&scene=arrive` で到着の直前から、`&scene=番号` でその場面から、`&leg=2` で延長ミッションの旅を。旅の途中で F2 を押すと、その場面のリンクをコピーします。例: [ベピコロンボの水星到着](https://hubstacksea.github.io/Solar-System-Simulator/?voyage=BepiColombo&scene=arrive)、[ボイジャー1号の旅](https://hubstacksea.github.io/Solar-System-Simulator/?voyage=Voyager%201)。PC 版は `--share "?voyage=BepiColombo&scene=arrive"` で開けます
 
+## アポロ計画
+
+イベント一覧（K）の「アポロ計画」のページで飛行を選んで Enter を押すと、打ち上げから月への到着・着陸・帰還・着水までを、宇宙船のすぐそばから年代順に追えます（月へ向かった 8・10〜17 号。13 号は酸素タンクの爆発で着陸を中止し、月の裏を回って帰還）。
+
+- 探査機の旅と同じ見せ方で、できごと（各段の切り離し、月へ向かう噴射、月を回る軌道への噴射、着陸、月面での活動、離陸、ドッキング、大気圏突入、着水など）ごとに時間を等倍まで落として説明を出します。司令船と月着陸船が分かれている間は、場面に応じてどちらかを追います
+- 機体の形は時刻に応じて変わります（サターン V の各段、司令・機械船と月着陸船、月面に残る下降段、パラシュートを開いた司令船）。右上の図は地球が中心で、月の近くでは月のまわりの拡大図になります
+- イベントを選ばなくても、日時がその飛行の間なら宇宙船は表示され、記録どおりに動きます（月面の下降段は離陸の後もずっと残ります）
+- 軌道は NASA の飛行記録（Apollo by the Numbers と各号の Mission Report）にある時刻ごとの位置と速度から、地球・月・太陽の重力で計算してつないだものです（宇宙船そのものの軌道の暦は公開されていません）。記録の位置を通るように噴射の時刻で速度を合わせ、月の重力のむら（計算に入れていない）の分は区間全体で少しずつ埋めています。打ち上げは上昇の記録の点を通り、月面への降下と上昇は記録の時刻・高度・速さを通るようにつなぎ（降下の途中の目安は 11 号の記録）、大気圏突入は記録の最大加速度・パラシュートを開く時刻と場所に合うよう運動方程式で解いています
+- **リンクで開く**: URL に `?apollo=11` を付けるとその飛行を打ち上げから、`&scene=番号` でその場面から始めます。PC 版は `--share "?apollo=11"`
+
 ## 仕組み
 
 - **天体位置**: 水星〜海王星は惑星の位置の級数 VSOP87（Bretagnon & Francou 1988。約 5,700 項に間引いたもの）で計算します。JPL Horizons（DE441）との差は 1500〜2500 年で水星〜土星 1.5″ 以内・天王星と海王星 8″ 以内、紀元前 3000 年〜西暦 3000 年の全体で 4.4′ 以内です（遠い昔ほど VSOP87 そのものの誤差で大きくなります）。軌道の線は今の位置と速度から求めた楕円で、惑星をちょうど通ります。冥王星は JPL の平均軌道要素とその変化率からケプラー方程式で計算します。地球の自転の遅れ（ΔT。紀元前 500 年〜西暦 2150 年は NASA の日食表と同じ Espenak & Meeus の式、その外は Morrison & Stephenson 2004 の式。紀元前 500 年で約 4.8 時間）と地球の自転軸の歳差（IAU 1976）も入れています。月は Meeus『Astronomical Algorithms』47 章の式（ELP-2000/82 を縮めた周期項）に、JPL Horizons（DE441）の月の位置に合わせた長期の補正を足して、実際の位置と満ち欠けを再現します。月の向きは IAU の月の自転の式で、地球から見て経度方向に ±8°、緯度方向に ±7° ほど首を振り（秤動）、縁の向こう側も少し見えます。紀元前 763 年〜西暦 2950 年の日食は、NASA の日食表と時刻 4 分・食の中心 2° 以内で一致します（`tools/run_checks.py` で確かめています）。ほかの衛星は JPL の平均軌道要素の軌道面に円軌道で置き、公転の位置を JPL Horizons の 1980〜2070 年の位置に合わせてあります（多くは誤差 1° 以内、最大でも数度。ミマスはテティスとの共鳴による ±43° の揺れも再現）。木星の衛星の影が木星に落ちる時刻も実際とほぼ一致します
@@ -315,6 +325,7 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 - ISS とハッブル宇宙望遠鏡の軌道要素: [CelesTrak](https://celestrak.org/)（`tools/fetch_tle.py` で取得）。JWST の軌跡: NASA/JPL Horizons
 - 小惑星などの軌道要素: JPL Small-Body Database（`tools/make_asteroid_assets.py` で取得・変換、NumPy が必要、約 20 MB をダウンロード）
 - 探査機の軌跡: NASA/JPL Horizons（`tools/make_probe_assets.py` で取得・間引き。ロゼッタは ESA、はやぶさ2 は JAXA の軌道決定による）
+- アポロ計画の宇宙船の軌跡: NASA の飛行記録（R. W. Orloff, *Apollo by the Numbers*, NASA SP-2000-4029 と各号の Mission Report）の位置と速度から `tools/make_apollo_assets.py` で計算（月と太陽の位置は JPL Horizons）
 - 星空: ヒッパルコス星表（ESA）の恒星と、88 星座の星座線・名前（日本語・学名）・恒星の固有名。星の距離と固有運動はヒッパルコス新整約（van Leeuwen 2007）の年周視差と固有運動（ESA Gaia アーカイブから取得）。[d3-celestial](https://github.com/ofrohn/d3-celestial)（Olaf Frohn, BSD 3-Clause）のデータを `tools/make_sky_assets.py` で変換
 - 近くの恒星: Gaia DR3（ESA/Gaia/DPAC）・ヒッパルコス新整約（van Leeuwen 2007）の位置天文データと、連星の軌道・質量の論文（Akeson et al. 2021、Bond et al. 2017、Kervella et al. 2016、Lazorenko & Sahlmann 2018）など。出典の一覧と値は `tools/make_nearby_stars.py`（`src/nearby_stars.h` を作る）。惑星: NASA Exoplanet Archive（Suárez Mascareño et al. 2025、Basant et al. 2025、Hurt et al. 2022、Thompson et al. 2025）
 - 彗星・小惑星の形: リュウグウは Watanabe et al. (2019) の形状モデル（出典 ISAS/JAXA、[JAXA DARTS](https://data.darts.isas.jaxa.jp/pub/hayabusa2/paper/Watanabe_2019/)）、チュリュモフ・ゲラシメンコ彗星は ESA の NAVCAM による形状モデル MTP019 の低解像度版（ESA/Rosetta/NAVCAM – CC BY-SA IGO 3.0、NASA PDS Small Bodies Node より取得）。ベンヌ（OSIRIS-REx）・イトカワ（Gaskell et al., Hayabusa AMICA）・ディディモスとディモルフォス（DART）・フォボス（Gaskell）・ドナルドジョハンソン（Lucy、DLR のチーム）は NASA NAIF の SPICE 形状データ（DSK）。ダイモスは Thomas の形状モデル（Viking Orbiter の撮影から。NASA PDS Small Bodies Node）。ガスプラ・イダ・ハレー彗星の核は Stooke の形状モデル（Galileo、ハレー彗星は Giotto・Vega の撮影から。ハレー彗星は指向の計算が Abergel。NASA PDS Small Bodies Node、パブリックドメイン。配布元が自動の取得を受け付けないので、ブラウザで取得して作業ディレクトリに置く）。`tools/make_shape_assets.py` で座標を 16 ビットに丸め（フォボスは間引き）、表面までの半径の表を加えて変換（NumPy と spiceypy が必要）

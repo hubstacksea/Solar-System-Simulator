@@ -70,6 +70,8 @@ struct BodyDef {
     bool probeCoast = false;   // 探査機: データの終わりより後も等速直線運動で外へ進む（太陽系を脱出する機体）
     int probeModel = 0;        // 探査機: 機体の形（src/ship_model.h の ProbeModel）
     bool probeEnd = false;     // 探査機: データの終わりが運用終了（天体への突入・着地）
+    const char* apolloTrack = nullptr;   // アポロ計画の宇宙船: assets/apollo.bin の "飛行/機体"（"Apollo 11/Columbia"）
+    int apollo = -1;           // その軌跡の番号（起動時に名前で結び付ける）
     // 地球を回る人工衛星（ISS・ハッブル）: 平均軌道要素 TLE（tleN > 0 の時に使う）。地球中心・J2000 赤道座標とみなす
     double tleEpoch = 0, tleN = 0, tleNdot = 0;   // 元期（J2000 からの日数）, 平均運動 周/日, その変化の半分 周/日²
     double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
@@ -429,6 +431,36 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         d.probeModel = st.model; d.launch = st.launch;
         d.tleEpoch = st.epoch; d.tleN = st.n; d.tleNdot = st.ndot; d.tleE = st.e; d.tleI = st.i;
         d.tleNode = st.node; d.tleArgp = st.argp; d.tleM = st.M;
+        v.push_back(d);
+    }
+    // ---- アポロ計画の宇宙船（人工衛星の後ろ）。軌跡は tools/make_apollo_assets.py で NASA の飛行記録から計算したもの。
+    //   機体の形: 22 司令・機械船（時刻に応じてサターン V ロケットや月着陸船とつないだ形に）, 23 月着陸船
+    static const struct { const char* jp; const char* en; const char* track; int model; } APOLLO[] = {
+        {"アポロ8号", "Apollo 8", "Apollo 8/Apollo 8", 22},
+        {"アポロ10号 司令船チャーリー・ブラウン", "Apollo 10 Charlie Brown", "Apollo 10/Charlie Brown", 22},
+        {"アポロ10号 月着陸船スヌーピー", "Apollo 10 Snoopy", "Apollo 10/Snoopy", 23},
+        {"アポロ11号 司令船コロンビア", "Apollo 11 Columbia", "Apollo 11/Columbia", 22},
+        {"アポロ11号 月着陸船イーグル", "Apollo 11 Eagle", "Apollo 11/Eagle", 23},
+        {"アポロ12号 司令船ヤンキー・クリッパー", "Apollo 12 Yankee Clipper", "Apollo 12/Yankee Clipper", 22},
+        {"アポロ12号 月着陸船イントレピッド", "Apollo 12 Intrepid", "Apollo 12/Intrepid", 23},
+        {"アポロ13号 司令船オデッセイ", "Apollo 13 Odyssey", "Apollo 13/Odyssey", 22},
+        {"アポロ13号 月着陸船アクエリアス", "Apollo 13 Aquarius", "Apollo 13/Aquarius", 23},
+        {"アポロ14号 司令船キティホーク", "Apollo 14 Kitty Hawk", "Apollo 14/Kitty Hawk", 22},
+        {"アポロ14号 月着陸船アンタレス", "Apollo 14 Antares", "Apollo 14/Antares", 23},
+        {"アポロ15号 司令船エンデバー", "Apollo 15 Endeavour", "Apollo 15/Endeavour", 22},
+        {"アポロ15号 月着陸船ファルコン", "Apollo 15 Falcon", "Apollo 15/Falcon", 23},
+        {"アポロ16号 司令船キャスパー", "Apollo 16 Casper", "Apollo 16/Casper", 22},
+        {"アポロ16号 月着陸船オリオン", "Apollo 16 Orion", "Apollo 16/Orion", 23},
+        {"アポロ17号 司令船アメリカ", "Apollo 17 America", "Apollo 17/America", 22},
+        {"アポロ17号 月着陸船チャレンジャー", "Apollo 17 Challenger", "Apollo 17/Challenger", 23},
+    };
+    for (const auto& ap : APOLLO) {
+        BodyDef d{};
+        d.jp = ap.jp; d.en = ap.en; d.parent = 0;
+        d.radius = 0.002; d.mass = 3e4;
+        d.rotPeriod = 1e9;
+        d.kind = KIND_PROBE; d.c1 = {0.85f, 0.82f, 0.70f}; d.c2 = d.c1;
+        d.probeModel = ap.model; d.apolloTrack = ap.track;
         v.push_back(d);
     }
     for (BodyDef& d : v)

@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.36.0 (2026-11-06)
+
+- Apollo program: a new "Apollo program" page in the event list (K). Follow the lunar flights Apollo 8 and 10-17 (Apollo 13 aborted its landing after an oxygen tank explosion and returned) from right beside the spacecraft, in chronological order: liftoff, arrival at the Moon, landing, moonwalks, liftoff, docking, the return and splashdown. The spacecraft's shape changes with time (Saturn V stages, the command and service module, the lunar module, the command module under parachutes), and the descent stages stay on the Moon after liftoff. Whenever the date falls within a flight, the spacecraft appear and fly as recorded even without choosing the event
+- The trajectories are computed with the gravity of Earth, the Moon and the Sun from the positions and velocities in NASA's flight records (Apollo by the Numbers and each mission report) (`tools/make_apollo_assets.py`, `assets/apollo.bin`). Entry is solved from the equations of motion to match the recorded peak deceleration and the parachute time and place
+- `?apollo=11` in the URL opens that flight, and `&scene=<number>` a scene
+
 ## 2.35.1 (2026-11-06)
 
 - Spacecraft voyages: the close-up map at the top right is now drawn the same way as the full map, with the Sun at rest. It used to show the path as seen from the body, so the spacecraft's direction differed from the full map by the body's own motion (in Galileo's Earth flyby it moved right to left in the full map but bottom to top in the close-up). The body's path is drawn as a thin line and the body moves across the map

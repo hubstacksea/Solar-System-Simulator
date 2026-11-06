@@ -170,6 +170,13 @@ static std::string ShareQuery(const App& app) {
 // 探査機の旅の中の場面: 知らせを出している場面なら場面の番号（到着は arrive）、ほかは時刻で
 static std::string VoyageQuery(const App& app) {
     char q[200];
+    if (app.apolloMission >= 0) {   // アポロ計画: ?apollo=11&scene=場面
+        std::string n = APOLLO_MISSIONS[app.apolloMission].name;
+        n = n.substr(n.find(' ') + 1);
+        if (app.voyCard >= 0) snprintf(q, sizeof q, "?apollo=%s&scene=%d", n.c_str(), app.voyCard + 1);
+        else snprintf(q, sizeof q, "?apollo=%s&t=%.6f", n.c_str(), app.tDays);
+        return q;
+    }
     std::string name = UrlEncode(app.B[app.voyProbe].d.en);
     if (app.voyLeg > 1) name += "&leg=" + std::to_string(app.voyLeg);
     int last = (int)app.voySteps.size() - 1;
@@ -232,6 +239,12 @@ static std::map<std::string, std::string> ParseQuery(std::string q) {
 // 共有リンクの場面にする（起動時に一度）。読めた項目だけ使う。場面の項目が無ければ false
 static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENED) {
     std::map<std::string, std::string> kv = ParseQuery(q);
+    if (kv.count("apollo")) {   // アポロ計画: 天体の一覧ができてから StartPendingVoyage で始める
+        app.pendingApollo = kv["apollo"];
+        app.pendingScene = kv["scene"];
+        if (kv.count("t")) app.pendingVoyageT = atof(kv["t"].c_str());
+        return true;
+    }
     if (kv.count("voyage")) {   // 探査機の旅: 探査機の一覧ができてから StartPendingVoyage で始める
         app.pendingVoyage = kv["voyage"];
         app.pendingScene = kv["scene"];
