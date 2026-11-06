@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.35.0 (2026-11-06)
+
+- Browser version: the loading screen shows a logo and the title (SOLAR SYSTEM VOYAGER). The logo uses the same design as the app icon (a ringed planet and a spacecraft) and is drawn inside the page without image files, so it appears immediately
+
 ## 2.34.1 (2026-11-05)
 
 - Browser version: page views are now counted with Cloudflare Web Analytics (no cookies; no personal information or details of what you do in the app are sent). The PC and macOS versions send nothing
