@@ -659,6 +659,24 @@ static std::string VoyageTargetName(const App& app, int i, int leg, int body) {
     return body >= 0 ? TR(app.B[body].d.jp, app.B[body].d.en) : "";
 }
 
+// アポロ: 機体の形に合わせたカメラの離れ方の倍率（サターン V は 110 m、月着陸船は 7 m）と、見る点の機体の底からの高さ km
+// （原点が機体の底の形では中ほど）
+static void ApolloCamFit(const App& app, double* k, double* mid) {
+    int mission, vehicle;
+    int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays) : PM_APOLLO_CSM;
+    double outer = model >= 0 ? app.probeOuter[model] : 0.006;
+    *k = std::max(1.0, outer / 0.008);
+    *mid = model == PM_SATURN_V || model == PM_APOLLO_LM || model == PM_LM_ASCENT ? outer * 0.45 : 0.0;
+}
+
+// アポロ: 地面の近くの見方へ移す割合。天体固定の区間（打ち上げ・月面への降下と上昇・着水）で、高度 600 m から 100 m の間に
+// 上空での見方から移る（UpdateVoyage で、画面の 1 秒ほどかけて追う。時間を速めて降りる時に一気に振り向かないように）
+static double ApolloGroundWant(const App& app) {
+    const Body& b = app.B[app.voyProbe];
+    int gb = ApolloFixedBody(b.d, app.tDays);
+    return gb < 0 ? 0.0 : ApolloSmooth((0.6 - SurfaceDist(app.B[gb], b.pos)) / 0.5);
+}
+
 // 探査機のそばのカメラの向きと位置: 探査機を画面の右上に入れて（左上と下は表示で埋まる）、見たい方向 dir を正面にする
 static void PlaceVoyageCamera(App& app, V3 dir) {
     Ship& s = app.ship;
@@ -672,49 +690,37 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
         double y = app.voyLookYaw, p = app.voyLookPitch;
         dir = Norm((dir * std::cos(y) + right * std::sin(y)) * std::cos(p) + up * std::sin(p));
     }
-    V3 upHint = Y_UP;
-    if (app.apolloMission >= 0) {   // アポロ: 画面の上を、近くの天体（地球か月）から外向きに
-        int ref;
-        ApolloVel(app, app.voyProbe, app.tDays, &ref);
-        V3 u = Norm(app.B[app.voyProbe].pos - app.B[ref].pos);
-        if (Len(Cross(dir, u)) > 0.05) upHint = u;
-    }
+    V3 upHint = app.apolloMission >= 0 ? app.voyUp : Y_UP;   // アポロ: 近くの天体から外向き（ApolloUpWant を滑らかにしたもの）
     s.q = QuatFromBasis(dir, upHint);
     s.local = ShipFwd(s) * -0.032 - ShipRight(s) * 0.009 - ShipUp(s) * 0.005;
     if (app.apolloMission >= 0) {
-        // アポロ: 機体の大きさ（サターン V は 110 m、月着陸船は 7 m）に合わせて離れ、機体の中ほどを見る。地面の近くでは
-        // カメラを地面より上に保つ
+        // アポロ: 機体の大きさに合わせて離れ、機体の中ほどを見る（ApolloCamFit を UpdateVoyage で滑らかにしたもの）。
+        // 地面の近くではカメラを地面より上に保つ
         const Body& b = app.B[app.voyProbe];
-        const ApolloMission& m = APOLLO_MISSIONS[app.apolloMission];
-        int mission, vehicle;
-        int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(m, vehicle, app.tDays) : PM_APOLLO_CSM;
-        double outer = model >= 0 ? app.probeOuter[model] : 0.006;
-        double k = std::max(1.0, outer / 0.008);
+        double k = app.voyCamK;
         V3 mid = V3();
-        if (model == PM_SATURN_V || model == PM_APOLLO_LM || model == PM_LM_ASCENT) {   // 原点が機体の底: 中ほどへ
-            Quaternion q = ApolloPose(app, app.voyProbe, model);
-            V3 axis = FromF(Vector3RotateByQuaternion({0, 0, -1}, q));
-            mid = axis * (outer * 0.45);
+        if (app.voyCamMid > 0) {
+            int mission, vehicle;
+            int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays) : -1;
+            if (model >= 0) mid = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, app.voyProbe, model))) * app.voyCamMid;
         }
         s.local = mid + s.local * k;
-        int gb = ApolloFixedBody(b.d, app.tDays);
-        if (gb >= 0) {
+        double w = app.voyGroundW;
+        if (w > 0) {
             // 地面の近く: カメラは地面から 15 m より下には行けない（自機の視点の決まり）ので、少し離れた 16 m 以上の高さから
-            // 機体の中ほどを見下ろす。高度 600 m から 100 m までの間に、上空での見え方から滑らかに移る
+            // 機体の中ほどを見下ろす（ApolloGroundWant）
+            int gb;
+            ApolloVel(app, app.voyProbe, app.tDays, &gb);
             const Body& o = app.B[gb];
             V3 up = Norm(b.pos - o.pos);
             double alt = SurfaceDist(o, b.pos);
-            double w = std::max(0.0, std::min(1.0, (0.6 - alt) / 0.5));
-            w = w * w * (3 - 2 * w);
-            if (w > 0) {
-                V3 h = ShipFwd(s) - up * Dot(ShipFwd(s), up);
-                h = Len(h) > 1e-9 ? Norm(h) : Norm(Cross(up, V3(1, 0, 0)));
-                V3 side = Norm(Cross(h, up));
-                V3 cam = h * (-0.045 * k) - side * (0.010 * k) + up * std::max(0.016 - alt, Dot(mid, up) + 0.004);
-                Quaternion q = QuatFromBasis(Norm(mid - cam), up);
-                s.q = QuaternionSlerp(s.q, q, (float)w);
-                s.local = s.local * (1 - w) + cam * w;
-            }
+            V3 h = ShipFwd(s) - up * Dot(ShipFwd(s), up);
+            h = Len(h) > 1e-9 ? Norm(h) : Norm(Cross(up, V3(1, 0, 0)));
+            V3 side = Norm(Cross(h, up));
+            V3 cam = h * (-0.045 * k) - side * (0.010 * k) + up * std::max(0.016 - alt, Dot(mid, up) + 0.004);
+            Quaternion q = QuatFromBasis(Norm(mid - cam), up);
+            s.q = QuaternionSlerp(s.q, q, (float)w);
+            s.local = s.local * (1 - w) + cam * w;
         }
         int fixedBody = ApolloFixedBody(b.d, app.tDays);
         if (fixedBody >= 0) {
@@ -724,6 +730,21 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
             if (alt < minAlt) s.local = s.local + up * (minAlt - alt);
         }
     }
+}
+
+// アポロ: 画面の上にしたい向き。近くの天体（地球か月）から外向き。見る向き dir がその向きに近い（天体を真下や真上に
+// 見る）と上下が決まらず、少し動くだけで画面が半回転してしまうので、近づくにつれて進む向き（真上を見る時はその逆）を
+// 上にする方へ連続的に移す（見る向きが天頂を越えても、上にしたい向きは画面の中で同じ側に残る）
+static V3 ApolloUpWant(const App& app, V3 dir) {
+    int ref;
+    V3 v = ApolloVel(app, app.voyProbe, app.tDays, &ref);
+    V3 u = Norm(app.B[app.voyProbe].pos - app.B[ref].pos);
+    V3 h = v - u * Dot(v, u);
+    if (Len(h) < 1e-9) h = Cross(app.B[ref].pole, u);
+    if (Len(h) < 1e-9) return u;
+    double c = Len(Cross(dir, u)), w = std::max(0.0, std::min(1.0, c / 0.4));
+    double k = 1 - w * w * (3 - 2 * w);
+    return Norm(u + Norm(h) * (Dot(dir, u) > 0 ? -k : k));
 }
 
 // 今見たい方向: 知らせを出しているできごとの天体、なければ次のできごとの天体、それもなければ進む向き
@@ -844,8 +865,14 @@ static void VoyageJump(App& app, double t) {
     app.voyDone = false;
     UpdateBodies(app.B, app.tDays);
     UpdateVoyageRate(app);
+    if (app.apolloMission >= 0) app.voyProbe = VoyageFocusAt(app, app.tDays);
     app.voyAim = VoyageAimDir(app, &app.voyAimBody);
     app.voyAimPrevWant = app.voyAim;
+    if (app.apolloMission >= 0) {
+        app.voyUp = app.voyUpPrevWant = ApolloUpWant(app, app.voyAim);
+        ApolloCamFit(app, &app.voyCamK, &app.voyCamMid);
+        app.voyGroundW = ApolloGroundWant(app);
+    }
     PlaceVoyageCamera(app, app.voyAim);
 }
 
@@ -1138,7 +1165,12 @@ static void UpdateVoyage(App& app, double dt) {
             V3 axis = Cross(app.voyAimPrevWant, want);
             if (Len(axis) > 1e-12) {
                 axis = Norm(axis);
-                double a = std::min(moved, 20 * DEG * dt);
+                // アポロで回っている天体（地球か月）を見ている時は、周回の動き（1 フレームで 10° まで）を制限しない（時間を
+                // 速めると毎秒 100° 以上動き、追いつけないと見る向きが真下を外れて、画面が回ってしまう）。打ち上げ・着陸の後で
+                // 見方が変わる時の飛びは、下で滑らかに詰める
+                int ref = -1;
+                if (app.apolloMission >= 0) ApolloVel(app, app.voyProbe, app.tDays, &ref);
+                double a = aimBody == ref && moved < 10 * DEG ? moved : std::min(moved, 20 * DEG * dt);
                 aim = aim * std::cos(a) + Cross(axis, aim) * std::sin(a) + axis * (Dot(axis, aim) * (1 - std::cos(a)));
                 aim = Norm(aim);
             }
@@ -1148,6 +1180,33 @@ static void UpdateVoyage(App& app, double dt) {
     app.voyAim = rotateToward(aim, want, std::min(gap * (1 - std::exp(-dt / 0.4)), 40 * DEG * dt));
     app.voyAimBody = aimBody;
     app.voyAimPrevWant = want;
+    if (app.apolloMission >= 0) {
+        // 画面の上: 見る向きのまわりの回転（傾き）として、近くの天体から外向きの向きへ寄せる。周回で回る分（1 フレームで
+        // 10° まで）はそのまま追い、基準天体や追う機体が変わった時の飛びは 0.5 秒ほどで詰める。天体を真下や真上に見る間は
+        // 外向きの向きが画面の上で定まらないので、近づくにつれて寄せるのを弱め、今の傾きのままにする
+        V3 d = app.voyAim;
+        auto perp = [&](V3 v) { V3 p = v - d * Dot(v, d); return Len(p) > 1e-9 ? Norm(p) : V3(); };
+        auto roll = [&](V3 a, V3 b) { return std::atan2(Dot(Cross(a, b), d), Dot(a, b)); };   // a から b へ、d のまわりの角度
+        auto rot = [&](V3 v, double a) { return Norm(v * std::cos(a) + Cross(d, v) * std::sin(a)); };
+        int ref;
+        ApolloVel(app, app.voyProbe, app.tDays, &ref);
+        V3 u = Norm(app.B[app.voyProbe].pos - app.B[ref].pos);
+        double w = ApolloSmooth(Len(Cross(d, u)) / 0.4);
+        V3 up = perp(u), prev = perp(app.voyUpPrevWant), cur = perp(app.voyUp);
+        if (Len(cur) == 0) cur = perp(ApolloUpWant(app, d));
+        if (w > 0 && Len(up) > 0) {
+            if (Len(prev) > 0 && std::fabs(roll(prev, up)) < 10 * DEG) cur = rot(cur, roll(prev, up) * w);
+            cur = rot(cur, roll(cur, up) * (1 - std::exp(-dt / 0.5)) * w);
+        }
+        app.voyUp = cur;
+        app.voyUpPrevWant = u;
+        // 機体の形が変わった時（段の切り離し・ドッキングなど）、離れ方と見る点を 1 秒ほどかけて移す
+        double k, mid, f = 1 - std::exp(-dt / 0.6);
+        ApolloCamFit(app, &k, &mid);
+        app.voyCamK += (k - app.voyCamK) * f;
+        app.voyCamMid += (mid - app.voyCamMid) * f;
+        app.voyGroundW += (ApolloGroundWant(app) - app.voyGroundW) * (1 - std::exp(-dt / 1.0));
+    }
     app.target = app.voyCard >= 0 && app.voySteps[app.voyCard].body >= 0 ? app.voySteps[app.voyCard].body : app.voyProbe;
     PlaceVoyageCamera(app, app.voyAim);
     // 小惑星のそば: 小さくて普通の視野では点にしか見えないので、画面の 4 分の 1 ほどの大きさになるまでズームする

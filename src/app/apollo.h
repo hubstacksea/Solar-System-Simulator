@@ -763,6 +763,12 @@ static int ApolloModel(const ApolloMission& m, int vehicle, double t) {
     return model;
 }
 
+// 天体の自転で、中心からの位置 rel の点が動く速度 km/日
+static V3 ApolloSpinVel(const Body& o, V3 rel) {
+    double rp = o.d.rotPeriod == 0 ? o.d.moonPeriod : o.d.rotPeriod;
+    return Cross(o.pole * (2 * PI / rp), rel);
+}
+
 // 機体の今の区間（天体固定の区間なら *fixedBody にその天体、慣性なら -1）
 static int ApolloFixedBody(const BodyDef& d, double t) {
     if (d.apollo < 0 || d.apollo >= (int)g_apollo.size()) return -1;
@@ -783,31 +789,45 @@ static V3 ApolloVel(const App& app, int i, double t, int* refOut = nullptr) {
     const double h = 0.5 / 86400;
     V3 a = PosAt(app.B, i, t - h) - PosAt(app.B, ref, t - h), b = PosAt(app.B, i, t + h) - PosAt(app.B, ref, t + h);
     V3 v = (b - a) * (1.0 / (2 * h));
-    if (fixedBody >= 0) {   // 地面に対する速度: 自転で動く分を引く
-        const Body& o = app.B[fixedBody];
-        double rp = o.d.rotPeriod == 0 ? o.d.moonPeriod : o.d.rotPeriod;
-        V3 w = o.pole * (2 * PI / rp);
-        v = v - Cross(w, app.B[i].pos - o.pos);
-    }
+    if (fixedBody >= 0) v = v - ApolloSpinVel(app.B[fixedBody], (a + b) * 0.5);   // 地面に対する速度: 自転で動く分を引く
     return v;
 }
 
-// 機体の向き（描画の回転）: 打ち上げは上へ（速さが出ると地面に対する進む向きへ）、月着陸船の降下は噴射を進む向きの逆へ
-// （遅くなるにつれて真上へ）、月面では真上、突入は耐熱シールドを前へ、パラシュートでは真上、そのほかは進む向き
-static Quaternion ApolloPose(const App& app, int i, int model) {
+// 時刻 t の機体の形が始まった時刻（形の切り替えの表から。無ければ -1e300）
+static double ApolloModelSince(const ApolloMission& m, int vehicle, double t) {
+    double best = -1e300;
+    for (int k = 0; k < m.shapeCount; k++) {
+        double ts = ApolloT(m, m.shapes[k].get);
+        if (m.shapes[k].vehicle == vehicle && ts <= t && ts > best) best = ts;
+    }
+    return best;
+}
+
+static double ApolloSmooth(double x) {
+    x = std::max(0.0, std::min(1.0, x));
+    return x * x * (3 - 2 * x);
+}
+
+// 噴射していない時の機体の向き（時刻 t）: 打ち上げは上へ（速さが出ると進む向きへ。大気の中では空気に対する向き、高く上がる
+// につれて慣性の速度の向きへ）、月着陸船の降下は噴射を進む向きの逆へ（遅くなるにつれて真上へ）、月面と月を回る間は真上、
+// 司令船は機械船を切り離してから 3 分かけて耐熱シールドを前へ、パラシュートでは真上、そのほかは進む向き
+static Quaternion ApolloCoastPose(const App& app, int i, int model, double t) {
     const Body& b = app.B[i];
-    double t = app.tDays;
     int ref;
     V3 v = ApolloVel(app, i, t, &ref);
     const Body& o = app.B[ref];
-    V3 up = Norm(b.pos - o.pos);
+    V3 rel = PosAt(app.B, i, t) - PosAt(app.B, ref, t);
+    V3 up = Norm(rel);
     double speed = Len(v) / 86400;   // km/s
     V3 vdir = speed > 1e-9 ? Norm(v) : up;
     int fixedBody = ApolloFixedBody(b.d, t);
     V3 fwd = vdir, hint = up;
     auto blend = [](V3 a, V3 c, double w) { V3 r = a * (1 - w) + c * w; return Len(r) > 1e-9 ? Norm(r) : a; };
     if (model == PM_SATURN_V || model == PM_SATURN_SII_LES || model == PM_SATURN_SII || model == PM_SATURN_SIVB) {
-        if (fixedBody >= 0) fwd = blend(up, vdir, std::min(1.0, speed / 0.05));   // 発射台では真上
+        if (fixedBody >= 0) {
+            V3 vi = v + ApolloSpinVel(o, rel) * ApolloSmooth((Len(rel) - o.d.radius - 20) / 80);   // 高度 20〜100 km で慣性の速度へ
+            fwd = blend(up, Len(vi) > 1e-9 ? Norm(vi) : up, std::min(1.0, speed / 0.05));   // 発射台では真上
+        }
         V3 east = Cross(o.pole, up);
         hint = Len(east) > 1e-9 ? Norm(east) : V3(1, 0, 0);
     } else if (model == PM_APOLLO_LM || model == PM_LM_ASCENT) {
@@ -821,12 +841,70 @@ static Quaternion ApolloPose(const App& app, int i, int model) {
         }
         hint = Len(Cross(fwd, vdir)) > 1e-6 ? vdir : V3(1, 0, 0);
     } else if (model == PM_APOLLO_CM || model == PM_CM_DROGUE || model == PM_CM_MAIN) {
-        if (model != PM_APOLLO_CM || (fixedBody >= 0 && speed < 0.05)) fwd = up;   // パラシュートでは先端が上
-        else if (fixedBody >= 0) fwd = vdir * -1.0;                              // 大気の中: 耐熱シールドを前へ
+        if (model != PM_APOLLO_CM || (fixedBody >= 0 && speed < 0.05)) {
+            fwd = up;   // パラシュートでは先端が上
+        } else {
+            int mission, vehicle;
+            double w = 1;
+            if (fixedBody < 0 && ApolloVehicleOf(app, i, &mission, &vehicle))
+                w = ApolloSmooth((t - ApolloModelSince(APOLLO_MISSIONS[mission], vehicle, t)) * 86400 / 180);
+            if (Len(Cross(vdir, hint)) < 1e-6) hint = Len(Cross(vdir, Y_UP)) > 1e-6 ? Y_UP : V3(1, 0, 0);
+            return QuaternionSlerp(QuatFromBasis(vdir, hint), QuatFromBasis(vdir * -1.0, hint), (float)w);   // 耐熱シールドを前へ
+        }
     }
     if (Len(Cross(fwd, hint)) < 1e-6) hint = Len(Cross(fwd, Y_UP)) > 1e-6 ? Y_UP : V3(1, 0, 0);
     return QuatFromBasis(fwd, hint);
 }
+
+// 時刻 t の噴射の向き（推力の向き、描画座標）
+static V3 ApolloThrustDir(const ApolloBurn& bn, double t) {
+    const std::vector<double>& T = bn.dt;
+    if (T.size() == 1 || t <= T.front()) return bn.dir.front();
+    if (t >= T.back()) return bn.dir.back();
+    size_t k = 1;
+    while (k + 1 < T.size() && T[k] < t) k++;
+    double u = (t - T[k - 1]) / std::max(1e-12, T[k] - T[k - 1]);
+    V3 d = bn.dir[k - 1] * (1 - u) + bn.dir[k] * u;
+    return Len(d) > 1e-9 ? Norm(d) : bn.dir[k];
+}
+
+// 時刻 t に噴射している噴射（無ければ nullptr）
+static const ApolloBurn* ApolloBurnAt(const BodyDef& d, double t) {
+    if (d.apollo < 0 || d.apollo >= (int)g_apollo.size()) return nullptr;
+    for (const ApolloBurn& bn : g_apollo[d.apollo].burns)
+        if (bn.t0 <= t && t <= bn.t1) return &bn;
+    return nullptr;
+}
+
+// 機体の向き（描画の回転）。主エンジンの噴射の間はエンジンを推力の反対へ向ける（減速の噴射では先端が後ろを向く）。
+// 噴射の 4 分前から向きを変え始め、噴射の後 4 分かけて元の向きへ戻る（宇宙船は噴射の前に噴射の向きへ回っておく）。
+// 打ち上げ・月面への降下と上昇は、その動きの向き（ApolloCoastPose）の始まりと終わりへ同じようにつなぐ
+static Quaternion ApolloPose(const App& app, int i, int model, double t) {
+    Quaternion q = ApolloCoastPose(app, i, model, t);
+    const BodyDef& d = app.B[i].d;
+    if (d.apollo < 0 || d.apollo >= (int)g_apollo.size()) return q;
+    const double turn = 240.0 / 86400, sec = 1.0 / 86400;
+    for (const ApolloBurn& bn : g_apollo[d.apollo].burns) {
+        if (bn.engine == AP_ENG_RCS || bn.engine == AP_ENG_LM_RCS) continue;   // 小さな噴射口は向きを変えずに噴く
+        if (t < bn.t0 - turn || t > bn.t1 + turn) continue;
+        if (bn.dir.empty() && t >= bn.t0 && t <= bn.t1) continue;              // 動力飛行の間は ApolloCoastPose のまま
+        double tt = bn.t1 - bn.t0 > 2 * sec ? std::max(bn.t0 + sec, std::min(bn.t1 - sec, t)) : (bn.t0 + bn.t1) / 2;
+        Quaternion qb;
+        if (bn.dir.empty()) {
+            qb = ApolloCoastPose(app, i, model, tt);
+        } else {
+            int ref;
+            ApolloVel(app, i, t, &ref);
+            V3 up = Norm(PosAt(app.B, i, t) - PosAt(app.B, ref, t)), f = ApolloThrustDir(bn, tt);
+            if (bn.engine == AP_ENG_LM_DPS) f = f * -1.0;   // つながった月着陸船の下降エンジンは先端（-Z）の側にある
+            qb = QuatFromBasis(f, Len(Cross(f, up)) > 1e-6 ? up : V3(1, 0, 0));
+        }
+        double w = t < bn.t0 ? ApolloSmooth((t - (bn.t0 - turn)) / turn) : t > bn.t1 ? ApolloSmooth(1 - (t - bn.t1) / turn) : 1.0;
+        q = QuaternionSlerp(q, qb, (float)w);
+    }
+    return q;
+}
+static Quaternion ApolloPose(const App& app, int i, int model) { return ApolloPose(app, i, model, app.tDays); }
 
 // 月着陸船の下降段（月面を離れた後も着陸地点に残る）の位置。無ければ false
 static bool ApolloDescentStage(const App& app, int mission, V3* pos, V3* up) {

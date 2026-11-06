@@ -127,6 +127,9 @@ struct App {
     V3 voyAim = V3(0, 0, -1);
     int voyAimBody = -1;                  // カメラが追っている天体と、前のフレームでの見たい向き（滑らかに追うため）
     V3 voyAimPrevWant = V3(0, 0, -1);
+    V3 voyUp = Y_UP, voyUpPrevWant = Y_UP;   // アポロ: 画面の上にする向き（滑らかにしたもの）と、前のフレームでの上にしたい向き
+    double voyCamK = 1, voyCamMid = 0;       // アポロ: カメラの離れ方の倍率と、見る点の機体の底からの高さ km（形が変わる時に滑らかに）
+    double voyGroundW = 0;                   // アポロ: 地面の近くの見方への移り具合（0: 上空の見方, 1: 地面から）
     std::vector<V3> voyTrack;             // 旅の全行程の太陽中心の位置（右上の小さな全体図に描く）
     std::vector<double> voyTrackT;
     std::vector<V3> voyStepPos;           // 各場面の太陽中心の位置

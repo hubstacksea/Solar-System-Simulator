@@ -4,6 +4,15 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.0 (2026-11-07)
+
+- Apollo program: engine burns are now drawn. The Saturn V first stage shows a bright flame that lengthens and spreads as the air thins (ignition 8.9 seconds before liftoff); the second and third stages and the engines of the command and service module and the lunar module show faint plumes in vacuum; small course corrections fire from the attitude control thrusters. The times and directions come from the burns of the trajectory computation (115 in all)
+- Apollo program: during main engine burns the engine now points against the thrust, so braking burns such as lunar orbit insertion are flown backwards as they really were. The spacecraft turns during the 4 minutes before a burn and back to its direction of travel during the 4 minutes after; before entry the command module turns its heat shield forward over 3 minutes after the service module is jettisoned. Before, the spacecraft flipped around in an instant, at entry and elsewhere
+- Apollo program: right after liftoff the rocket leaned more than 30° west; it now rises straight up and then pitches over toward the east. During short burns the spacecraft used to jump (far from Earth, rounding the recorded latitude and longitude to 0.01° amounts to tens of km; 520 km in 3.5 seconds on Apollo 13); the cutoff position is now computed from the ignition state
+- Apollo program: fixed the camera suddenly turning by 90-180°. While looking straight down at or up from the Moon or Earth it keeps its current roll, and it moves smoothly when entering orbit, when the spacecraft's shape changes, and when switching to the view from the ground just before landing. It also keeps the Moon in view while circling it fast
+- Markers: bodies more than 1 light-year away show no name or marker, except stars and the target
+- Orbit lines are no longer drawn for satellites and other bodies before they exist (the ISS orbit showed in 1970)
+
 ## 2.36.0 (2026-11-06)
 
 - Apollo program: a new "Apollo program" page in the event list (K). Follow the lunar flights Apollo 8 and 10-17 (Apollo 13 aborted its landing after an oxygen tank explosion and returned) from right beside the spacecraft, in chronological order: liftoff, arrival at the Moon, landing, moonwalks, liftoff, docking, the return and splashdown. The spacecraft's shape changes with time (Saturn V stages, the command and service module, the lunar module, the command module under parachutes), and the descent stages stay on the Moon after liftoff. Whenever the date falls within a flight, the spacecraft appear and fly as recorded even without choosing the event

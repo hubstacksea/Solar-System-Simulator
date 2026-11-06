@@ -659,15 +659,28 @@ int main(int argc, char** argv) {
         }
         UpdateCamera(app);
         if (opt.voyageTrace && app.voyageOn) {   // 前のフレームからの向き・探査機から見た位置・視野の変化
-            static V3 pf, pl;
+            static V3 pf, pl, pu;
             static double pfov = 0;
             static bool have = false;
-            V3 f = app.cam.fwd, l = app.ship.local;
-            if (have)
-                printf("VOYTRACE %s card=%d turn=%.3f deg yaw=%+.3f move=%.2f m fov=%.2f->%.2f rate=%.0f\n", FmtDate(app.tDays).c_str(), app.voyCard,
-                       std::acos(std::max(-1.0, std::min(1.0, Dot(pf, f)))) / DEG, std::asin(std::max(-1.0, std::min(1.0, Dot(Cross(pf, f), app.cam.up)))) / DEG,
+            V3 f = app.cam.fwd, l = app.ship.local, u = app.cam.up;
+            auto ang = [](V3 a, V3 b) { return std::atan2(Len(Cross(a, b)), Dot(a, b)) / DEG; };
+            if (have) {
+                printf("VOYTRACE %s card=%d turn=%.3f deg yaw=%+.3f roll=%.3f move=%.2f m fov=%.2f->%.2f rate=%.0f", FmtDate(app.tDays).c_str(),
+                       app.voyCard, ang(pf, f), std::asin(std::max(-1.0, std::min(1.0, Dot(Cross(pf, f), app.cam.up)))) / DEG, ang(pu, u),
                        Len(l - pl) * 1000, pfov / DEG, app.cam.fovy / DEG, app.voyRate);
+                if (app.apolloMission >= 0) {   // アポロ: 打ち上げからの秒、追う機体、機体の形、先端と進む向き（基準天体に対して）の角度
+                    int mission, vehicle;
+                    int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays) : -1;
+                    double get = (app.tDays - ApolloLaunch(APOLLO_MISSIONS[app.apolloMission])) * 86400;
+                    V3 v = ApolloVel(app, app.voyProbe, app.tDays);
+                    double nose = -1;
+                    if (model >= 0 && Len(v) > 1e-9) nose = ang(FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, app.voyProbe, model))), v);
+                    printf(" get=%.1f probe=%d model=%d nose=%.1f speed=%.4f", get, app.voyProbe, model, nose, Len(v) / 86400);
+                }
+                printf("\n");
+            }
             pf = f;
+            pu = u;
             pl = l;
             pfov = app.cam.fovy;
             have = true;

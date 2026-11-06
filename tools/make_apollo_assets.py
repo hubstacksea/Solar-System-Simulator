@@ -24,8 +24,14 @@
       区間ごと: int32 基準天体（3: 地球, 10: 月）, int32 座標（0: 慣性・黄道座標 J2000, 1: 天体固定 x 経度 0・z 北極）,
                 float64[3] 区間の始まりでの月の実際の位置（地球中心、黄道座標）, float64[3] 終わりでの位置,
                 uint32 点の数, 点ごとに float64 時刻 [J2000 からの日数, UTC], float64[3] 位置 [km], float32[3] 速度 [km/s]
+  uint32 噴射の数（ここから下が無ければ噴射なし）
+  噴射ごと: char[16] 飛行の名前, char[16] 機体の名前, int32 エンジン（0: その時の主エンジン, 1: 姿勢制御の小さな噴射口,
+            2: つながった月着陸船の下降エンジン, 3: つながった月着陸船の小さな噴射口）, float64 点火, float64 停止 [J2000 からの日数, UTC],
+            uint32 向きの数, 向きごとに float64 時刻, float32[3] 推力の向き（黄道座標の単位ベクトル。0 個なら天体固定の区間の
+            動力飛行（打ち上げ・月面への降下と上昇）で、向きは機体の進む向きから）
 
-使い方: python3 tools/make_apollo_assets.py <作業ディレクトリ> [出力先=assets]
+使い方: python3 tools/make_apollo_assets.py <作業ディレクトリ> [出力先=assets] [号 ...]
+（号を指定するとその号だけ計算し直す。none なら計算し直さずに書き出すだけ）
 （Horizons の結果を作業ディレクトリにキャッシュする）
 """
 import json
@@ -320,6 +326,9 @@ class Track:
     def __init__(self, name):
         self.name = name
         self.pieces = []
+        self.burns = []               # 噴射: (点火 GET, 停止 GET, エンジン, [(GET, 推力の向き ICRF)])
+        self.lifted = False           # 月着陸船の上昇段が月面を離れた後（主エンジンと小さな噴射口を加速度で分ける境が変わる）
+        self.lm_drives_after = None   # この GET より後の噴射は、つながった月着陸船のエンジン（13 号）
 
     def add(self, ref, frame, pts):
         if self.pieces and self.pieces[-1][0] == ref and self.pieces[-1][1] == frame:
@@ -504,8 +513,55 @@ def coast_blend(F, trk, center, get0, r0, v0, get1, r1):
     return r1, ve
 
 
+ENG_MAIN, ENG_RCS, ENG_LM_DPS, ENG_LM_RCS = 0, 1, 2, 3
+
+
+def add_burn(trk, get0, get1, thrust=None):
+    """噴射を記録する。thrust: [(GET, 推力の加速度 km/s² ICRF)]（None は天体固定の区間の動力飛行）。
+    平均の加速度が小さい噴射（司令・機械船や下降段の付いた月着陸船で 0.25 m/s²、上昇段で 1 m/s² 未満）は姿勢制御の
+    小さな噴射口（推力 445 N を 4 つで 0.04〜0.4 m/s²）、それ以上は主エンジン（0.7〜5 m/s²）とみる"""
+    if not thrust:
+        trk.burns.append((get0, get1, ENG_MAIN, [], None))
+        return
+    T = max(get1 - get0, 1e-6)
+    ts = [t for t, _ in thrust]
+    mean = sum((thrust[k][1] + thrust[k + 1][1]) * (ts[k + 1] - ts[k]) / 2 for k in range(len(ts) - 1)) / max(ts[-1] - ts[0], 1e-9) \
+        if len(ts) > 1 else thrust[0][1]
+    rcs = 1000 * np.linalg.norm(mean) < (1.0 if trk.lifted else 0.25)
+    lm = trk.lm_drives_after is not None and get0 > trk.lm_drives_after
+    eng = (ENG_LM_RCS if lm else ENG_RCS) if rcs else (ENG_LM_DPS if lm else ENG_MAIN)
+    # 向き: 30 秒より短い噴射は平均の向きだけ（エルミート曲線の加速度は区間の中で直線的に変わり、短い噴射では向きが揺れる）。
+    # 長い噴射は 30 秒ほどの区切りごとの平均
+    if T < 30:
+        dirs = [(get0, mean / np.linalg.norm(mean)), (get1, mean / np.linalg.norm(mean))]
+    else:
+        n = min(16, int(math.ceil(T / 30)))
+        dirs = []
+        for k in range(n):
+            a, b = get0 + T * k / n, get0 + T * (k + 1) / n
+            m = sum((v for t, v in thrust if a <= t <= b), np.zeros(3))
+            if np.linalg.norm(m) == 0:
+                m = mean
+            dirs.append(((a + b) / 2, m / np.linalg.norm(m)))
+        dirs = [(get0, dirs[0][1])] + dirs + [(get1, dirs[-1][1])]
+    turn = max(math.degrees(math.acos(max(-1.0, min(1.0, float(np.dot(a[1], b[1])))))) for a, b in zip(dirs, dirs[1:]))
+    report("burn %9.1f..%9.1f s  %s  %.2f m/s2, direction changes up to %.1f deg" % (
+        get0, get1, ["main", "RCS", "LM DPS", "LM RCS"][eng], 1000 * np.linalg.norm(mean), turn))
+    trk.burns.append((get0, get1, eng, dirs, mean))
+
+
 def burn(F, trk, center, get0, r0, v0, get1, r1, v1):
     add_inertial(F, trk, center, hermite_pts(get0, r0, v0, get1, r1, v1))
+    # 推力 = エルミート曲線の加速度 − 重力
+    T = get1 - get0
+    n = max(4, int(math.ceil(T / 2)))
+    thrust = []
+    for k in range(n + 1):
+        u = k / n
+        r = r0 * (2 * u ** 3 - 3 * u ** 2 + 1) + v0 * T * (u ** 3 - 2 * u ** 2 + u) + r1 * (-2 * u ** 3 + 3 * u ** 2) + v1 * T * (u ** 3 - u ** 2)
+        a = (r0 * (12 * u - 6) + r1 * (6 - 12 * u)) / T ** 2 + (v0 * (6 * u - 4) + v1 * (6 * u - 2)) / T
+        thrust.append((get0 + u * T, a - F.accel(r, F.jd(get0 + u * T)[1], center)))
+    add_burn(trk, get0, get1, thrust)
 
 
 def rec_in(F, rec, center):
@@ -523,6 +579,13 @@ def turn_like(v, a, b):
         k = axis / sn
         u = u * cs + np.cross(k, u) * sn + k * np.dot(k, u) * (1 - cs)
     return u * np.linalg.norm(b)
+
+
+def cut_pos(F, center, get0, r0, v0, get1, v1):
+    """短い噴射の停止の位置を、点火の状態から求める（噴射の間の速度の変化は一様として）。地球から遠いと記録の緯度・経度の
+    丸め（0.01°）だけで数十 km になり、記録の位置を使うと数秒の噴射の間に機体が跳んでしまう"""
+    rp, vp = F.propagate(r0, v0, center, get0, get1)
+    return rp + (v1 - vp) * (get1 - get0) / 2
 
 
 def chain(F, trk, center_of, start, legs):
@@ -550,6 +613,7 @@ def chain(F, trk, center_of, start, legs):
         if cut[1] - ign[1] < 60:
             vi = rec_in(F, ign, cc2)[1]
             vc = turn_like(vs, vi, vc)
+            rc = cut_pos(F, cc2, ign[1], rs, vs, cut[1], vc)
         if i + 1 == len(legs):
             burn(F, trk, cc2, ign[1], rs, vs, cut[1], rc, vc)
             return cut[1], rc, vc, cc2
@@ -579,9 +643,35 @@ def earth_ascent(F, trk, rows, hold_from):
         st.append((get, rf, vf))
     st[0] = (st[0][0], st[0][1], np.zeros(3))
     trk.add(B_EARTH, 1, still(hold_from, st[0][0], st[0][1]))
-    for (g0, r0, v0), (g1, r1, v1) in zip(st, st[1:]):
+    trk.add(B_EARTH, 1, liftoff_pts(*st[0][:2], *st[1]))
+    for (g0, r0, v0), (g1, r1, v1) in zip(st[1:], st[2:]):
         trk.add(B_EARTH, 1, hermite_pts(g0, r0, v0, g1, r1, v1, step=1.0))
+    add_burn(trk, -8.9, st[-1][0])   # S-IC のエンジンの始動の指令は GET -8.9 秒（SP-4029）
     return st[-1]
+
+
+def liftoff_pts(g0, r0, g1, r1, v1, step=1.0):
+    """発射台から最初の記録の点まで（地球固定座標）。高さは止まった状態からのエルミート曲線、水平の動きは u^n の形
+    （u は時刻の割合。n は 3 以上）で、真上に上がり始めてから向きを倒していく。エルミート曲線のままでは、最初の記録の
+    速度に合わせるために、始めの数十秒に西へ傾いて上がってしまう"""
+    up = r0 / np.linalg.norm(r0)
+    T = g1 - g0
+    D = r1 - r0
+    h1, vh1 = float(np.dot(D, up)), float(np.dot(v1, up))
+    Dh, Vh = D - up * h1, v1 - up * vh1
+    X = float(np.linalg.norm(Dh))
+    n = max(3.0, float(np.dot(Vh, Dh)) / X * T / X) if X > 1e-6 else 3.0
+    C = Vh * T - Dh * n   # 終わりの水平の速度を合わせる項（u^n (u − 1) の係数）
+    N = max(2, int(math.ceil(T / step)))
+    out = []
+    for k in range(N + 1):
+        u = k / N
+        h = h1 * (3 * u * u - 2 * u ** 3) + vh1 * T * (u ** 3 - u * u)
+        dh = h1 * (6 * u - 6 * u * u) / T + vh1 * (3 * u * u - 2 * u)
+        g1n, g1d = u ** n, n * u ** (n - 1)
+        g2n, g2d = u ** n * (u - 1), (n + 1) * u ** n - n * u ** (n - 1)
+        out.append((g0 + u * T, r0 + up * h + Dh * g1n + C * g2n, up * dh + (Dh * g1d + C * g2d) / T))
+    return out
 
 
 def lunar_descent(F, trk, get0, r0, v0, site, get1, alt_knots, speed_knots):
@@ -625,6 +715,7 @@ def lunar_descent(F, trk, get0, r0, v0, site, get1, alt_knots, speed_knots):
     # 始まりの点の位置と速度は記録の状態そのもの
     pts[0] = (get0, rf, vf)
     trk.add(B_MOON, 1, pts)
+    add_burn(trk, get0, get1)
     return site_u * RM
 
 
@@ -654,6 +745,8 @@ def lunar_ascent(F, trk, site_pos, get0, get1, r1, v1, rise=10.0):
     pts = surface_motion(F, B_MOON, get0, get1, path.unit, s_of, r_of)
     pts[-1] = (get1, rf, vf)
     trk.add(B_MOON, 1, pts)
+    trk.lifted = True
+    add_burn(trk, get0, get1)
 
 
 # 大気（米国標準大気 1976 の密度 kg/m³、高度 km ごと）
@@ -817,12 +910,33 @@ def R(ref, t, lat, lon, alt, vel, fpa, hdg):
 
 
 def follow(dst, src, t0, t1):
-    """t0〜t1 の間、src と同じ道をたどる（ドッキングしている間など。慣性の区間だけ）"""
+    """t0〜t1 の間、src と同じ道をたどる（ドッキングしている間など。慣性の区間だけ）。両端はその時刻ちょうどの状態から
+    （間の点だけを写すと、切り離しの時刻から次の点までの数秒、機体の位置が決まらない）"""
     for ref, frame, pts in src.pieces:
         if frame == 0:
-            part = [p for p in pts if t0 - 1e-6 <= p[0] <= t1 + 1e-6]
+            part = [p for p in pts if t0 + 1e-6 < p[0] < t1 - 1e-6]
+            if pts[0][0] <= t0 <= pts[-1][0]:
+                part = [state_in(pts, t0)] + part
+            if pts[0][0] <= t1 <= pts[-1][0] and t1 > t0:
+                part = part + [state_in(pts, t1)]
             if part:
                 dst.add(ref, 0, part)
+
+
+def state_in(pts, t):
+    """点列 pts（時刻の順）の時刻 t の状態（点の間はエルミート補間）"""
+    for (t0, r0, v0), (t1, r1, v1) in zip(pts, pts[1:]):
+        if t0 <= t <= t1:
+            h = t1 - t0
+            if h <= 0:
+                return (t, r0, v0)
+            u = (t - t0) / h
+            rr = (r0 * (2 * u ** 3 - 3 * u ** 2 + 1) + v0 * h * (u ** 3 - 2 * u ** 2 + u) + r1 * (-2 * u ** 3 + 3 * u ** 2)
+                  + v1 * h * (u ** 3 - u ** 2))
+            vv = ((r0 * (6 * u ** 2 - 6 * u) + r1 * (-6 * u ** 2 + 6 * u)) / h + v0 * (3 * u ** 2 - 4 * u + 1)
+                  + v1 * (3 * u ** 2 - 2 * u))
+            return (t, rr, vv)
+    return pts[0] if t <= pts[0][0] else pts[-1]
 
 
 def state_at(trk, t):
@@ -928,6 +1042,7 @@ def apollo10(work):
     tpi_cut = R(M, "105:23:12.1", -1.09, -85.63, 47.0, 5396.7, -0.10, -90.34)
     rt, vt = rec_in(F, tpi_cut, M)
     vt = turn_like(v, rec_in(F, R(M, "105:22:55.6", -1.08, -84.16, 48.4, 5369.2, -0.02, -90.04), M)[1], vt)
+    rt = cut_pos(F, M, g, r, v, tpi_cut[1], vt)
     vt2 = F.shoot(rt, vt, M, tpi_cut[1], gd, rd)
     report("   TPI cut-off: velocity adjusted %.2f m/s" % (1000 * np.linalg.norm(vt2 - vt)))
     burn(F, lm, M, g, r, v, tpi_cut[1], rt, vt2)
@@ -1001,11 +1116,7 @@ def apollo11(work):
           hms("195:12:06.9"), hms("195:12:54"), hms("195:18:35"), mass=11318.9 * 0.4536, ld=0.309, gmax_rec=6.51)
 
     # 月着陸船: 切り離し（100:12:00）から分離の噴射までは司令船と同じ道
-    for ref, frame, pts in csm.pieces:
-        if ref == M and frame == 0:
-            part = [p for p in pts if hms("100:12:00.0") - 1e-6 <= p[0] <= sep[0] + 1e-6]
-            if part:
-                lm.add(M, 0, part)
+    follow(lm, csm, hms("100:12:00.0"), sep[0])
     legs = [
         (R(M, "101:36:14.0", -1.12, -140.20, 56.4, 5364.9, 0.10, -75.70), R(M, "101:36:44", -1.16, -141.88, 57.8, 5284.9, -0.06, -75.19)),
         (R(M, "102:33:05", 1.02, 39.39, 6.4, 5564.9, 0.03, -104.23), None)]
@@ -1038,11 +1149,7 @@ def apollo11(work):
     coast(F, lm, M, tpi_cut[1], rtpi, vtpi2, gd, rd)
     # ドッキングから上昇段を切り離すまでは司令船と同じ。切り離した後は月を回り続ける（地球へ向かう噴射まで描く）
     jet = hms("130:09:31.2")
-    for ref, frame, pts in csm.pieces:
-        if ref == M and frame == 0:
-            part = [p for p in pts if gd - 1e-6 <= p[0] <= jet + 1e-6]
-            if part:
-                lm.add(M, 0, part)
+    follow(lm, csm, gd, jet)
     tj, rj, vj = lm.pieces[-1][2][-1]
     coast(F, lm, M, tj, rj, vj, hms("135:23:42.3"))
     return "Apollo 11", F, [csm, lm]
@@ -1109,9 +1216,48 @@ def write(path, flights):
                 print("   %-9s %s %s %9.1f..%9.1f s  %6d -> %5d" % (trk.name, "Moon " if ref == M else "Earth", "fixed" if frame else "inert",
                                                                    t0, t1, len(pts), len(d)))
             print("  %s points %d" % (trk.name, total))
+    burns = [(name, F, trk, steady_burn(F, trk, b)) for name, F, tracks in flights for trk in tracks for b in getattr(trk, "burns", [])]
+    blob += struct.pack("<I", len(burns))
+    for name, F, trk, (g0, g1, eng, dirs) in burns:
+        day = lambda g: F.get0 + g / 86400 - J2000
+        blob += struct.pack("<16s16sidd I", name.encode()[:15], trk.name.encode()[:15], eng, day(g0), day(g1), len(dirs))
+        for g, d in dirs:
+            blob += struct.pack("<d3f", day(g), *icrf_to_ecl(d))
+    print("burns", len(burns))
     with open(path, "wb") as f:
         f.write(blob)
     print("wrote", len(blob), "bytes")
+
+
+def steady_burn(F, trk, b):
+    """噴射の向きを、噴射全体の平均の推力の向きにする。エルミート曲線の加速度は区間の中で直線的に変わるので、区切りごとの
+    向きは数十度揺れ、短い噴射では反転することもある。長い噴射（1 分以上）は、平均の向きを軌道に対して一定（中心天体の向き・
+    進む向き・軌道面の法線を軸にした成分が同じ）に保って回す（月遷移軌道投入なども地平線に対して決まった向きで噴射した）"""
+    g0, g1, eng, dirs = b[:4]
+    if not dirs:
+        return b[:4]
+    if g1 - g0 < 60:   # 短い噴射は平均の推力の向きのまま（軌道に対する向きもほとんど変わらない）
+        m = b[4] / np.linalg.norm(b[4])
+        return (g0, g1, eng, [(g0, m), (g1, m)])
+
+    def basis(t):
+        st = state_at_time(F, trk, t)
+        if st is None:
+            return None
+        _, (_, r, v) = st
+        x = r / np.linalg.norm(r)
+        z = np.cross(r, v)
+        z /= np.linalg.norm(z)
+        return np.array([x, np.cross(z, x), z])
+    mid = basis((g0 + g1) / 2)
+    if mid is None:
+        return b[:4]
+    comp = mid @ (b[4] / np.linalg.norm(b[4]))
+    out = []
+    for t, d in dirs:
+        B = basis(t)
+        out.append((t, d if B is None else B.T @ comp))
+    return (g0, g1, eng, out)
 
 
 def hermite(p0, v0, p1, v1, t0, t1, t):
@@ -1168,7 +1314,13 @@ def impulse(F, trk, center, get, r, v_before, nxt, legs_center=None):
     rn = rec_in(F, nxt, c2)[0]
     r2, v2 = F.to_center(r, v_before, get, center, c2)
     v3 = F.shoot(r2, v2, c2, get, nxt[1], rn)
-    report("   impulse at %.1f: %.2f m/s" % (get, 1000 * np.linalg.norm(v3 - v2)))
+    dv = 1000 * np.linalg.norm(v3 - v2)
+    report("   impulse at %.1f: %.2f m/s" % (get, dv))
+    # 噴射として記録: 長さは主エンジン（約 5 m/s²。秒速 3 m 未満は小さな噴射口で約 0.1 m/s²、60 秒まで）で変える時間
+    T = dv / 5.0 if dv >= 3 else min(60.0, dv / 0.1)
+    if dv > 1e-3:
+        a = (v3 - v2) / max(T, 1e-3)
+        add_burn(trk, get, get + max(T, 0.5), [(get, a), (get + max(T, 0.5), a)])
     return r2, v3
 
 
@@ -1275,6 +1427,7 @@ def apollo13(work):
     F = Flight(work, (1970, 4, 11, 19, 13, 0.0), 6.5)
     F.site_radius = 1738.09
     csm, lm = Track("Odyssey"), Track("Aquarius")
+    csm.lm_drives_after = hms("55:54:53")
     rows = [(0.61, 28.4470, -80.6041, 0.032, 1340.7, 0.04, 90.00), (68.4, 28.4533, -80.5804, 4.394, 2087.5, 27.34, 85.14),
             (81.3, 28.4608, -80.5529, 6.727, 2566.2, 28.98, 82.96), (135.18, 28.5677, -80.1654, 23.464, 6328.2, 23.612, 76.609),
             (163.60, 28.6989, -79.6810, 36.392, 9002.5, 19.480, 75.696), (164.3, 28.7029, -79.6660, 36.739, 9036.3, 19.383, 75.693),
@@ -1670,17 +1823,20 @@ def build_cached(args):
 
 
 def main():
-    """使い方: make_apollo_assets.py <作業ディレクトリ> [出力先] [号 ...]（号を指定するとその号だけ計算し直す。ほかは保存したもの）"""
+    """使い方: make_apollo_assets.py <作業ディレクトリ> [出力先] [号 ...]（号を指定するとその号だけ計算し直す。ほかは保存したもの。none なら書き出すだけ）"""
     import pickle
     from multiprocessing import Pool
     work = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else "assets"
     keys = sys.argv[3:] or list(MISSIONS)
+    if keys == ["none"]:   # 計算し直さず、保存したものから書き出すだけ
+        keys = []
     os.makedirs(work, exist_ok=True)
-    with Pool(min(len(keys), os.cpu_count() or 1)) as pool:
-        for key, log in pool.imap_unordered(build_cached, [(work, k) for k in keys]):
-            print("== Apollo", key)
-            print(log, end="", flush=True)
+    if keys:
+        with Pool(min(len(keys), os.cpu_count() or 1)) as pool:
+            for key, log in pool.imap_unordered(build_cached, [(work, k) for k in keys]):
+                print("== Apollo", key)
+                print(log, end="", flush=True)
     flights = []
     for key in MISSIONS:
         path = os.path.join(work, "flight_%s.pkl" % key)

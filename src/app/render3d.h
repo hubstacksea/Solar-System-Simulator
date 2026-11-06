@@ -34,7 +34,7 @@ static void DrawOrbits(App& app) {
             rlEnd();
             continue;
         }
-        if (d.parent < 0) continue;
+        if (d.parent < 0 || !b.active) continue;   // データの期間の外（打ち上げ前の人工衛星など）は軌道線も描かない
         V3 center = d.parent == 0 ? V3() : app.B[d.parent].pos;
         if (d.parent > 0 && Len(c.pos - center) > d.moonA * 60) continue;  // 衛星の軌道は近くでだけ表示
         if (Len(c.pos - b.pos) < d.radius * 40) continue;  // 自分の軌道線が天体を貫いて見えるのを防ぐ
@@ -974,6 +974,132 @@ static void DrawShipPass(App& app, double dt) {
     rlDrawRenderBatchActive();
 }
 
+// アポロの噴射の炎と噴流の 1 層（モデル座標 m）: o から向き ax へ長さ len、根元の半径 r0 から先の半径 r1 へ広がり、
+// 先へ向かって消える（加算合成）
+static void PlumeCone(V3 o, V3 ax, double r0, double r1, double len, Color c) {
+    V3 a = Norm(ax);
+    V3 p = Norm(Len(Cross(a, V3(1, 0, 0))) > 0.1 ? Cross(a, V3(1, 0, 0)) : Cross(a, V3(0, 1, 0))), q = Cross(a, p);
+    const int segs = 20;
+    auto vtx = [](V3 v) { rlVertex3f((float)v.x, (float)v.y, (float)v.z); };
+    rlBegin(RL_TRIANGLES);
+    for (int i = 0; i < segs; i++) {
+        double a0 = 2 * PI * i / segs, a1 = 2 * PI * (i + 1) / segs;
+        V3 e0 = p * std::cos(a0) + q * std::sin(a0), e1 = p * std::cos(a1) + q * std::sin(a1);
+        V3 b0 = o + e0 * r0, b1 = o + e1 * r0, t0 = o + a * len + e0 * r1, t1 = o + a * len + e1 * r1;
+        rlColor4ub(c.r, c.g, c.b, c.a);
+        vtx(b0);
+        vtx(b1);
+        rlColor4ub(c.r, c.g, c.b, 0);
+        vtx(t1);
+        rlColor4ub(c.r, c.g, c.b, c.a);
+        vtx(b0);
+        rlColor4ub(c.r, c.g, c.b, 0);
+        vtx(t1);
+        vtx(t0);
+    }
+    rlEnd();
+}
+
+// アポロの噴射: エンジンの出口（モデル座標 m）と噴流の種類。返り値はエンジンの数
+// 種類 0: F-1（ケロシンと液体酸素。明るい炎）, 1: J-2（液体水素と液体酸素。ほとんど透明）, 2: 自己着火性の推進剤（機械船・月着陸船。
+// 真空ではかすか）, 3: 姿勢制御の小さな噴射口（向きは推力の反対）。*axis は噴流の向き（+Z か -Z）
+struct ApolloNozzle { float x, y, z, r; };
+static int ApolloNozzles(int model, int engine, ApolloNozzle* out, int* kind, float* axis) {
+    *axis = 1;
+    int n = 0;
+    auto quads = [&](float rad, float z) {
+        for (int k = 0; k < 4; k++) out[n++] = {cosf(PI / 4 + PI / 2 * k) * rad, sinf(PI / 4 + PI / 2 * k) * rad, z, 0.08f};
+    };
+    bool csm = model == PM_APOLLO_CSM || model == PM_APOLLO_CSM_LM || model == PM_APOLLO_CSM_LMA;
+    // ドッキングした形の月着陸船の接地点の高さ（ship_model.h の組み立てと同じ）
+    float lmBase = model == PM_APOLLO_CSM_LM ? -12.75f : model == PM_APOLLO_CM_LM ? -7.5f : 0;
+    if (engine == AP_ENG_RCS || engine == AP_ENG_LM_RCS) {
+        *kind = 3;
+        if (engine == AP_ENG_LM_RCS && lmBase != 0) quads(2.0f, lmBase + 4.2f);
+        else if (csm) quads(2.05f, -1.85f);
+        else if (model == PM_APOLLO_LM || model == PM_LM_ASCENT) quads(2.0f, -4.2f);
+        return n;
+    }
+    if (engine == AP_ENG_LM_DPS) {
+        *kind = 2;
+        *axis = -1;
+        if (lmBase != 0) out[n++] = {0, 0, lmBase + 0.4f, 0.75f};
+        return n;
+    }
+    auto five = [&](float rad, float z, float r) {
+        for (int k = 0; k < 4; k++) out[n++] = {cosf(PI / 4 + PI / 2 * k) * rad, sinf(PI / 4 + PI / 2 * k) * rad, z, r};
+        out[n++] = {0, 0, z, r};
+    };
+    if (model == PM_SATURN_V) { *kind = 0; five(3.0f, -0.1f, 1.85f); }
+    else if (model == PM_SATURN_SII_LES || model == PM_SATURN_SII) { *kind = 1; five(2.6f, 3.4f, 1.0f); }
+    else if (model == PM_SATURN_SIVB) { *kind = 1; out[n++] = {0, 0, 3.4f, 1.0f}; }
+    else if (csm) { *kind = 2; out[n++] = {0, 0, 6.65f, 1.25f}; }
+    else if (model == PM_APOLLO_LM) { *kind = 2; out[n++] = {0, 0, -0.4f, 0.75f}; }
+    else if (model == PM_LM_ASCENT) { *kind = 2; out[n++] = {0, 0, -2.6f, 0.5f}; }
+    return n;
+}
+
+// 噴流の長さ m（F-1 は空気が薄くなるにつれて長く広がる）
+static double ApolloPlumeLen(int kind, double altKm) {
+    double thin = 1 - std::exp(-std::max(0.0, altKm) / 7.2);
+    return kind == 0 ? 45 + 150 * thin : kind == 1 ? 30 : kind == 2 ? 14 : 2.5;
+}
+
+// アポロの機体の噴射を描く（機体のモデル行列の中で）。噴射していなければ何もしない
+static void DrawApolloPlume(const App& app, int i, int model, Quaternion q, V3 rel) {
+    const Body& b = app.B[i];
+    const ApolloBurn* bn = ApolloBurnAt(b.d, app.tDays);
+    if (!bn) return;
+    ApolloNozzle nz[8];
+    int kind;
+    float axis;
+    int n = ApolloNozzles(model, bn->engine, nz, &kind, &axis);
+    if (n == 0) return;
+    // 点火と停止: 0.4 秒で立ち上がり、消える
+    double e = std::min(1.0, std::min(app.tDays - bn->t0, bn->t1 - app.tDays) * 86400 / 0.4);
+    e = std::max(0.25, e);
+    double alt = SurfaceDist(app.B[B_EARTH], b.pos);
+    double thin = 1 - std::exp(-std::max(0.0, alt) / 7.2);
+    double len = ApolloPlumeLen(kind, alt);
+    float tm = (float)GetTime();
+    V3 jet = V3(0, 0, axis);
+    if (kind == 3 && !bn->dir.empty()) {   // 小さな噴射口: 推力の反対へ（モデル座標で）
+        Vector3 d = Vector3RotateByQuaternion(ToF(ApolloThrustDir(*bn, app.tDays)), QuaternionInvert(q));
+        jet = V3(-d.x, -d.y, -d.z);
+    }
+    rlPushMatrix();
+    rlTranslatef((float)rel.x, (float)rel.y, (float)rel.z);
+    rlMultMatrixf(MatrixToFloat(QuaternionToMatrix(q)));
+    rlScalef(0.001f, 0.001f, 0.001f);
+    BeginBlendMode(BLEND_ADDITIVE);
+    rlDisableDepthMask();
+    rlDisableBackfaceCulling();
+    auto A = [&](double k) { return (unsigned char)std::min(255.0, k * e); };
+    for (int k = 0; k < n; k++) {
+        V3 o(nz[k].x, nz[k].y, nz[k].z);
+        double r = nz[k].r, fl = 1 + 0.05 * std::sin(tm * 41.0f + k * 1.7f) + 0.03 * std::sin(tm * 67.0f + k);
+        if (kind == 3) {
+            V3 out = Norm(V3(nz[k].x, nz[k].y, 0));
+            if (Dot(out, jet) < -0.3) continue;   // 機体の内側へ向く噴射口は使わない
+            PlumeCone(o, jet, r, 0.6, len * fl, {235, 235, 255, A(70)});
+        } else if (kind == 0) {
+            PlumeCone(o, jet, r, r * (1.3 + 5 * thin), len * fl, {255, 150, 50, A(150)});
+            PlumeCone(o, jet, r * 0.8, r * 0.9, len * 0.35 * fl, {255, 235, 190, A(220)});
+        } else if (kind == 1) {
+            PlumeCone(o, jet, r, r * 4, len * fl, {150, 175, 255, A(45)});
+            PlumeCone(o, jet, r * 0.8, r * 0.6, 4 * fl, {220, 230, 255, A(90)});
+        } else {
+            PlumeCone(o, jet, r, r * 3.5, len * r / 1.25 * fl, {255, 190, 140, A(50)});
+            PlumeCone(o, jet, r * 0.8, r * 0.6, r * 2.5 * fl, {255, 230, 200, A(100)});
+        }
+    }
+    rlDrawRenderBatchActive();
+    rlEnableBackfaceCulling();
+    rlEnableDepthMask();
+    EndBlendMode();
+    rlPopMatrix();
+}
+
 // 探査機の機体（自機と同じシェーダ）。天体に隠れている時は描かない
 static const double GALILEO_PROBE_RELEASE = -1633.27;  // 1995-07-13 05:30 UTC: ガリレオが大気圏突入機を切り離す
 static const double HUYGENS_RELEASE = 1819.58;         // 2004-12-25 02:00 UTC: カッシーニがホイヘンスを切り離す
@@ -1016,6 +1142,7 @@ static void DrawProbes(App& app) {
             if (apModel < 0) continue;
         }
         double size = apModel >= 0 ? std::max(0.02, (double)app.probeOuter[apModel] * 1.1) : 0.02;
+        if (apModel >= 0 && ApolloBurnAt(b.d, app.tDays)) size += 0.25;   // 噴流の分（F-1 は 200 m まで）
         V3 rel = ViewRel(app, b.pos);
         double dist = Len(rel);
         if (0.015 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -size) continue;
@@ -1052,6 +1179,7 @@ static void DrawProbes(App& app) {
         rlDisableBackfaceCulling();
         DrawMesh(app.probeMesh[pm], app.shipMat, model);
         rlEnableBackfaceCulling();
+        if (apModel >= 0) DrawApolloPlume(app, (int)i, pm, q, rel);
     }
     rlDrawRenderBatchActive();
 }

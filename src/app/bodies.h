@@ -645,9 +645,18 @@ struct ApolloSeg {
     std::vector<double> t;    // J2000 からの日数（UTC）
     std::vector<V3> p, v;     // 慣性: 描画座標 km, km/日。天体固定: その座標 km, km/日
 };
+// 噴射（点火から停止まで）。dir が空なら天体固定の区間の動力飛行（打ち上げ・月面への降下と上昇）
+enum { AP_ENG_MAIN = 0, AP_ENG_RCS, AP_ENG_LM_DPS, AP_ENG_LM_RCS };   // 主エンジン、小さな噴射口、つながった月着陸船のそれぞれ
+struct ApolloBurn {
+    double t0, t1;              // J2000 からの日数（UTC）
+    int engine;
+    std::vector<double> dt;     // 推力の向きの時刻
+    std::vector<V3> dir;        // 推力の向き（描画座標の単位ベクトル）
+};
 struct ApolloTrack {
     std::string flight, name;   // 飛行の名前（"Apollo 11"）と機体の名前（"Columbia"）
     std::vector<ApolloSeg> segs;
+    std::vector<ApolloBurn> burns;
 };
 static std::vector<ApolloTrack> g_apollo;
 static const double APOLLO_BLEND_DAYS = 0.25, APOLLO_FRAME_BLEND_DAYS = 120.0 / 86400;
@@ -703,6 +712,28 @@ static void LoadApolloTracks() {
             }
             g_apollo.push_back(tr);
         }
+    }
+    uint32_t nb = 0;
+    if (!rd(&nb, 4)) return;
+    for (uint32_t i = 0; i < nb; i++) {
+        char fname[16], tname[16];
+        int32_t engine;
+        double t[2];
+        uint32_t n;
+        if (!rd(fname, 16) || !rd(tname, 16) || !rd(&engine, 4) || !rd(t, sizeof t) || !rd(&n, 4)) return;
+        ApolloBurn b;
+        b.t0 = t[0];
+        b.t1 = t[1];
+        b.engine = engine;
+        for (uint32_t k = 0; k < n; k++) {
+            double tk;
+            float d[3];
+            if (!rd(&tk, 8) || !rd(d, sizeof d)) return;
+            b.dt.push_back(tk);
+            b.dir.push_back(EclToRender(d[0], d[1], d[2]));
+        }
+        for (ApolloTrack& tr : g_apollo)
+            if (tr.flight == std::string(fname, strnlen(fname, 16)) && tr.name == std::string(tname, strnlen(tname, 16))) tr.burns.push_back(b);
     }
 }
 
