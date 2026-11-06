@@ -1102,7 +1102,8 @@ static int VoyageLocalStep(const App& app) {
     return -1;
 }
 
-// 場面 k の拡大図の軌跡を求める: 最接近の距離の数倍まで離れる時間の範囲で、天体から見た探査機の位置
+// 場面 k の拡大図の道を求める: 最接近の距離の数倍まで離れる時間の範囲で、探査機と天体の位置。
+// 全体図と同じく太陽に対して止まった見方で描くので、天体も図の中を動き、探査機の進む向きは全体図と同じになる
 static void PrepareVoyageLocal(App& app, int k) {
     App::VoyLocal& L = app.voyLocal[k];
     if (L.ready) return;
@@ -1127,11 +1128,15 @@ static void PrepareVoyageLocal(App& app, int k) {
     double before = std::min(edge(-1), st.t - t0), after = std::min(edge(1), t1 - st.t);
     if (st.kind == VS_LAUNCH) before = 0;
     L.span = std::max(before, after);
+    relAt(st.t);
+    L.center = B[st.body].pos - B[B_SUN].pos;
     const int N = 400;
     for (int j = 0; j <= N; j++) {
         double t = st.t - before + (before + after) * j / N;
+        relAt(t);
         L.t.push_back(t);
-        L.rel.push_back(relAt(t));
+        L.rel.push_back(B[app.voyProbe].pos - B[B_SUN].pos - L.center);
+        L.body.push_back(B[st.body].pos - B[B_SUN].pos - L.center);
     }
 }
 
@@ -1141,25 +1146,46 @@ static Color Alpha(Color c, float a) {
     return c;
 }
 
-// 天体の近くの拡大図（場面 ls の天体を中心に）。fa は透明度
+// 天体の近くの拡大図（場面 ls の天体のあたりを、全体図と同じ向き・同じ見方で拡大）。fa は透明度
 static void DrawVoyageMapLocal(const App& app, Rectangle r, int ls, float fa) {
     const App::VoyLocal& L = app.voyLocal[ls];
     const Body& o = app.B[app.voySteps[ls].body];
-    double range = o.d.radius * 1.5;
-    for (const V3& p : L.rel) range = std::max(range, std::sqrt(p.x * p.x + p.z * p.z));
-    range *= 1.08;
+    // 探査機と天体の道がちょうど収まる正方形を、図の中心に置く
+    double x0 = -o.d.radius, x1 = o.d.radius, z0 = -o.d.radius, z1 = o.d.radius;
+    for (const std::vector<V3>* v : {&L.rel, &L.body})
+        for (const V3& p : *v) {
+            x0 = std::min(x0, p.x), x1 = std::max(x1, p.x);
+            z0 = std::min(z0, p.z), z1 = std::max(z1, p.z);
+        }
+    double range = std::max(x1 - x0, z1 - z0) * 0.5 * 1.08, mx = (x0 + x1) * 0.5, mz = (z0 + z1) * 0.5;
     float cx = r.x + r.width * 0.5f, cy = r.y + r.height * 0.5f + 6, R = r.width * 0.5f - 10;
     double k = R / range;
-    auto proj = [&](V3 p) { return Vector2{(float)(cx + p.x * k), (float)(cy + p.z * k)}; };
+    auto proj = [&](V3 p) { return Vector2{(float)(cx + (p.x - mx) * k), (float)(cy + (p.z - mz) * k)}; };
     Rectangle in = {r.x + 2, r.y + 2, r.width - 4, r.height - 4};
-    DrawCircleV({cx, cy}, std::max(2.5f, (float)(o.d.radius * k)), Alpha(BodyColor(o, 0.9f), fa));
+    const V3 sun = app.B[B_SUN].pos;
+    // 天体の通る道（細く）と、今の天体
+    Color oc = BodyColor(o, 0.9f);
+    Color ol = oc;
+    ol.a = 90;
+    for (size_t j = 1; j < L.body.size(); j++) {
+        Vector2 a = proj(L.body[j - 1]), b = proj(L.body[j]);
+        if (CheckCollisionPointRec(a, in) && CheckCollisionPointRec(b, in)) DrawLineEx(a, b, 1.0f, Alpha(ol, fa));
+    }
+    Vector2 oc2 = proj(o.pos - sun - L.center);
+    // 天体の点の大きさは、天体から見た道が収まる縮尺での大きさ（実際の縮尺では小さすぎて見えないので）
+    double near = o.d.radius * 1.5;
+    for (size_t j = 0; j < L.rel.size(); j++) {
+        V3 d = L.rel[j] - L.body[j];
+        near = std::max(near, std::sqrt(d.x * d.x + d.z * d.z));
+    }
+    if (CheckCollisionPointRec(oc2, in)) DrawCircleV(oc2, std::max(2.5f, (float)(o.d.radius * R / (near * 1.08))), Alpha(oc, fa));
     for (size_t j = 1; j < L.rel.size(); j++) {
         Vector2 a = proj(L.rel[j - 1]), b = proj(L.rel[j]);
         if (!CheckCollisionPointRec(a, in) || !CheckCollisionPointRec(b, in)) continue;
         bool past = L.t[j] <= app.tDays;
         DrawLineEx(a, b, past ? 1.8f : 1.0f, past ? Alpha({255, 196, 120, 230}, fa) : Alpha({255, 196, 120, 70}, fa));
     }
-    Vector2 me = proj(app.B[app.voyProbe].pos - o.pos);
+    Vector2 me = proj(app.B[app.voyProbe].pos - sun - L.center);
     if (CheckCollisionPointRec(me, in)) {
         DrawCircleV(me, 3.0f, Alpha({120, 255, 170, 255}, fa));
         DrawCircleLinesV(me, 4.0f + 2.0f * (float)std::fabs(std::sin(GetTime() * 3)), Alpha({120, 255, 170, 220}, fa));

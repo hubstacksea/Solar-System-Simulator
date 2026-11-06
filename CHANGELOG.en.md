@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.35.1 (2026-11-06)
+
+- Spacecraft voyages: the close-up map at the top right is now drawn the same way as the full map, with the Sun at rest. It used to show the path as seen from the body, so the spacecraft's direction differed from the full map by the body's own motion (in Galileo's Earth flyby it moved right to left in the full map but bottom to top in the close-up). The body's path is drawn as a thin line and the body moves across the map
+
 ## 2.35.0 (2026-11-06)
 
 - Browser version: the loading screen shows a logo and the title (SOLAR SYSTEM VOYAGER). The logo uses the same design as the app icon (a ringed planet and a spacecraft) and is drawn inside the page without image files, so it appears immediately

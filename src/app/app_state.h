@@ -127,10 +127,11 @@ struct App {
     std::vector<double> voyTrackT;
     std::vector<V3> voyStepPos;           // 各場面の太陽中心の位置
     bool voyMap = true;                   // 右上の小さな全体図を出す（F3 で切り替え）
-    struct VoyLocal {                     // 天体の近くの拡大図に描く、その天体から見た探査機の位置（場面ごとに一度だけ求める）
+    struct VoyLocal {                     // 天体の近くの拡大図に描く道（場面ごとに一度だけ求める）
         bool ready = false;
         double span = 0;                  // 場面の時刻の前後この日数の間は拡大図にする
-        std::vector<V3> rel;
+        V3 center;                        // 図の中心: 場面の時刻の天体の位置（太陽から）
+        std::vector<V3> rel, body;        // 探査機と天体の位置（太陽から見た位置 − center。全体図と同じ、太陽に対して止まった見方）
         std::vector<double> t;
     };
     std::vector<VoyLocal> voyLocal;
