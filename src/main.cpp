@@ -673,9 +673,22 @@ int main(int argc, char** argv) {
                     int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays) : -1;
                     double get = (app.tDays - ApolloLaunch(APOLLO_MISSIONS[app.apolloMission])) * 86400;
                     V3 v = ApolloVel(app, app.voyProbe, app.tDays);
-                    double nose = -1;
-                    if (model >= 0 && Len(v) > 1e-9) nose = ang(FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, app.voyProbe, model))), v);
-                    printf(" get=%.1f probe=%d model=%d nose=%.1f speed=%.4f", get, app.voyProbe, model, nose, Len(v) / 86400);
+                    double nose = -1, elev = 0, dnose = 0, dside = 0;
+                    static V3 pn, pr;
+                    if (model >= 0) {   // 先端の水平からの角度と、前のフレームからの先端と横軸の回転
+                        Quaternion q = ApolloPose(app, app.voyProbe, model);
+                        V3 n = FromF(Vector3RotateByQuaternion({0, 0, -1}, q)), r = FromF(Vector3RotateByQuaternion({1, 0, 0}, q));
+                        if (Len(v) > 1e-9) nose = ang(n, v);
+                        int ref;
+                        ApolloVel(app, app.voyProbe, app.tDays, &ref);
+                        elev = 90 - ang(n, app.B[app.voyProbe].pos - app.B[ref].pos);
+                        dnose = ang(pn, n);
+                        dside = ang(pr, r);
+                        pn = n;
+                        pr = r;
+                    }
+                    printf(" get=%.1f probe=%d model=%d nose=%.1f elev=%.1f dnose=%.2f dside=%.2f speed=%.4f earth=%.0f", get, app.voyProbe, model, nose, elev, dnose, dside,
+                           Len(v) / 86400, Len(app.B[app.voyProbe].pos - app.B[B_EARTH].pos));
                 }
                 printf("\n");
             }

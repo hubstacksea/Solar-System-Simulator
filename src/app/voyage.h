@@ -603,6 +603,17 @@ static int VoyageFocusAt(const App& app, double t) {
     for (int k = 0; k < m.eventCount; k++)
         if (ApolloT(m, m.events[k].get) <= t + 1e-9) v = m.events[k].vehicle;
     int b = ApolloBody(app, app.apolloMission, v);
+    // 記録が終わった機体（月面に落とした上昇段、太陽を回る軌道へ送った上昇段など）は追わず、もう一方の機体を追う
+    // （記録の外の機体は遠くに置かれていて、追うとカメラが何百光年も飛ぶ）
+    auto inData = [&](int i) {
+        int tr = i >= 0 ? app.B[i].d.apollo : -1;
+        if (tr < 0 || tr >= (int)g_apollo.size() || g_apollo[tr].segs.empty()) return false;
+        return t >= g_apollo[tr].segs.front().t.front() - 120.0 / 86400 && t <= g_apollo[tr].segs.back().t.back();
+    };
+    if (b >= 0 && !inData(b)) {
+        int o = ApolloBody(app, app.apolloMission, 1 - v);
+        if (o >= 0 && inData(o)) b = o;
+    }
     return b >= 0 ? b : app.voyProbe;
 }
 
@@ -739,7 +750,7 @@ static V3 ApolloUpWant(const App& app, V3 dir) {
     int ref;
     V3 v = ApolloVel(app, app.voyProbe, app.tDays, &ref);
     V3 u = Norm(app.B[app.voyProbe].pos - app.B[ref].pos);
-    V3 h = v - u * Dot(v, u);
+    V3 h = ApolloFixedBody(app.B[app.voyProbe].d, app.tDays) >= 0 ? ApolloGroundDir(app, app.voyProbe, app.tDays, v, u) : v - u * Dot(v, u);
     if (Len(h) < 1e-9) h = Cross(app.B[ref].pole, u);
     if (Len(h) < 1e-9) return u;
     double c = Len(Cross(dir, u)), w = std::max(0.0, std::min(1.0, c / 0.4));
@@ -808,8 +819,9 @@ static V3 ApolloAimDir(const App& app, int* bodyOut) {
     V3 up = Norm(p.pos - app.B[ref].pos);
     V3 dir = look >= 0 ? Norm(app.B[look].pos - p.pos) : Len(v) > 1e-9 ? Norm(v) : up;
     if (ApolloFixedBody(p.d, app.tDays) >= 0) {
-        V3 h = dir - up * Dot(dir, up);
-        if (Len(h) < 0.2) h = v - up * Dot(v, up);
+        // 進む向きを見る時と、見る天体が真上・真下にある時は、地面に対して水平に進む向き（止まっている間も揺れない）
+        V3 h = look >= 0 ? dir - up * Dot(dir, up) : V3();
+        if (Len(h) < 0.2) h = ApolloGroundDir(app, app.voyProbe, app.tDays, v, up);
         if (Len(h) < 1e-9) h = Cross(app.B[ref].pole, up);
         double tilt = std::max(0.0, std::min(1.0, (Len(v) / 86400 - 0.005) / 0.045));   // 止まっている間（月面・発射台）は水平に
         dir = Norm(Norm(h) + up * (0.15 * tilt * tilt * (3 - 2 * tilt)));

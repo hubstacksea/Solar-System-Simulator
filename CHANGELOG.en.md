@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.2 (2026-11-07)
+
+- Apollo program: the camera no longer shakes from side to side every frame on the launch pad and under parachutes (the direction of travel, used while the spacecraft hardly moves horizontally, wobbled with position errors; it now uses the recorded horizontal velocity averaged over nearby times)
+- Apollo program: the spacecraft no longer changes attitude in an instant in Earth orbit (it rolled 180° at the northernmost and southernmost points of each orbit), at separation from the third stage, where the reference body changes on the way back from the Moon, while the command module turns its heat shield forward (the side it turned toward flipped from frame to frame), when the drogue parachutes open, and when the lunar module ascent stage reaches orbit (it turned backwards)
+- Apollo program: the view kept following the lunar module ascent stage after its record ended, until the next scene, and the camera flew hundreds of light years away (after Apollo 10 sent it into solar orbit, and after Apollo 12 and 17 crashed it on the Moon). It now follows the command module once the record ends
+- The checking option `--voyage-trace` now also prints the Apollo spacecraft's nose elevation, its rotation since the previous frame and its distance from Earth
+
 ## 2.37.1 (2026-11-07)
 
 - Markers: asteroids, spacecraft and satellites more than 1 AU away show no name or marker (the target still does), so distant small bodies no longer crowd the screen
