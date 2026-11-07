@@ -138,6 +138,7 @@ struct App {
         bool ready = false;
         double span = 0;                  // 場面の時刻の前後この日数の間は拡大図にする
         V3 center;                        // 図の中心: 場面の時刻の天体の位置（太陽から）
+        bool follow = false;              // 天体から見た道（アポロ計画の月のまわり）。rel は各時刻の天体から、body は 0
         std::vector<V3> rel, body;        // 探査機と天体の位置（太陽から見た位置 − center。全体図と同じ、太陽に対して止まった見方）
         std::vector<double> t;
     };

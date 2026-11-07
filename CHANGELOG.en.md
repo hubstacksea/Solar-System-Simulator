@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.3 (2026-11-07)
+
+- Apollo program: the close-up map around the Moon at the top right now shows the path as seen from the Moon. Before, it was drawn in a frame fixed to Earth in which the Moon moves too, so the lunar orbit drifted along with the Moon and looked like a spiral. The heading reads "Path seen from Moon". The Earth-centered overall map and the close-ups of probe flybys are unchanged
+
 ## 2.37.2 (2026-11-07)
 
 - Apollo program: the camera no longer shakes from side to side every frame on the launch pad and under parachutes (the direction of travel, used while the spacecraft hardly moves horizontally, wobbled with position errors; it now uses the recorded horizontal velocity averaged over nearby times)

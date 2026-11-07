@@ -138,6 +138,7 @@
     X(VOY_SPEED_FAST, "速い", "fast") \
     X(VOY_SPEED_SET, "旅の速さ: %s", "Voyage speed: %s") \
     X(VOY_MAP_NEAR, "%sのまわり（真上から）", "Around %s (from above)") \
+    X(VOY_MAP_FROM, "%sから見た道（真上から）", "Path seen from %s (from above)") \
     X(TIME_LIMIT, "ここが計算できる範囲の端です（紀元前 3000 年〜西暦 2999 年）。時間を止めました", "This is the edge of the supported range (3000 BC to AD 2999). Time is paused") \
     X(VOY_STOPPED, "探査機の旅を終えました", "Voyage ended") \
     X(VOY_NOT_FOUND, "指定された探査機の旅が見つかりません", "That spacecraft voyage was not found") \

@@ -1383,13 +1383,16 @@ static void PrepareVoyageLocal(App& app, int k) {
     L.span = std::max(before, after);
     relAt(st.t);
     L.center = B[body].pos - B[o].pos;
+    // 月を回るアポロは、月も動くと周回の輪がずれて重なり螺旋のようになるので、月から見た道にする
+    L.follow = app.apolloMission >= 0 && body == B_MOON;
     const int N = 400;
     for (int j = 0; j <= N; j++) {
         double t = st.t - before + (before + after) * j / N;
         relAt(t);
+        V3 c = L.follow ? B[body].pos - B[o].pos : L.center;
         L.t.push_back(t);
-        L.rel.push_back(B[VoyageFocusAt(app, t)].pos - B[o].pos - L.center);
-        L.body.push_back(B[body].pos - B[o].pos - L.center);
+        L.rel.push_back(B[VoyageFocusAt(app, t)].pos - B[o].pos - c);
+        L.body.push_back(B[body].pos - B[o].pos - c);
     }
 }
 
@@ -1416,7 +1419,7 @@ static void DrawVoyageMapLocal(const App& app, Rectangle r, int ls, float fa) {
     double k = R / range;
     auto proj = [&](V3 p) { return Vector2{(float)(cx + (p.x - mx) * k), (float)(cy + (p.z - mz) * k)}; };
     Rectangle in = {r.x + 2, r.y + 2, r.width - 4, r.height - 4};
-    const V3 sun = app.B[VoyageOrigin(app)].pos;
+    const V3 sun = L.follow ? o.pos - L.center : app.B[VoyageOrigin(app)].pos;   // 天体から見た道では、今の天体が中心
     // 天体の通る道（細く）と、今の天体
     Color oc = BodyColor(o, 0.9f);
     Color ol = oc;
@@ -1445,7 +1448,7 @@ static void DrawVoyageMapLocal(const App& app, Rectangle r, int ls, float fa) {
         DrawCircleLinesV(me, 4.0f + 2.0f * (float)std::fabs(std::sin(GetTime() * 3)), Alpha({120, 255, 170, 220}, fa));
     }
     char b[96];
-    snprintf(b, sizeof b, T(UI_VOY_MAP_NEAR), TR(o.d.jp, o.d.en));
+    snprintf(b, sizeof b, T(L.follow ? UI_VOY_MAP_FROM : UI_VOY_MAP_NEAR), TR(o.d.jp, o.d.en));
     Txt(b, r.x + 8, r.y + 5, 13, Alpha({170, 200, 230, 255}, fa));
     double unit = std::pow(10.0, std::floor(std::log10(range * 0.6)));
     float bw = (float)(unit * k);
