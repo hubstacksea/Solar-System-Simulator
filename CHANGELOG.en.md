@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.4 (2026-11-07)
+
+- Apollo program: in lunar orbit, the lunar module marker no longer circles the command module after docking, and the lunar module no longer passes back and forth through the command module just after undocking. The points of the two spacecraft's trajectories were thinned out separately, so even while they followed the same path they were 1-13 m apart from interpolation errors. Where they follow the same path or one branches off from the other, both now keep the same points (`tools/make_apollo_assets.py`, `assets/apollo.bin`). The 28 m jump of Apollo 13's lunar module at jettison is gone too
+- Apollo program: the lunar module shows no marker while it is joined to the command module. It was also drawn standing still at the start of its trajectory, up to 95 km ahead of the command module, for 2 minutes before undocking
+- Apollo program: just after undocking and just before docking (within 100 m of each other), the lunar module is drawn moving away from or toward the docking port on the command module's nose. Before, the centers of the two coincided and the models overlapped
+- The checking option `--voyage-trace` now also prints the distance to the other Apollo spacecraft
+
 ## 2.37.3 (2026-11-07)
 
 - Apollo program: the close-up map around the Moon at the top right now shows the path as seen from the Moon. Before, it was drawn in a frame fixed to Earth in which the Moon moves too, so the lunar orbit drifted along with the Moon and looked like a spiral. The heading reads "Path seen from Moon". The Earth-centered overall map and the close-ups of probe flybys are unchanged

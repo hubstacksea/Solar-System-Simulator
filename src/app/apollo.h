@@ -748,9 +748,9 @@ static int ApolloBody(const App& app, int mission, int vehicle) {
     return -1;
 }
 
-// 時刻 t の機体の形（-1: 描かない）
+// 時刻 t の機体の形（-1: 描かない）。月着陸船は最初に離れるまで司令船の側で描くので -1
 static int ApolloModel(const ApolloMission& m, int vehicle, double t) {
-    int model = vehicle == 0 ? PM_APOLLO_CSM : PM_APOLLO_LM;
+    int model = vehicle == 0 ? PM_APOLLO_CSM : -1;
     double best = -1e300;
     for (int k = 0; k < m.shapeCount; k++) {
         const ApolloShape& s = m.shapes[k];
@@ -761,6 +761,13 @@ static int ApolloModel(const ApolloMission& m, int vehicle, double t) {
         }
     }
     return model;
+}
+
+// 司令船とつながっていて単独では描かない機体（マーカーも出さない。軌跡の位置は司令船から数 m ずれていて、
+// マーカーだけが司令船のまわりを回って見えるため）
+static bool ApolloJoined(const App& app, int i) {
+    int mission, vehicle;
+    return app.B[i].d.apollo >= 0 && ApolloVehicleOf(app, i, &mission, &vehicle) && ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays) < 0;
 }
 
 // 天体の自転で、中心からの位置 rel の点が動く速度 km/日
@@ -972,6 +979,23 @@ static Quaternion ApolloPose(const App& app, int i, int model, double t) {
     return q;
 }
 static Quaternion ApolloPose(const App& app, int i, int model) { return ApolloPose(app, i, model, app.tDays); }
+
+// 司令船のすぐそば（100 m 以内）にいる月着陸船を、ドッキングの口の位置へ寄せる。同じ道をたどる間（切り離した直後）は
+// 2 機の軌跡が同じ点で、中心どうしが重なって機体がめり込み、ドッキングの直前も上昇段が司令船の中心へ入っていくため。
+// 記録には数 m の位置の情報はないので、つながっていた時の位置（月着陸船の接地点が司令船の先端の先 12.75 m、
+// 機械船を切り離した 13 号は司令船の先 7.5 m）から離れ始め、20〜100 m で軌跡の位置に戻す
+static void ApolloDockPort(App& app) {
+    for (int k = 0; k < APOLLO_COUNT; k++) {
+        int c = ApolloBody(app, k, 0), l = ApolloBody(app, k, 1);
+        if (c < 0 || l < 0 || !app.B[c].active || !app.B[l].active) continue;
+        int mc = ApolloModel(APOLLO_MISSIONS[k], 0, app.tDays), ml = ApolloModel(APOLLO_MISSIONS[k], 1, app.tDays);
+        if (ml < 0 || (mc != PM_APOLLO_CSM && mc != PM_APOLLO_CM)) continue;
+        double w = ApolloSmooth((0.1 - Len(app.B[l].pos - app.B[c].pos)) / 0.08);
+        if (w <= 0) continue;
+        V3 nose = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, c, mc)));
+        app.B[l].pos = app.B[l].pos + nose * ((mc == PM_APOLLO_CSM ? 0.01275 : 0.0075) * w);
+    }
+}
 
 // 月着陸船の下降段（月面を離れた後も着陸地点に残る）の位置。無ければ false
 static bool ApolloDescentStage(const App& app, int mission, V3* pos, V3* up) {

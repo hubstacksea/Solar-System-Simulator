@@ -441,7 +441,7 @@ static void DrawMarkers(const App& app) {
             g_placed.push_back({sp.x - r, sp.y - r * 0.7f, 2 * r, r * 1.5f});
         }
     }
-    if (app.B[app.target].active) DrawMarker(app, app.target);  // ターゲットを優先して配置
+    if (app.B[app.target].active && !ApolloJoined(app, app.target)) DrawMarker(app, app.target);  // ターゲットを優先して配置
     bool farAway = Len(c.pos) > 0.05 * LY_KM;   // 太陽系から遠く離れていると、太陽系の天体は太陽しか出さない（みな同じ所に重なる）
     auto solar = [&](int i) { return HostStar(app.B, i) == B_SUN; };
     for (size_t i = 0; i < app.B.size(); i++) {
@@ -455,6 +455,7 @@ static void DrawMarkers(const App& app) {
         if ((cls == BC_ASTEROID || cls == BC_PROBE || cls == BC_SAT) && Len(CamRel(c, app.B[i].pos)) > AU_KM) continue;
         if (app.apolloMission >= 0) {   // アポロ計画: 太陽・地球・月とアポロの機体だけ（降り立った天体はすぐ下にあるので出さない）
             if ((int)i != B_SUN && (int)i != B_EARTH && (int)i != B_MOON && d.apollo < 0) continue;
+            if (ApolloJoined(app, (int)i)) continue;
             if (d.radius > 100 && SurfaceDist(app.B[i], c.pos) < d.radius * 0.02) continue;
         }
         if (d.probe >= 0) {

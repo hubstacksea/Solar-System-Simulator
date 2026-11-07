@@ -1190,20 +1190,90 @@ def apollo8(work):
 
 
 # ---------------------------------------------------------------- 書き出し
+def shared_keep(tracks):
+    """同じ道をたどる区間（follow で写した点。ドッキングしている間や切り離しの直後）の点を、両方の機体で同じだけ残すための、
+    区間ごとの必ず残す点の番号。別々に間引くと点の時刻がずれ、補間の誤差（20 m まで）で 2 機の位置が数 m〜十数 m ずれて
+    互いのまわりを回って見える。共通の点は片方で残ったらもう片方でも残し、共通の点の並びの両端と、その外側で隣り合う
+    相手の点も残す（切り離しの時刻ちょうどの点は相手の 2 点の間を補間したものなので、その 2 点が残れば同じ曲線になる）"""
+    pieces = [(ti, pi, ref, pts) for ti, trk in enumerate(tracks) for pi, (ref, frame, pts) in enumerate(trk.pieces) if frame == 0]
+    index = {(ti, pi): {round(g, 6): k for k, (g, _, _) in enumerate(pts)} for ti, pi, _, pts in pieces}
+    pairs = []   # (自分, 相手, 自分の点の番号, 相手の点の番号)
+    for a in pieces:
+        for b in pieces:
+            if a[0] == b[0] or a[2] != b[2]:
+                continue
+            ib = index[(b[0], b[1])]
+            for ka, (g, r, _) in enumerate(a[3]):
+                kb = ib.get(round(g, 6))
+                if kb is not None and np.linalg.norm(r - b[3][kb][1]) < 1e-9:
+                    pairs.append(((a[0], a[1]), (b[0], b[1]), ka, kb))
+    forced = {(ti, pi): set() for ti, pi, _, _ in pieces}
+    length = {(ti, pi): len(pts) for ti, pi, _, pts in pieces}
+    # 相手の点の間から分かれる・合流する点（13 号の月着陸船の切り離しなど、相手の状態を補間して始まる軌跡）: 相手の
+    # 両隣の点を残す（間引いた相手の曲線は許容誤差まで離れていて、分かれる瞬間に機体が跳ぶ）
+    for a in pieces:
+        for ka in (0, len(a[3]) - 1):
+            g, r, _ = a[3][ka]
+            for b in pieces:
+                if a[0] == b[0] or a[2] != b[2]:
+                    continue
+                pb = b[3]
+                for kb in range(len(pb) - 1):
+                    if pb[kb][0] < g < pb[kb + 1][0]:
+                        rr, _ = hermite_state(pb[kb], pb[kb + 1], g)
+                        if np.linalg.norm(rr - r) < 1e-6:
+                            forced[(b[0], b[1])] |= {kb, kb + 1}
+                        break
+    shared = {}
+    for a, b, ka, kb in pairs:
+        shared.setdefault((a, b), {})[ka] = kb
+    for (a, b), m in shared.items():
+        ks = sorted(m)
+        runs, start = [], ks[0]
+        for x, y in zip(ks, ks[1:]):
+            if y != x + 1 or m[y] != m[x] + 1:
+                runs.append((start, x))
+                start = y
+        runs.append((start, ks[-1]))
+        for s0, s1 in runs:
+            forced[a] |= {s0, s1}
+            forced[b] |= {k for k in (m[s0] - 1, m[s1] + 1) if 0 <= k < length[b]}
+    return forced, shared
+
+
+def hermite_state(p0, p1, g):
+    """点 p0・p1（打ち上げからの秒, 位置, 速度）の間の時刻 g の位置と速度（state_in と同じ式）"""
+    return state_in([p0, p1], g)[1:]
+
+
 def write(path, flights):
     blob = struct.pack("<I", len(flights))
     for name, F, tracks in flights:
         blob += struct.pack("<16sI", name.encode()[:15], len(tracks))
-        for trk in tracks:
+        forced, shared = shared_keep(tracks)
+        tol0 = lambda p: max(0.02, 2e-6 * np.linalg.norm(p))
+        kept = {}
+        for _ in range(10):   # 共通の点で片方だけ残ったものを、もう片方でも残す（変わらなくなるまで）
+            for key in forced:
+                pts = tracks[key[0]].pieces[key[1]][2]
+                kept[key] = decimate_idx([(F.get0 + g / 86400 - J2000, r, v) for g, r, v in pts], tol0, forced[key])
+            grew = False
+            for (a, b), m in shared.items():
+                add = {ka for ka, kb in m.items() if kb in kept[b] and ka not in forced[a]}
+                if add:
+                    forced[a] |= add
+                    grew = True
+            if not grew:
+                break
+        for ti, trk in enumerate(tracks):
             blob += struct.pack("<16sI", trk.name.encode()[:15], len(trk.pieces))
             total = 0
-            for ref, frame, pts in trk.pieces:
-                if frame == 0:
-                    tol = lambda p: max(0.02, 2e-6 * np.linalg.norm(p))
-                else:
-                    tol = lambda p: 0.002
+            for pi, (ref, frame, pts) in enumerate(trk.pieces):
                 samples = [(F.get0 + g / 86400 - J2000, r, v) for g, r, v in pts]
-                d = decimate(samples, tol)
+                if frame == 0:
+                    d = [samples[k] for k in kept[(ti, pi)]]
+                else:
+                    d = decimate(samples, lambda p: 0.002)
                 t0, t1 = pts[0][0], pts[-1][0]
                 m0 = icrf_to_ecl(F.moon.pos(F.jd(t0)[1]))
                 m1 = icrf_to_ecl(F.moon.pos(F.jd(t1)[1]))
@@ -1268,10 +1338,32 @@ def hermite(p0, v0, p1, v1, t0, t1, t):
             + v1 * hs * (s ** 3 - s ** 2))
 
 
-def decimate(samples, tol):
-    """エルミート補間で間の点が tol(位置) 以内に収まる範囲で点を減らす（tools/make_probe_assets.py と同じ）"""
+def decimate_idx(samples, tol, forced):
+    """decimate と同じ。番号 forced の点は必ず残し、その間ごとに間引く。残した点の番号を返す"""
+    cut = sorted({0, len(samples) - 1} | set(forced))
+    keep = []
+    for i0, i1 in zip(cut, cut[1:]):
+        part = decimate(list(range(i0, i1 + 1)), tol, samples)
+        keep += part if not keep else part[1:]
+    return keep if keep else [0]
+
+
+def decimate(samples, tol, ref=None):
+    """エルミート補間で間の点が tol(位置) 以内に収まる範囲で点を減らす（tools/make_probe_assets.py と同じ）。
+    ref を渡すと samples は ref の点の番号で、残した番号を返す"""
+    if ref is not None:
+        idx = samples
+        sub = [ref[k] for k in idx]
+        if len(sub) <= 2:
+            return list(idx)
+        return [idx[k] for k in decimate_keep(sub, tol)]
     if len(samples) <= 2:
         return samples
+    return [samples[k] for k in decimate_keep(samples, tol)]
+
+
+def decimate_keep(samples, tol):
+    """decimate の残す点の番号"""
 
     def ok(i, j):
         (t0, p0, v0), (t1, p1, v1) = samples[i], samples[j]
@@ -1294,7 +1386,7 @@ def decimate(samples, tol):
                 hi = mid - 1
         i += lo
         keep.append(i)
-    return [samples[k] for k in keep]
+    return keep
 
 
 def nominal_descent(F, lm, get_pdi, r, v, site, get_land):

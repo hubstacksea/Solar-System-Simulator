@@ -644,6 +644,7 @@ int main(int argc, char** argv) {
         int spinRef = app.ship.ref;
         double spin0 = app.B[spinRef].spin;
         UpdateBodies(app.B, app.tDays);
+        ApolloDockPort(app);
         CoRotateWithGround(app, spinRef, spin0);
         UpdateMeteors(app, dt, simDt);
         UpdateShip(app, simDt);
@@ -669,7 +670,7 @@ int main(int argc, char** argv) {
                        app.voyCard, ang(pf, f), std::asin(std::max(-1.0, std::min(1.0, Dot(Cross(pf, f), app.cam.up)))) / DEG, ang(pu, u),
                        Len(l - pl) * 1000, pfov / DEG, app.cam.fovy / DEG, app.voyRate);
                 if (app.apolloMission >= 0) {   // アポロ: 打ち上げからの秒、追う機体、機体の形、先端と進む向き（基準天体に対して）の角度
-                    int mission, vehicle;
+                    int mission = -1, vehicle = -1;
                     int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays) : -1;
                     double get = (app.tDays - ApolloLaunch(APOLLO_MISSIONS[app.apolloMission])) * 86400;
                     V3 v = ApolloVel(app, app.voyProbe, app.tDays);
@@ -689,6 +690,9 @@ int main(int argc, char** argv) {
                     }
                     printf(" get=%.1f probe=%d model=%d nose=%.1f elev=%.1f dnose=%.2f dside=%.2f speed=%.4f earth=%.0f", get, app.voyProbe, model, nose, elev, dnose, dside,
                            Len(v) / 86400, Len(app.B[app.voyProbe].pos - app.B[B_EARTH].pos));
+                    int other = vehicle >= 0 ? ApolloBody(app, app.apolloMission, 1 - vehicle) : -1;   // もう一方の機体との距離（km）と、その機体の形
+                    if (other >= 0 && Len(app.B[other].pos) < 1e12)
+                        printf(" other=%d omodel=%d sep=%.4f", other, ApolloModel(APOLLO_MISSIONS[mission], 1 - vehicle, app.tDays), Len(app.B[other].pos - app.B[app.voyProbe].pos));
                 }
                 printf("\n");
             }
