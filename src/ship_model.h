@@ -236,7 +236,10 @@ enum ProbeModel {
     // 司令船が離れた後の第3段（宇宙船アダプターの板を捨て、中の月着陸船が見える形と、月着陸船を引き出した後の形）、
     // 捨てたアダプターの板 1 枚、脚をたたんだ月着陸船（脚は月を回る軌道で月着陸船を起動する時に開く。13 号はその前に
     // 着陸を中止した）
-    PM_SIVB_LM, PM_SIVB_EMPTY, PM_SLA_PANEL, PM_LM_STOWED, PM_COUNT
+    PM_SIVB_LM, PM_SIVB_EMPTY, PM_SLA_PANEL, PM_LM_STOWED,
+    // 第1段を切り離した後、段間リングを捨てる前のサターン（第2段の下に段間リング）と、切り離した第1段・段間リング・第2段
+    // （上に第3段との間の円錐の段間が付いたまま）
+    PM_SATURN_SII_RING, PM_SIC_SPENT, PM_SII_RING_SPENT, PM_SII_SPENT, PM_COUNT
 };
 
 // アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
@@ -349,6 +352,18 @@ inline float SaturnStage(ShipMeshBuilder& mb, float z0, int stage, bool panels =
     }
     mb.Revolve(0, 0, {{z0 - 18.7f, 3.3f}, {z0 - 27.2f, 1.956f}}, 36, white, SM_PAINT);
     return z0 - 27.2f;
+}
+
+// 第1段と第2段の間の段間リング（長さ 5.5 m。第2段のエンジンを囲む。第1段を切り離した 30 秒後に捨てる）と、第2段と第3段の
+// 間の円錐の段間（長さ 5.6 m。第3段のエンジンを囲み、第2段と一緒に切り離す）。z0 が底、返り値は上の端
+const float SATURN_RING_LEN = 5.5f, SATURN_CONE_LEN = 5.6f;
+inline float SaturnRing(ShipMeshBuilder& mb, float z0) {
+    mb.Tube({0, 0, z0}, {0, 0, z0 - SATURN_RING_LEN}, 5.05f, 40, {236, 236, 232, 255}, SM_PAINT);
+    return z0 - SATURN_RING_LEN;
+}
+inline float SaturnCone(ShipMeshBuilder& mb, float z0) {
+    mb.Revolve(0, 0, {{z0, 5.05f}, {z0 - SATURN_CONE_LEN, 3.3f}}, 40, {236, 236, 232, 255}, SM_PAINT);
+    return z0 - SATURN_CONE_LEN;
 }
 
 // 宇宙船アダプターの板 1 枚（円錐の 4 分の 1）。原点は下の端（ちょうつがい）の中央、+X が外、-Z が上
@@ -759,6 +774,15 @@ inline Mesh GenProbeMesh(int model) {
     case PM_SLA_PANEL:
         SlaPanel(mb);
         break;
+    case PM_SIC_SPENT:   // 切り離した各段（それぞれ、切り離す前のサターンの形と同じ座標）
+        SaturnStage(mb, -5.9f, 1);
+        break;
+    case PM_SII_RING_SPENT:
+        SaturnRing(mb, 0);
+        break;
+    case PM_SII_SPENT:
+        SaturnCone(mb, SaturnStage(mb, -SATURN_RING_LEN, 2));
+        break;
     case PM_LM_STOWED:
         ApolloLM(mb, 0.0f, -1, true, true, false);
         break;
@@ -796,16 +820,21 @@ inline Mesh GenProbeMesh(int model) {
         break;
     }
     case PM_SATURN_V:
+    case PM_SATURN_SII_RING:
     case PM_SATURN_SII_LES:
     case PM_SATURN_SII:
     case PM_SATURN_SIVB: {
-        // 原点が機体の底（打ち上げの軌跡の点）。S-IC を切り離した後は S-II の底、その後は S-IVB の底
+        // 原点が機体の底（打ち上げの軌跡の点）。S-IC を切り離した後は段間リングの底（リングを捨てた後もその位置）、
+        // S-II を切り離した後は S-IVB の底
         float z = 0;
         if (model == PM_SATURN_V) z = SaturnStage(mb, -5.9f, 1);   // 発射台では、エンジンのノズルの下端が原点
-        if (model != PM_SATURN_SIVB) z = SaturnStage(mb, z, 2);
+        if (model != PM_SATURN_SIVB) {
+            z = model == PM_SATURN_V || model == PM_SATURN_SII_RING ? SaturnRing(mb, z) : z - SATURN_RING_LEN;
+            z = SaturnCone(mb, SaturnStage(mb, z, 2));
+        }
         z = SaturnStage(mb, z, 3);
         z = ApolloCSM(mb, z, false);
-        if (model == PM_SATURN_V || model == PM_SATURN_SII_LES) {   // 打ち上げ脱出用のロケット（S-II の点火の後に切り離す）
+        if (model == PM_SATURN_V || model == PM_SATURN_SII_RING || model == PM_SATURN_SII_LES) {   // 打ち上げ脱出用のロケット（S-II の点火の後に切り離す）
             mb.Tube({0, 0, z}, {0, 0, z - 4.5f}, 0.35f, 8, {150, 150, 156, 255}, SM_METAL);
             mb.Revolve(0, 0, {{z - 4.5f, 0.35f}, {z - 7.5f, 0.35f}, {z - 9.0f, 0.0f}}, 12, {200, 60, 40, 255}, SM_PAINT);
         }

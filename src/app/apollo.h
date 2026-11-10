@@ -58,6 +58,7 @@ struct ApolloMission {
     double siteLat, siteLon;        // 着陸地点（下降段が残る所）。着陸しなかった飛行は NaN
     const char* liftoff;            // 月面を離れた時刻（下降段を月面に描き始める）
     const ApolloTde* tde;           // 月着陸船を引き出す手順（無ければ nullptr）
+    int sicRetros = 8;              // 第1段の逆噴射のロケットの数（15 号は 8 基のうち 4 基を外した。Flight Evaluation Report）
 };
 
 static const ApolloEvent APOLLO11_EVENTS[] = {
@@ -148,8 +149,10 @@ static const ApolloEvent APOLLO11_EVENTS[] = {
      "Splashdown in the Pacific southwest of Hawaii (13.30° N, 169.15° W); the carrier USS Hornet recovered the crew.\nThe flight lasted 8 days 3 hours 18 minutes"},
 };
 
+// サターンの段間リングは、第1段を切り離した 30 秒後に捨てる（Flight Evaluation Report の 8 号 154.5 秒と 184.5 秒、10 号と
+// 11 号 162.3 秒と 192.3 秒。16 号はリングが第2段のエンジンの下を抜けたのが 194.6 秒で、163.5 秒の 30 秒後の指令と合う）
 static const ApolloShape APOLLO11_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.30", 0, PM_SATURN_SII_LES}, {"0:03:17.90", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.30", 0, PM_SATURN_SII_RING}, {"0:03:12.30", 0, PM_SATURN_SII_LES}, {"0:03:17.90", 0, PM_SATURN_SII},
     {"0:09:09.00", 0, PM_SATURN_SIVB}, {"3:17:04.6", 0, PM_APOLLO_CSM}, {"3:24:03.1", 0, PM_APOLLO_CSM_LM},
     {"100:12:00.0", 0, PM_APOLLO_CSM}, {"128:03:00.0", 0, PM_APOLLO_CSM_LMA}, {"130:09:31.2", 0, PM_APOLLO_CSM},
     {"194:49:12.7", 0, PM_APOLLO_CM}, {"195:12:06.9", 0, PM_CM_DROGUE}, {"195:12:54", 0, PM_CM_MAIN}, {"195:18:35", 0, PM_APOLLO_CM},
@@ -204,7 +207,7 @@ static const ApolloEvent APOLLO8_EVENTS[] = {
 };
 
 static const ApolloShape APOLLO8_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:34.47", 0, PM_SATURN_SII_LES}, {"0:03:08.6", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:34.47", 0, PM_SATURN_SII_RING}, {"0:03:04.47", 0, PM_SATURN_SII_LES}, {"0:03:08.6", 0, PM_SATURN_SII},
     {"0:08:44.90", 0, PM_SATURN_SIVB}, {"3:20:59", 0, PM_APOLLO_CSM}, {"146:28:48.0", 0, PM_APOLLO_CM},
     {"146:54:47.8", 0, PM_CM_DROGUE}, {"146:55:38.9", 0, PM_CM_MAIN}, {"147:00:42", 0, PM_APOLLO_CM},
 };
@@ -271,7 +274,7 @@ static const ApolloEvent APOLLO10_EVENTS[] = {
      "Splashdown in the Pacific east of Samoa (15.07° S, 164.65° W); the USS Princeton recovered the crew.\nThe flight lasted 8 days 0 hours 3 minutes"},
 };
 static const ApolloShape APOLLO10_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.31", 0, PM_SATURN_SII_LES}, {"0:03:17.8", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.31", 0, PM_SATURN_SII_RING}, {"0:03:12.31", 0, PM_SATURN_SII_LES}, {"0:03:17.8", 0, PM_SATURN_SII},
     {"0:09:13.50", 0, PM_SATURN_SIVB}, {"3:02:42.4", 0, PM_APOLLO_CSM}, {"3:17:03", 0, PM_APOLLO_CSM_LM}, {"98:11:57", 0, PM_APOLLO_CSM},
     {"106:22:02", 0, PM_APOLLO_CSM_LMA}, {"108:24:36", 0, PM_APOLLO_CSM}, {"191:33:26", 0, PM_APOLLO_CM},
     {"191:57:18.0", 0, PM_CM_DROGUE}, {"191:58:05", 0, PM_CM_MAIN}, {"192:03:23", 0, PM_APOLLO_CM},
@@ -349,7 +352,7 @@ static const ApolloEvent APOLLO12_EVENTS[] = {
      "Splashdown in the Pacific east of Samoa (15.78° S, 165.15° W); the carrier USS Hornet recovered the crew.\nThe flight lasted 10 days 4 hours 36 minutes"},
 };
 static const ApolloShape APOLLO12_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.4", 0, PM_SATURN_SII_LES}, {"0:03:17.9", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.4", 0, PM_SATURN_SII_RING}, {"0:03:12.40", 0, PM_SATURN_SII_LES}, {"0:03:17.9", 0, PM_SATURN_SII},
     {"0:09:13.20", 0, PM_SATURN_SIVB}, {"3:18:04.9", 0, PM_APOLLO_CSM}, {"3:26:53.3", 0, PM_APOLLO_CSM_LM},
     {"107:54:02.3", 0, PM_APOLLO_CSM}, {"145:36:20.2", 0, PM_APOLLO_CSM_LMA}, {"148:04:30.9", 0, PM_APOLLO_CSM},
     {"244:07:20.1", 0, PM_APOLLO_CM}, {"244:30:39.7", 0, PM_CM_DROGUE}, {"244:31:30.2", 0, PM_CM_MAIN}, {"244:36:25", 0, PM_APOLLO_CM},
@@ -408,7 +411,7 @@ static const ApolloEvent APOLLO13_EVENTS[] = {
      "Splashdown in the Pacific southeast of Samoa (21.63° S, 165.37° W); the USS Iwo Jima recovered the crew.\nThe flight lasted 5 days 22 hours 55 minutes"},
 };
 static const ApolloShape APOLLO13_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:44.3", 0, PM_SATURN_SII_LES}, {"0:03:21", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:44.3", 0, PM_SATURN_SII_RING}, {"0:03:14.30", 0, PM_SATURN_SII_LES}, {"0:03:21", 0, PM_SATURN_SII},
     {"0:09:53.50", 0, PM_SATURN_SIVB}, {"3:06:38.9", 0, PM_APOLLO_CSM}, {"3:19:08.8", 0, PM_APOLLO_CSM_LM},
     {"138:01:48.0", 0, PM_APOLLO_CM_LM}, {"141:30:00.2", 0, PM_APOLLO_CM},
     {"142:48:41", 0, PM_CM_DROGUE}, {"142:49:31", 0, PM_CM_MAIN}, {"142:54:41", 0, PM_APOLLO_CM},
@@ -474,7 +477,7 @@ static const ApolloEvent APOLLO14_EVENTS[] = {
      "Splashdown in the Pacific south of Samoa (27.02° S, 172.67° W); the USS New Orleans recovered the crew.\nThe flight lasted 9 days 0 hours 2 minutes"},
 };
 static const ApolloShape APOLLO14_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:44.8", 0, PM_SATURN_SII_LES}, {"0:03:20.7", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:44.8", 0, PM_SATURN_SII_RING}, {"0:03:14.80", 0, PM_SATURN_SII_LES}, {"0:03:20.7", 0, PM_SATURN_SII},
     {"0:09:20.00", 0, PM_SATURN_SIVB}, {"3:02:29.4", 0, PM_APOLLO_CSM}, {"4:56:56.7", 0, PM_APOLLO_CSM_LM},
     {"103:47:41.6", 0, PM_APOLLO_CSM}, {"143:32:50.5", 0, PM_APOLLO_CSM_LMA}, {"145:44:58.0", 0, PM_APOLLO_CSM},
     {"215:32:42.2", 0, PM_APOLLO_CM}, {"215:55:58.1", 0, PM_CM_DROGUE}, {"215:56:48.1", 0, PM_CM_MAIN}, {"216:01:58.1", 0, PM_APOLLO_CM},
@@ -550,7 +553,7 @@ static const ApolloEvent APOLLO15_EVENTS[] = {
 };
 // 打ち上げ脱出用のロケットの切り離しは記録が見当たらないので、S-IC 切り離しの約 36 秒後（11〜14 号と同じ間隔）
 static const ApolloShape APOLLO15_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:41.2", 0, PM_SATURN_SII_LES}, {"0:03:17", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:41.2", 0, PM_SATURN_SII_RING}, {"0:03:11.20", 0, PM_SATURN_SII_LES}, {"0:03:17", 0, PM_SATURN_SII},
     {"0:09:10.1", 0, PM_SATURN_SIVB}, {"3:22:27.2", 0, PM_APOLLO_CSM}, {"3:33:49.5", 0, PM_APOLLO_CSM_LM},
     {"100:39:16.2", 0, PM_APOLLO_CSM}, {"173:36:25.5", 0, PM_APOLLO_CSM_LMA}, {"179:30:01.4", 0, PM_APOLLO_CSM},
     {"294:43:55.2", 0, PM_APOLLO_CM}, {"295:05:53.0", 0, PM_CM_DROGUE}, {"295:06:43.0", 0, PM_CM_MAIN}, {"295:11:53.0", 0, PM_APOLLO_CM},
@@ -623,7 +626,7 @@ static const ApolloEvent APOLLO16_EVENTS[] = {
      "Splashdown in the Pacific near Christmas Island (0.70° S, 156.22° W); the carrier USS Ticonderoga recovered the crew.\nThe flight lasted 11 days 1 hour 51 minutes"},
 };
 static const ApolloShape APOLLO16_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:43.5", 0, PM_SATURN_SII_LES}, {"0:03:19.8", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:43.5", 0, PM_SATURN_SII_RING}, {"0:03:13.50", 0, PM_SATURN_SII_LES}, {"0:03:19.8", 0, PM_SATURN_SII},
     {"0:09:20.5", 0, PM_SATURN_SIVB}, {"3:04:59.0", 0, PM_APOLLO_CSM}, {"3:15:23", 0, PM_APOLLO_CSM_LM},
     {"96:13:31", 0, PM_APOLLO_CSM}, {"177:41:18", 0, PM_APOLLO_CSM_LMA}, {"195:00:12", 0, PM_APOLLO_CSM},
     {"265:22:23", 0, PM_APOLLO_CM}, {"265:45:26", 0, PM_CM_DROGUE}, {"265:46:16", 0, PM_CM_MAIN}, {"265:51:05", 0, PM_APOLLO_CM},
@@ -694,7 +697,7 @@ static const ApolloEvent APOLLO17_EVENTS[] = {
 };
 // 打ち上げ脱出用のロケットの切り離しは実際の時刻の記録がないので、予定の 0:03:19（SP-4029）
 static const ApolloShape APOLLO17_SHAPES[] = {
-    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.9", 0, PM_SATURN_SII_LES}, {"0:03:19", 0, PM_SATURN_SII},
+    {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.9", 0, PM_SATURN_SII_RING}, {"0:03:12.90", 0, PM_SATURN_SII_LES}, {"0:03:19", 0, PM_SATURN_SII},
     {"0:09:20.6", 0, PM_SATURN_SIVB}, {"3:42:27.6", 0, PM_APOLLO_CSM}, {"3:57:03", 0, PM_APOLLO_CSM_LM},
     {"107:47:56", 0, PM_APOLLO_CSM}, {"187:37:15", 0, PM_APOLLO_CSM_LMA}, {"191:18:31", 0, PM_APOLLO_CSM},
     {"301:23:49", 0, PM_APOLLO_CM}, {"301:46:22", 0, PM_CM_DROGUE}, {"301:47:13", 0, PM_CM_MAIN}, {"301:51:59", 0, PM_APOLLO_CM},
@@ -763,7 +766,7 @@ static const ApolloMission APOLLO_MISSIONS[] = {
     {"Apollo 15", "アポロ15号", "Apollo 15", 1971, 7, 26, 13, 34, 0.6, {"Apollo 15 Endeavour", "Apollo 15 Falcon"},
      "ハドリー谷に着陸、初めて月面車を使用", "Landing at Hadley Rille; first lunar rover",
      APOLLO15_EVENTS, (int)(sizeof APOLLO15_EVENTS / sizeof APOLLO15_EVENTS[0]),
-     APOLLO15_SHAPES, (int)(sizeof APOLLO15_SHAPES / sizeof APOLLO15_SHAPES[0]), 26.13222, 3.63386, "171:37:23.2", &APOLLO15_TDE},
+     APOLLO15_SHAPES, (int)(sizeof APOLLO15_SHAPES / sizeof APOLLO15_SHAPES[0]), 26.13222, 3.63386, "171:37:23.2", &APOLLO15_TDE, 4},
     {"Apollo 16", "アポロ16号", "Apollo 16", 1972, 4, 16, 17, 54, 0.0, {"Apollo 16 Casper", "Apollo 16 Orion"},
      "デカルト高地に着陸", "Landing in the Descartes highlands",
      APOLLO16_EVENTS, (int)(sizeof APOLLO16_EVENTS / sizeof APOLLO16_EVENTS[0]),
@@ -950,7 +953,7 @@ static Quaternion ApolloCoastPose(const App& app, int i, int model, double t) {
         Quaternion qr = QuaternionFromAxisAngle(Vector3RotateByQuaternion({0, 1, 0}, q0), (float)(PI * w));
         return QuaternionMultiply(qr, q0);
     };
-    if (model == PM_SATURN_V || model == PM_SATURN_SII_LES || model == PM_SATURN_SII || model == PM_SATURN_SIVB) {
+    if (model == PM_SATURN_V || model == PM_SATURN_SII_RING || model == PM_SATURN_SII_LES || model == PM_SATURN_SII || model == PM_SATURN_SIVB) {
         if (fixedBody >= 0) {
             V3 vi = v + ApolloSpinVel(o, rel) * ApolloSmooth((Len(rel) - o.d.radius - 20) / 80);   // 高度 20〜100 km で慣性の速度へ
             fwd = blend(up, Len(vi) > 1e-9 ? Norm(vi) : up, std::min(1.0, speed / 0.05));   // 発射台では真上
@@ -1141,13 +1144,40 @@ static double ApolloTdeShift(const ApolloMission& m, double t) {
     if (s < 0 || s > s1) return 0;
     return -TDE_CSM_Z0 * 0.001 * (s < s0 ? 1.0 : 1 - ApolloSmooth((s - s0) / (s1 - s0)));
 }
+
+// サターンの段の切り離し: 第1段（S-IC）・段間リング・第2段（S-II）を切り離した時刻（形の切り替えの表から。無ければ false）
+static bool ApolloStagingTimes(const ApolloMission& m, double* tA, double* tR, double* tB) {
+    *tA = *tR = *tB = NAN;
+    for (int k = 0; k < m.shapeCount; k++) {
+        if (m.shapes[k].vehicle != 0) continue;
+        double t = ApolloT(m, m.shapes[k].get);
+        if (m.shapes[k].model == PM_SATURN_SII_RING) *tA = t;
+        if (m.shapes[k].model == PM_SATURN_SII_LES) *tR = t;
+        if (m.shapes[k].model == PM_SATURN_SIVB) *tB = t;
+    }
+    return std::isfinite(*tA) && std::isfinite(*tR) && std::isfinite(*tB);
+}
+// 切り離した瞬間に残った機体が跳ばないように、軌跡の点（形の原点）を前へずらす量 km。第1段を切り離すとサターンの形の
+// 原点が第1段のノズルの下端から段間リングの底へ 47.9 m、第2段を切り離すと第3段の底へ 36.0 m 移るので、その分を前へずらし、
+// 次の切り離しまで（第2段の後は 1 時間で）滑らかに軌跡の点へ戻す（記録の軌跡は数 km の精度で、この分は誤差より小さい）
+static const double STAGE_SHIFT_A = 0.0479, STAGE_SHIFT_B = 0.0360;
+static double ApolloStageShift(const ApolloMission& m, double t) {
+    double tA, tR, tB;
+    if (!ApolloStagingTimes(m, &tA, &tR, &tB) || t < tA) return 0;
+    if (t < tB) return STAGE_SHIFT_A * (1 - ApolloSmooth((t - tA) / (tB - tA)));
+    return STAGE_SHIFT_B * (1 - ApolloSmooth((t - tB) * 86400 / 3600));
+}
+// 司令船の機体（サターンもこの機体）の位置を、段の切り離しと月着陸船を引き出す手順の分だけずらす
 static void ApolloTdeShiftBodies(App& app) {
     for (int k = 0; k < APOLLO_COUNT; k++) {
         const ApolloMission& m = APOLLO_MISSIONS[k];
-        int c = m.tde ? ApolloBody(app, k, 0) : -1;
+        int c = ApolloBody(app, k, 0);
         if (c < 0 || !app.B[c].active) continue;
-        double o = ApolloTdeShift(m, app.tDays);
+        double o = m.tde ? ApolloTdeShift(m, app.tDays) : 0;
         if (o > 0) app.B[c].pos = app.B[c].pos + FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloTdeStackPose(app, c, m))) * o;
+        double os = ApolloStageShift(m, app.tDays);
+        int model = ApolloModel(m, 0, app.tDays);
+        if (os > 0 && model >= 0) app.B[c].pos = app.B[c].pos + FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, c, model, app.tDays))) * os;
     }
 }
 
@@ -1233,6 +1263,149 @@ static bool ApolloTdeAt(const App& app, int mission, ApolloTdeView* v) {
     v->camSize = gap + 0.025;
     v->camW = 1 - ApolloSmooth((gap - 0.15) / 0.25);
     return true;
+}
+
+// 場面に描く、機体から離れていく部品（月着陸船を引き出す手順の第3段とアダプターの板、切り離したサターンの段）と、
+// 機体と部品が入るカメラの見方
+struct ApolloPiece { int pm; V3 pos; Quaternion q; };
+struct ApolloPieces {
+    std::vector<ApolloPiece> parts;
+    Quaternion axis;    // 横から見る時の軸の向き（-Z が前）
+    double camW = 0;    // カメラを機体と部品が入る見方へ移す割合
+    V3 camTarget;       // その見方で見る点
+    double camSize = 0; // 入れる大きさ km
+};
+
+// 切り離したサターンの段の、地球の重力だけでの動き（切り離した瞬間の軌跡の位置と速度から、4 次のルンゲ・クッタで）。
+// 第1段は 67 km の高さで秒速 2.8 km と空気が薄く、離れていく間（数十秒）の空気の抵抗は第2段の加速に比べて小さいので
+// 入れない。逆噴射のロケット（段を後ろへ）は aRetro m/s² を tRetro 秒。r, v は地球の中心からの km と km/s
+static V3 ApolloStagePos(const App& app, int c, double t0, double t, V3 fwd, double aRetro, double tRetro) {
+    const double GM = 398600.4418, h = 0.5 / 86400;
+    V3 r = PosAt(app.B, c, t0) - PosAt(app.B, B_EARTH, t0);
+    V3 v = (PosAt(app.B, c, t0 + h) - PosAt(app.B, B_EARTH, t0 + h) - PosAt(app.B, c, t0 - h) + PosAt(app.B, B_EARTH, t0 - h)) * (1.0 / (2 * h * 86400));
+    // 逆噴射の間とその後を分けて積分する（刻みの途中で推力が切れると、刻みの数が変わるたびに位置が跳ぶ）
+    auto run = [&](double T, double retro) {
+        int n = std::max(1, (int)std::ceil(T / 1.0));
+        double dt = T / n;
+        auto acc = [&](V3 p) {
+            double rl = Len(p);
+            return p * (-GM / (rl * rl * rl)) - fwd * (retro * 0.001);
+        };
+        for (int k = 0; k < n; k++) {
+            V3 k1v = acc(r), k1r = v;
+            V3 k2v = acc(r + k1r * (dt / 2)), k2r = v + k1v * (dt / 2);
+            V3 k3v = acc(r + k2r * (dt / 2)), k3r = v + k2v * (dt / 2);
+            V3 k4v = acc(r + k3r * dt), k4r = v + k3v * dt;
+            r = r + (k1r + k2r * 2 + k3r * 2 + k4r) * (dt / 6);
+            v = v + (k1v + k2v * 2 + k3v * 2 + k4v) * (dt / 6);
+        }
+    };
+    double T = (t - t0) * 86400;
+    if (T > 0) run(std::min(T, tRetro), aRetro);
+    if (T > tRetro) run(T - tRetro, 0);
+    return app.B[B_EARTH].pos + r;
+}
+
+// 切り離した段（11 号の Flight Evaluation Report の切り離しの時の質量と、逆噴射のロケットの推力と時間）:
+// 第1段 164,381 kg、逆噴射 8 基 × 88,600 lbf × 0.666 秒（秒速 12.8 m 遅くなる。4 基の 15 号は半分）。段間リング 3,982 kg
+// （逆噴射なし）。
+// 第2段 47,100 kg（第3段との間の段間を含む）、逆噴射 4 基 × 34,810 lbf × 1.52 秒（秒速 20.0 m）。向きは切り離した時のまま
+// （回転の記録はない）。描くのは切り離してから 5 分（リングは 2 分）
+struct ApolloStageDef { int pm; double dv, tRetro, show, gap0, gap1; };   // gap0, gap1: カメラの見方を移す距離 km
+static const ApolloStageDef STAGE_SIC = {PM_SIC_SPENT, 12.8, 0.666, 300, 0.1, 0.3};
+static const ApolloStageDef STAGE_RING = {PM_SII_RING_SPENT, 0, 0, 120, 0.03, 0.1};
+static const ApolloStageDef STAGE_SII = {PM_SII_SPENT, 20.0, 1.52, 300, 0.1, 0.3};
+
+// 時刻 t の部品とカメラ（ApolloTdeShiftBodies の後の機体の位置から）。無ければ false
+static bool ApolloPiecesAt(const App& app, int mission, ApolloPieces* out) {
+    out->parts.clear();
+    out->camW = 0;
+    const ApolloMission& m = APOLLO_MISSIONS[mission];
+    int c = ApolloBody(app, mission, 0);
+    if (c < 0 || !app.B[c].active) return false;
+    ApolloTdeView tv;
+    if (ApolloTdeAt(app, mission, &tv)) {
+        out->axis = tv.q;
+        out->camW = tv.camW;
+        out->camTarget = tv.camTarget;
+        out->camSize = tv.camSize;
+        if (tv.model < 0) return true;
+        out->parts.push_back({tv.model, tv.sivb, tv.q});
+        if (tv.panelS < 0) return true;
+        // 板: 火薬の噴射口で下の端（ちょうつがい）のまわりに外へ倒れ始め、45° 開いたところでちょうつがいが外れて、
+        // ばねで秒速 2.5 m で離れる（Apollo Flight Journal）。倒れる速さの記録はないので、3 秒で 45°（秒速 30°）とし、
+        // 外れた後もその速さで回り続ける
+        const double tRel = 3.0, omega = 30 * DEG, vOut = 2.5;
+        double s = tv.panelS, ang = s < tRel ? 0.5 * (omega / tRel) * s * s : 45 * DEG + omega * (s - tRel);
+        float r0 = 3.3f - (3.3f - 1.956f) * SLA_FIXED / SLA_LEN, zh = -(18.7f + SLA_FIXED);
+        V3 cen(-0.748, 0, -(SLA_LEN - SLA_FIXED) * 0.5);   // 板の重心（ちょうつがいの中央から）m
+        for (int k = 0; k < 4; k++) {
+            float phi = PI / 2 * k;
+            Quaternion qz = QuaternionFromAxisAngle({0, 0, 1}, phi);
+            auto open = [&](double a) { return QuaternionMultiply(qz, QuaternionFromAxisAngle({0, -1, 0}, (float)a)); };
+            V3 hinge(r0 * cosf(phi), r0 * sinf(phi), zh);
+            V3 o = hinge;   // 板の原点（第3段の座標 m）
+            if (s >= tRel) {
+                Quaternion q0 = open(45 * DEG);
+                V3 n = FromF(Vector3RotateByQuaternion({1, 0, 0}, q0));   // 外れた時の板の外向き
+                V3 com = hinge + FromF(Vector3RotateByQuaternion(ToF(cen), q0)) + n * (vOut * (s - tRel));
+                o = com - FromF(Vector3RotateByQuaternion(ToF(cen), open(ang)));
+            }
+            out->parts.push_back({PM_SLA_PANEL, tv.sivb + FromF(Vector3RotateByQuaternion(ToF(o * 0.001), tv.q)), QuaternionMultiply(tv.q, open(ang))});
+        }
+        return true;
+    }
+    // サターンの段の切り離し: 切り離す 8 秒前から機体と段が入る見方へ移り、段が遠ざかったら戻す
+    double tA, tR, tB;
+    if (!ApolloStagingTimes(m, &tA, &tR, &tB)) return false;
+    double t = app.tDays, lead = 8.0 / 86400;
+    int model = ApolloModel(m, 0, t);
+    if (model < 0) return false;
+    Quaternion qNow = ApolloPose(app, c, model, t);
+    V3 fwdNow = FromF(Vector3RotateByQuaternion({0, 0, -1}, qNow));
+    const struct { double t0; int before; const ApolloStageDef* def; } seps[] = {
+        {tA, PM_SATURN_V, &STAGE_SIC}, {tR, PM_SATURN_SII_RING, &STAGE_RING}, {tB, PM_SATURN_SII, &STAGE_SII}};
+    const double eps = 1e-6;   // 日（0.09 秒）
+    for (const auto& sp : seps) {
+        const ApolloStageDef& d = *sp.def;
+        if (t < sp.t0 - lead || t > sp.t0 + d.show / 86400) continue;
+        if (t < sp.t0) {
+            // 切り離す前: 切り離した直後と同じ見方（残る機体と段の真ん中の間）へ移り始める。切り離すと形の原点が前へ移る
+            // 分（ApolloStageShift の跳び）だけ、残る機体の真ん中も前へ
+            int after = ApolloModel(m, 0, sp.t0 + eps);
+            double jump = ApolloStageShift(m, sp.t0 + eps) - ApolloStageShift(m, sp.t0 - eps);
+            V3 ac = app.B[c].pos + fwdNow * (jump + app.probeOuter[after] * 0.5), pc = app.B[c].pos + fwdNow * (app.probeOuter[d.pm] * 0.5);
+            double w = ApolloSmooth((t - (sp.t0 - lead)) / lead);
+            if (w > out->camW) {
+                out->camW = w;
+                out->axis = qNow;
+                out->camTarget = (ac + pc) * 0.5;
+                out->camSize = app.probeOuter[after] + Len(ac - pc) + app.probeOuter[d.pm] * 0.5;
+            }
+            continue;
+        }
+        // 残る機体の真ん中（大きさは切り離した直後の形。脱出塔を捨てても見方が跳ばないように）
+        double outer = app.probeOuter[ApolloModel(m, 0, sp.t0 + eps)];
+        V3 center = app.B[c].pos + fwdNow * (outer * 0.5);
+        Quaternion q = ApolloPose(app, c, sp.before, sp.t0);
+        V3 fwd = FromF(Vector3RotateByQuaternion({0, 0, -1}, q));
+        double shift = ApolloStageShift(m, sp.t0 - eps);   // 切り離す直前に描いていた位置（段間リングは第1段の分ずれている）
+        double dv = d.pm == PM_SIC_SPENT ? d.dv * m.sicRetros / 8 : d.dv;
+        V3 pos = ApolloStagePos(app, c, sp.t0, t, fwd, d.tRetro > 0 ? dv / d.tRetro : 0, d.tRetro) + fwd * shift;
+        out->parts.push_back({d.pm, pos, q});
+        // 段が gap0 から gap1 まで離れる間に、見る点を 2 つの真ん中から機体の真ん中へ寄せ、入れる大きさも機体だけに戻す
+        // （段は画面の外へ遠ざかっていく）。その後 gap1 の 2 倍まで離れる間に、普段の見方へ戻す
+        V3 pc = pos + fwd * (app.probeOuter[d.pm] * 0.5);
+        double gap = Len(pc - center), near = 1 - ApolloSmooth((gap - d.gap0) / (d.gap1 - d.gap0));
+        double w = 1 - ApolloSmooth((gap - d.gap1) / d.gap1);
+        if (w > out->camW) {
+            out->camW = w;
+            out->axis = q;
+            out->camTarget = center + (pc - center) * (0.5 * near);
+            out->camSize = outer + (gap + app.probeOuter[d.pm] * 0.5) * near;
+        }
+    }
+    return !out->parts.empty() || out->camW > 0;
 }
 
 // 月着陸船の下降段（月面を離れた後も着陸地点に残る）の位置。無ければ false

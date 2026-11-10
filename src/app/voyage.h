@@ -715,8 +715,8 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
             int model = ApolloVehicleOf(app, app.voyProbe, &mission, &vehicle) ? ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays) : -1;
             if (model >= 0) mid = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, app.voyProbe, model))) * app.voyCamMid;
         }
-        ApolloTdeView tv;   // 月着陸船を引き出す手順: 2 機の間を、2 機が入る距離から見る
-        if (ApolloTdeAt(app, app.apolloMission, &tv) && tv.camW > 0 && app.voyProbe == ApolloBody(app, app.apolloMission, 0)) {
+        ApolloPieces tv;   // 離れていく部品（第3段・切り離した段）: 機体と部品の間を、両方が入る距離から見る
+        if (ApolloPiecesAt(app, app.apolloMission, &tv) && tv.camW > 0 && app.voyProbe == ApolloBody(app, app.apolloMission, 0)) {
             mid = mid * (1 - tv.camW) + (tv.camTarget - b.pos) * tv.camW;
             k = k * (1 - tv.camW) + tv.camSize * 1.3 / 0.034 * tv.camW;
         }
@@ -831,10 +831,11 @@ static V3 ApolloAimDir(const App& app, int* bodyOut) {
         double tilt = std::max(0.0, std::min(1.0, (Len(v) / 86400 - 0.005) / 0.045));   // 止まっている間（月面・発射台）は水平に
         dir = Norm(Norm(h) + up * (0.15 * tilt * tilt * (3 - 2 * tilt)));
     }
-    // 月着陸船を引き出す手順: 司令船と第3段を横から（日の当たる側から、少し後ろ寄りに）見る
-    ApolloTdeView tv;
-    if (ApolloTdeAt(app, app.apolloMission, &tv) && tv.camW > 0 && app.voyProbe == ApolloBody(app, app.apolloMission, 0)) {
-        V3 a = FromF(Vector3RotateByQuaternion({0, 0, -1}, tv.q)), sun = Norm(app.B[B_SUN].pos - tv.camTarget);
+    // 離れていく部品（月着陸船を引き出す手順の第3段、切り離したサターンの段）: 機体と部品を横から（日の当たる側から、
+    // 少し後ろ寄りに）見る
+    ApolloPieces tv;
+    if (ApolloPiecesAt(app, app.apolloMission, &tv) && tv.camW > 0 && app.voyProbe == ApolloBody(app, app.apolloMission, 0)) {
+        V3 a = FromF(Vector3RotateByQuaternion({0, 0, -1}, tv.axis)), sun = Norm(app.B[B_SUN].pos - tv.camTarget);
         V3 side = sun - a * Dot(sun, a);
         if (Len(side) < 0.2) side = Cross(a, Y_UP);
         V3 d = Norm(Norm(side) * -1.0 + a * 0.25);
@@ -854,6 +855,11 @@ static void UpdateVoyageRate(App& app) {
         double delta = (app.tDays - app.voySteps[k].t) * day;
         rate = std::min(rate, std::max(1.0, (std::fabs(delta) - VOY_HOLD_SEC) / VOY_RAMP_SEC));
         if (std::fabs(delta) < VOY_CARD_LEAD_SEC) card = (int)k;
+    }
+    if (app.apolloMission >= 0) {   // サターンの段間リングを捨てる時も、場面と同じように時間をゆっくりにする
+        double tA, tR, tB;
+        if (ApolloStagingTimes(APOLLO_MISSIONS[app.apolloMission], &tA, &tR, &tB))
+            rate = std::min(rate, std::max(1.0, (std::fabs(app.tDays - tR) * day - VOY_HOLD_SEC) / VOY_RAMP_SEC));
     }
     if (app.apolloMission >= 0 && APOLLO_MISSIONS[app.apolloMission].tde) {
         // 月着陸船を引き出す手順: ドッキング（やり直しの接触も）と引き出しも、場面と同じように時間をゆっくりにする

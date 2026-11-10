@@ -1031,7 +1031,7 @@ static int ApolloNozzles(int model, int engine, ApolloNozzle* out, int* kind, fl
         out[n++] = {0, 0, z, r};
     };
     if (model == PM_SATURN_V) { *kind = 0; five(3.0f, -0.1f, 1.85f); }
-    else if (model == PM_SATURN_SII_LES || model == PM_SATURN_SII) { *kind = 1; five(2.6f, 3.4f, 1.0f); }
+    else if (model == PM_SATURN_SII_RING || model == PM_SATURN_SII_LES || model == PM_SATURN_SII) { *kind = 1; five(2.6f, 3.4f - SATURN_RING_LEN, 1.0f); }
     else if (model == PM_SATURN_SIVB) { *kind = 1; out[n++] = {0, 0, 3.4f, 1.0f}; }
     else if (csm) { *kind = 2; out[n++] = {0, 0, 6.65f, 1.25f}; }
     else if (model == PM_APOLLO_LM || model == PM_LM_STOWED) { *kind = 2; out[n++] = {0, 0, -0.4f, 0.75f}; }
@@ -1130,40 +1130,16 @@ static void DrawProbes(App& app) {
         DrawMesh(app.probeMesh[PM_LM_DESCENT], app.shipMat, model);
         rlEnableBackfaceCulling();
     }
-    // アポロ計画: 月着陸船を引き出す手順の第3段と、捨てたアダプターの板。司令船のそば（60 m 以内）の物は司令船と同じ
-    // 奥行きの描画の中で描く（別々に描くと、後に描いた司令船につながった月着陸船が、手前の第3段のアダプターより前に出る）
-    struct TdePart { int pm; V3 pos; Quaternion q; };
-    std::vector<TdePart> tdeNear[APOLLO_COUNT];
-    std::vector<TdePart> tdeFar;
+    // アポロ計画: 機体から離れていく部品（月着陸船を引き出す手順の第3段とアダプターの板、切り離したサターンの段）。機体の
+    // そば（60 m 以内）の物は機体と同じ奥行きの描画の中で描く（別々に描くと、後に描いた司令船につながった月着陸船が、手前の
+    // 第3段のアダプターより前に出る）
+    std::vector<ApolloPiece> tdeNear[APOLLO_COUNT];
+    std::vector<ApolloPiece> tdeFar;
     for (int m = 0; m < APOLLO_COUNT; m++) {
-        ApolloTdeView tv;
-        if (!ApolloTdeAt(app, m, &tv) || tv.model < 0) continue;
-        std::vector<TdePart> parts = {{tv.model, tv.sivb, tv.q}};
-        if (tv.panelS >= 0) {
-            // 板: 火薬の噴射口で下の端（ちょうつがい）のまわりに外へ倒れ始め、45° 開いたところでちょうつがいが外れて、
-            // ばねで秒速 2.5 m で離れる（Apollo Flight Journal）。倒れる速さの記録はないので、3 秒で 45°（秒速 30°）とし、
-            // 外れた後もその速さで回り続ける
-            const double tRel = 3.0, omega = 30 * DEG, vOut = 2.5;
-            double s = tv.panelS, ang = s < tRel ? 0.5 * (omega / tRel) * s * s : 45 * DEG + omega * (s - tRel);
-            float r0 = 3.3f - (3.3f - 1.956f) * SLA_FIXED / SLA_LEN, zh = -(18.7f + SLA_FIXED);
-            V3 cen(-0.748, 0, -(SLA_LEN - SLA_FIXED) * 0.5);   // 板の重心（ちょうつがいの中央から）m
-            for (int k = 0; k < 4; k++) {
-                float phi = PI / 2 * k;
-                Quaternion qz = QuaternionFromAxisAngle({0, 0, 1}, phi);
-                auto open = [&](double a) { return QuaternionMultiply(qz, QuaternionFromAxisAngle({0, -1, 0}, (float)a)); };
-                V3 hinge(r0 * cosf(phi), r0 * sinf(phi), zh);
-                V3 o = hinge;   // 板の原点（第3段の座標 m）
-                if (s >= tRel) {
-                    Quaternion q0 = open(45 * DEG);
-                    V3 n = FromF(Vector3RotateByQuaternion({1, 0, 0}, q0));   // 外れた時の板の外向き
-                    V3 com = hinge + FromF(Vector3RotateByQuaternion(ToF(cen), q0)) + n * (vOut * (s - tRel));
-                    o = com - FromF(Vector3RotateByQuaternion(ToF(cen), open(ang)));
-                }
-                parts.push_back({PM_SLA_PANEL, tv.sivb + FromF(Vector3RotateByQuaternion(ToF(o * 0.001), tv.q)), QuaternionMultiply(tv.q, open(ang))});
-            }
-        }
+        ApolloPieces ps;
+        if (!ApolloPiecesAt(app, m, &ps)) continue;
         int csm = ApolloBody(app, m, 0);
-        for (const TdePart& p : parts) (Len(p.pos - app.B[csm].pos) < 0.06 ? tdeNear[m] : tdeFar).push_back(p);
+        for (const ApolloPiece& p : ps.parts) (Len(p.pos - app.B[csm].pos) < 0.06 ? tdeNear[m] : tdeFar).push_back(p);
     }
     auto meshAt = [&](int pm, V3 pos, Quaternion q) {
         V3 rel = ViewRel(app, pos);
@@ -1173,7 +1149,7 @@ static void DrawProbes(App& app) {
         DrawMesh(app.probeMesh[pm], app.shipMat, model);
         rlEnableBackfaceCulling();
     };
-    for (const TdePart& p : tdeFar) {
+    for (const ApolloPiece& p : tdeFar) {
         V3 rel = ViewRel(app, p.pos);
         double dist = Len(rel), size = std::max(0.01, (double)app.probeOuter[p.pm] * 1.1);
         if (app.probeOuter[p.pm] / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -size) continue;
@@ -1203,11 +1179,11 @@ static void DrawProbes(App& app) {
         }
         double size = apModel >= 0 ? std::max(0.02, (double)app.probeOuter[apModel] * 1.1) : 0.02;
         if (apModel >= 0 && ApolloBurnAt(b.d, app.tDays)) size += 0.25;   // 噴流の分（F-1 は 200 m まで）
-        const std::vector<TdePart>* near = nullptr;   // 同じ描画で描く手順の第3段と板
+        const std::vector<ApolloPiece>* near = nullptr;   // 同じ描画で描く部品
         for (int m = 0; m < APOLLO_COUNT && apModel >= 0; m++)
             if (!tdeNear[m].empty() && ApolloBody(app, m, 0) == (int)i) near = &tdeNear[m];
         if (near)
-            for (const TdePart& p : *near) size = std::max(size, Len(p.pos - b.pos) + (double)app.probeOuter[p.pm] * 1.1);
+            for (const ApolloPiece& p : *near) size = std::max(size, Len(p.pos - b.pos) + (double)app.probeOuter[p.pm] * 1.1);
         V3 rel = ViewRel(app, b.pos);
         double dist = Len(rel);
         if (0.015 / dist * c.focal < 0.5 || Dot(rel, c.fwd) < -size) continue;
@@ -1245,7 +1221,7 @@ static void DrawProbes(App& app) {
         DrawMesh(app.probeMesh[pm], app.shipMat, model);
         rlEnableBackfaceCulling();
         if (near)
-            for (const TdePart& p : *near) meshAt(p.pm, p.pos, p.q);
+            for (const ApolloPiece& p : *near) meshAt(p.pm, p.pos, p.q);
         if (apModel >= 0) DrawApolloPlume(app, (int)i, pm, q, rel);
     }
     rlDrawRenderBatchActive();
