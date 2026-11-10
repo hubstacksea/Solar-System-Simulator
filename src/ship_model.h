@@ -232,7 +232,11 @@ enum ProbeModel {
     PM_BEPICOLOMBO, PM_JUICE, PM_EUROPA_CLIPPER, PM_LUCY, PM_PSYCHE, PM_HERA,
     // アポロ計画（-Z が前: ロケットと司令船は先端、月着陸船は天頂の側）。22・23 は天体の定義で使う番号
     PM_APOLLO_CSM, PM_APOLLO_LM, PM_SATURN_V, PM_SATURN_SII_LES, PM_SATURN_SII, PM_SATURN_SIVB, PM_APOLLO_CSM_LM, PM_APOLLO_CSM_LMA,
-    PM_LM_ASCENT, PM_LM_DESCENT, PM_APOLLO_CM, PM_CM_DROGUE, PM_CM_MAIN, PM_APOLLO_CM_LM, PM_COUNT
+    PM_LM_ASCENT, PM_LM_DESCENT, PM_APOLLO_CM, PM_CM_DROGUE, PM_CM_MAIN, PM_APOLLO_CM_LM,
+    // 司令船が離れた後の第3段（宇宙船アダプターの板を捨て、中の月着陸船が見える形と、月着陸船を引き出した後の形）、
+    // 捨てたアダプターの板 1 枚、脚をたたんだ月着陸船（脚は月を回る軌道で月着陸船を起動する時に開く。13 号はその前に
+    // 着陸を中止した）
+    PM_SIVB_LM, PM_SIVB_EMPTY, PM_SLA_PANEL, PM_LM_STOWED, PM_COUNT
 };
 
 // アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
@@ -267,8 +271,10 @@ inline float ApolloCM(ShipMeshBuilder& mb, float z0) {
     return z0 - 3.25f;
 }
 // 月着陸船。上昇段（不規則な形の乗員室と燃料タンク）と下降段（金色の八角形の箱と 4 本の脚）。
-// 天頂の向きは dir（-1: -Z、+1: +Z）、zb は脚の接地点の高さ（ドッキングした形では上昇段の上の口が先端になる）
-inline void ApolloLM(ShipMeshBuilder& mb, float zb, float dir, bool ascent, bool descent) {
+// 天頂の向きは dir（-1: -Z、+1: +Z）、zb は脚の接地点の高さ（ドッキングした形では上昇段の上の口が先端になる）。
+// gear: 脚を開いた形（false は打ち上げから月を回る軌道で開くまでの、たたんだ形）。ys: -1 で前後（y）を逆に
+// （第3段の中の月着陸船を、ドッキングした形を半回転した向きにする）
+inline void ApolloLM(ShipMeshBuilder& mb, float zb, float dir, bool ascent, bool descent, bool gear = true, float ys = 1) {
     const Color gold = {196, 156, 64, 255}, dark = {52, 54, 58, 255}, grey = {150, 150, 156, 255}, black = {30, 30, 32, 255};
     auto Z = [&](float h) { return zb + dir * h; };   // 接地点からの高さ h → z（dir が -1 なら天頂は -Z）
     if (descent) {
@@ -276,31 +282,37 @@ inline void ApolloLM(ShipMeshBuilder& mb, float zb, float dir, bool ascent, bool
         mb.Revolve(0, 0, {{Z(0.85f), 0.5f}, {Z(0.4f), 0.75f}}, 16, black, SM_NOZZLE);   // 下降エンジンのノズル
         for (int i = 0; i < 4; i++) {
             float a = PI / 4 + PI / 2 * i;
-            Vector3 foot = {cosf(a) * 4.2f, sinf(a) * 4.2f, Z(0.1f)};
+            // たたんだ脚は、主脚が上（天頂の側）へ折り返され、接地パッドが上昇段の横に来る
+            float fr = gear ? 4.2f : 2.6f, fh = gear ? 0.1f : 3.4f;
+            Vector3 foot = {cosf(a) * fr, sinf(a) * fr, Z(fh)};
             mb.Tube({cosf(a) * 2.0f, sinf(a) * 2.0f, Z(2.2f)}, foot, 0.08f, 6, gold, SM_METAL);
             mb.Tube({cosf(a) * 2.0f, sinf(a) * 2.0f, Z(1.0f)}, foot, 0.06f, 6, grey, SM_METAL);
-            mb.Revolve(cosf(a) * 4.2f, sinf(a) * 4.2f, {{Z(0.0f), 0.0f}, {Z(0.02f), 0.47f}, {Z(0.2f), 0.4f}, {Z(0.25f), 0.1f}}, 12, gold, SM_METAL);
+            mb.Revolve(cosf(a) * fr, sinf(a) * fr, {{Z(fh), 0.0f}, {Z(fh + 0.02f), 0.47f}, {Z(fh + 0.2f), 0.4f}, {Z(fh + 0.25f), 0.1f}}, 12, gold,
+                       SM_METAL);
         }
     }
     if (ascent) {
-        mb.Tube({0, -1.1f, Z(3.9f)}, {0, 1.3f, Z(3.9f)}, 1.17f, 20, grey, SM_METAL);   // 乗員室（前後に寝かせた円柱）
-        mb.Box({0, -0.3f, Z(3.2f)}, {1.8f, 1.2f, 0.65f}, dark, SM_METAL);                // 下の機器室と燃料タンク
-        mb.Box({-1.6f, 0.4f, Z(3.4f)}, {0.5f, 0.6f, 0.6f}, dark, SM_METAL);
-        mb.Box({1.6f, 0.4f, Z(3.4f)}, {0.5f, 0.6f, 0.6f}, dark, SM_METAL);
-        mb.Box({0, 1.6f, Z(3.6f)}, {0.8f, 0.6f, 0.9f}, {90, 90, 96, 255}, SM_METAL);     // 後ろの機器室
-        mb.Tube({0, 0, Z(4.8f)}, {0, 0, Z(5.4f)}, 0.5f, 16, grey, SM_METAL);              // 上の口（ドッキング）
-        mb.Box({0, -2.25f, Z(3.9f)}, {0.45f, 0.05f, 0.45f}, black, SM_GLASS);             // 前の窓
+        mb.Tube({0, -1.1f * ys, Z(3.9f)}, {0, 1.3f * ys, Z(3.9f)}, 1.17f, 20, grey, SM_METAL);   // 乗員室（前後に寝かせた円柱）
+        mb.Box({0, -0.3f * ys, Z(3.2f)}, {1.8f, 1.2f, 0.65f}, dark, SM_METAL);                     // 下の機器室と燃料タンク
+        mb.Box({-1.6f, 0.4f * ys, Z(3.4f)}, {0.5f, 0.6f, 0.6f}, dark, SM_METAL);
+        mb.Box({1.6f, 0.4f * ys, Z(3.4f)}, {0.5f, 0.6f, 0.6f}, dark, SM_METAL);
+        mb.Box({0, 1.6f * ys, Z(3.6f)}, {0.8f, 0.6f, 0.9f}, {90, 90, 96, 255}, SM_METAL);          // 後ろの機器室
+        mb.Tube({0, 0, Z(4.8f)}, {0, 0, Z(5.4f)}, 0.5f, 16, grey, SM_METAL);                        // 上の口（ドッキング）
+        mb.Box({0, -2.25f * ys, Z(3.9f)}, {0.45f, 0.05f, 0.45f}, black, SM_GLASS);                  // 前の窓
         for (int i = 0; i < 4; i++) {   // 反動制御の噴射口
             float a = PI / 4 + PI / 2 * i;
             mb.Box({cosf(a) * 2.0f, sinf(a) * 2.0f, Z(4.2f)}, {0.15f, 0.15f, 0.15f}, grey, SM_METAL);
         }
-        mb.Tube({0.9f, 1.2f, Z(4.6f)}, {1.3f, 1.6f, Z(5.6f)}, 0.03f, 6, grey, SM_METAL);   // ランデブー用レーダーとアンテナ
-        mb.Dish({1.3f, 1.6f, Z(5.6f)}, {0.3f, 0.3f, -dir}, 0.45f, 0.15f, {230, 230, 230, 255}, SM_PAINT);
+        mb.Tube({0.9f, 1.2f * ys, Z(4.6f)}, {1.3f, 1.6f * ys, Z(5.6f)}, 0.03f, 6, grey, SM_METAL);   // ランデブー用レーダーとアンテナ
+        mb.Dish({1.3f, 1.6f * ys, Z(5.6f)}, {0.3f, 0.3f * ys, -dir}, 0.45f, 0.15f, {230, 230, 230, 255}, SM_PAINT);
     }
 }
 // サターン V の段（z0 が底、-Z に積む）。S-IC（直径 10.1 m・長さ 42 m）、S-II（24.9 m）、S-IVB（直径 6.6 m・17.8 m）、
-// 計器リング、宇宙船アダプター（月着陸船が入っている円錐）
-inline float SaturnStage(ShipMeshBuilder& mb, float z0, int stage) {
+// 計器リング、宇宙船アダプター（月着陸船が入っている長さ 8.5 m の円錐。上の 6.4 m は 4 枚の板で、司令船が離れる時に捨てる）。
+// panels: アダプターの板を描く（false は下の 2.1 m だけ）
+const float SLA_FIXED = 2.13f, SLA_LEN = 8.5f;
+const float SIVB_LM_BASE = 18.8f;   // 第3段の中の月着陸船の脚の接地点の、第3段の底からの高さ m（上の口は 24.2 m）
+inline float SaturnStage(ShipMeshBuilder& mb, float z0, int stage, bool panels = true) {
     const Color white = {236, 236, 232, 255}, black = {28, 28, 30, 255}, dark = {40, 40, 44, 255}, metal = {130, 132, 138, 255};
     if (stage == 1) {
         for (int i = 0; i < 5; i++) {   // F-1 エンジン 5 基
@@ -331,8 +343,31 @@ inline float SaturnStage(ShipMeshBuilder& mb, float z0, int stage) {
     mb.Revolve(0, 0, {{z0, 3.3f}, {z0 - 17.8f, 3.3f}}, 36, white, SM_PAINT);
     mb.Tube({0, 0, z0 - 1.0f}, {0, 0, z0 - 5.0f}, 3.32f, 36, black, SM_PAINT);
     mb.Tube({0, 0, z0 - 17.8f}, {0, 0, z0 - 18.7f}, 3.3f, 36, metal, SM_METAL);
+    if (!panels) {
+        mb.Revolve(0, 0, {{z0 - 18.7f, 3.3f}, {z0 - 18.7f - SLA_FIXED, 3.3f - (3.3f - 1.956f) * SLA_FIXED / SLA_LEN}}, 36, white, SM_PAINT);
+        return z0 - 18.7f - SLA_FIXED;
+    }
     mb.Revolve(0, 0, {{z0 - 18.7f, 3.3f}, {z0 - 27.2f, 1.956f}}, 36, white, SM_PAINT);
     return z0 - 27.2f;
+}
+
+// 宇宙船アダプターの板 1 枚（円錐の 4 分の 1）。原点は下の端（ちょうつがい）の中央、+X が外、-Z が上
+inline void SlaPanel(ShipMeshBuilder& mb) {
+    const Color white = {236, 236, 232, 255};
+    float r0 = 3.3f - (3.3f - 1.956f) * SLA_FIXED / SLA_LEN, len = SLA_LEN - SLA_FIXED;
+    std::vector<std::vector<Vector3>> P;
+    std::vector<std::vector<Color>> C;
+    for (int k = 0; k <= 4; k++) {
+        float u = (float)k / 4, r = r0 + (1.956f - r0) * u;
+        std::vector<Vector3> row;
+        for (int s = 0; s <= 8; s++) {
+            float a = -PI / 4 + PI / 2 * s / 8;
+            row.push_back({cosf(a) * r - r0, sinf(a) * r, -len * u});
+        }
+        P.push_back(row);
+        C.push_back(std::vector<Color>(row.size(), white));
+    }
+    mb.Grid(P, false, C, SM_PAINT);
 }
 
 inline Mesh GenProbeMesh(int model) {
@@ -708,16 +743,30 @@ inline Mesh GenProbeMesh(int model) {
         break;
     case PM_APOLLO_CSM_LM:
     case PM_APOLLO_CSM_LMA: {
-        // ドッキングした形: 司令船の先端に、月着陸船の上の口（天頂の側を +Z に向けて）。月から戻った後は上昇段だけ
+        // ドッキングした形: 司令船の先端に、月着陸船の上の口（天頂の側を +Z に向けて）。月から戻った後は上昇段だけ。
+        // 脚は月を回る軌道で切り離す前に開くが、それまでの形（たたんだ脚）のまま描く
         float tip = ApolloCSM(mb, 3.75f);
-        ApolloLM(mb, tip - 5.4f, 1, true, model == PM_APOLLO_CSM_LM);
+        ApolloLM(mb, tip - 5.4f, 1, true, model == PM_APOLLO_CSM_LM, false);
         break;
     }
+    case PM_SIVB_LM:
+    case PM_SIVB_EMPTY:
+        // 司令船が離れた後の第3段（原点は底）。アダプターの残った部分の上に、脚をたたんだ月着陸船が天頂の側を前へ
+        // 向けて載る。司令船がドッキングした時に、ドッキングした形（PM_APOLLO_CSM_LM を半回転した向き）と重なる
+        SaturnStage(mb, 0, 3, false);
+        if (model == PM_SIVB_LM) ApolloLM(mb, -SIVB_LM_BASE, -1, true, true, false, -1);
+        break;
+    case PM_SLA_PANEL:
+        SlaPanel(mb);
+        break;
+    case PM_LM_STOWED:
+        ApolloLM(mb, 0.0f, -1, true, true, false);
+        break;
     case PM_APOLLO_CM_LM: {
         // 機械船を切り離した後、月着陸船とつながったままの司令船（13 号）
         float tip = ApolloCM(mb, 1.5f);
         mb.Tube({0, 0, tip + 0.05f}, {0, 0, tip - 0.35f}, 0.1f, 8, {120, 122, 128, 255}, SM_METAL);
-        ApolloLM(mb, tip - 0.35f - 5.4f, 1, true, true);
+        ApolloLM(mb, tip - 0.35f - 5.4f, 1, true, true, false);
         break;
     }
     case PM_APOLLO_CM:

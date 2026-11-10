@@ -644,6 +644,7 @@ int main(int argc, char** argv) {
         int spinRef = app.ship.ref;
         double spin0 = app.B[spinRef].spin;
         UpdateBodies(app.B, app.tDays);
+        ApolloTdeShiftBodies(app);
         ApolloDockPort(app);
         CoRotateWithGround(app, spinRef, spin0);
         UpdateMeteors(app, dt, simDt);
