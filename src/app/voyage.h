@@ -754,7 +754,7 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
 static V3 ApolloUpWant(const App& app, V3 dir) {
     int ref;
     V3 v = ApolloVel(app, app.voyProbe, app.tDays, &ref);
-    V3 u = Norm(app.B[app.voyProbe].pos - app.B[ref].pos);
+    V3 u = ApolloUpHint(app, app.voyProbe, app.tDays);
     V3 h = ApolloFixedBody(app.B[app.voyProbe].d, app.tDays) >= 0 ? ApolloGroundDir(app, app.voyProbe, app.tDays, v, u) : v - u * Dot(v, u);
     if (Len(h) < 1e-9) h = Cross(app.B[ref].pole, u);
     if (Len(h) < 1e-9) return u;
@@ -823,13 +823,18 @@ static V3 ApolloAimDir(const App& app, int* bodyOut) {
     V3 v = ApolloVel(app, app.voyProbe, app.tDays, &ref);
     V3 up = Norm(p.pos - app.B[ref].pos);
     V3 dir = look >= 0 ? Norm(app.B[look].pos - p.pos) : Len(v) > 1e-9 ? Norm(v) : up;
-    if (ApolloFixedBody(p.d, app.tDays) >= 0) {
-        // 進む向きを見る時と、見る天体が真上・真下にある時は、地面に対して水平に進む向き（止まっている間も揺れない）
+    double fw = ApolloFixedFade(p.d, app.tDays, 10.0);
+    if (fw > 0) {
+        // 進む向きを見る時と、見る天体が真上・真下にある時は、地面に対して水平に進む向き（止まっている間も揺れない）。
+        // 区間の前後は 10 秒かけて普通の見方と移し合う（軌道に入って真下の地球を見る時に、カメラが一度に振り下ろされないように）
+        if (ApolloFixedBody(p.d, app.tDays) < 0) v = v - ApolloSpinVel(app.B[ref], p.pos - app.B[ref].pos);   // 地面に対する速度
         V3 h = look >= 0 ? dir - up * Dot(dir, up) : V3();
         if (Len(h) < 0.2) h = ApolloGroundDir(app, app.voyProbe, app.tDays, v, up);
         if (Len(h) < 1e-9) h = Cross(app.B[ref].pole, up);
         double tilt = std::max(0.0, std::min(1.0, (Len(v) / 86400 - 0.005) / 0.045));   // 止まっている間（月面・発射台）は水平に
-        dir = Norm(Norm(h) + up * (0.15 * tilt * tilt * (3 - 2 * tilt)));
+        V3 g = Norm(Norm(h) + up * (0.15 * tilt * tilt * (3 - 2 * tilt)));
+        V3 r = g * fw + dir * (1 - fw);
+        dir = Len(r) > 1e-9 ? Norm(r) : g;
     }
     // 離れていく部品（月着陸船を引き出す手順の第3段、切り離したサターンの段）: 機体と部品を横から（日の当たる側から、
     // 少し後ろ寄りに）見る
@@ -872,6 +877,23 @@ static void UpdateVoyageRate(App& app) {
         slow(d.eject);
         for (int k = 0; k < d.keyCount; k++)
             if (d.keys[k].gap == 0) slow(d.keys[k].get);
+        // 2 機を入れる見方から戻す間は、戻るのが画面で 2 秒ほどかかる速さまでにする（時間を速めたまま戻すと、カメラが
+        // 1 フレームで何百 m も寄り、続けて振り向く）。滑らかな移り方の傾きは最大で平均の 1.5 倍なので、画面の 1 秒あたり
+        // 0.75 まで
+        const double h = 1.0 / 86400;
+        double slope = std::fabs(ApolloTdeCamW(app, app.apolloMission, app.tDays + h) - ApolloTdeCamW(app, app.apolloMission, app.tDays - h)) / 2;
+        if (slope > 0) rate = std::min(rate, std::max(1.0, 0.75 / slope));
+    }
+    if (app.apolloMission >= 0 && app.voyProbe >= 0) {
+        // 主エンジンの噴射（場面になっていない回避や軌道修正も）: 機体は噴射の前後 4 分かけて噴射の向きと回り合うので、
+        // 噴射の始まりと終わりの前後は場面と同じように時間をゆっくりにする（速めたままだと 1 フレームで何十度も振り回される）
+        const BodyDef& bd = app.B[app.voyProbe].d;
+        if (bd.apollo >= 0 && bd.apollo < (int)g_apollo.size())
+            for (const ApolloBurn& bn : g_apollo[bd.apollo].burns) {
+                if (bn.engine == AP_ENG_RCS || bn.engine == AP_ENG_LM_RCS) continue;
+                double delta = std::min(std::fabs(app.tDays - bn.t0), std::fabs(app.tDays - bn.t1)) * day;
+                rate = std::min(rate, std::max(1.0, (delta - VOY_HOLD_SEC) / VOY_RAMP_SEC));
+            }
     }
     if (app.apolloMission >= 0) {
         // アポロ: できごとが続くので、できごとの 20 秒前から次のできごとまでそのできごとの知らせを出す（30 分たったら消す）
@@ -1227,16 +1249,14 @@ static void UpdateVoyage(App& app, double dt) {
     app.voyAimBody = aimBody;
     app.voyAimPrevWant = want;
     if (app.apolloMission >= 0) {
-        // 画面の上: 見る向きのまわりの回転（傾き）として、近くの天体から外向きの向きへ寄せる。周回で回る分（1 フレームで
+        // 画面の上: 見る向きのまわりの回転（傾き）として、近くの天体から外向き（離れると黄道の北、ApolloUpHint）へ寄せる。周回で回る分（1 フレームで
         // 10° まで）はそのまま追い、基準天体や追う機体が変わった時の飛びは 0.5 秒ほどで詰める。天体を真下や真上に見る間は
         // 外向きの向きが画面の上で定まらないので、近づくにつれて寄せるのを弱め、今の傾きのままにする
         V3 d = app.voyAim;
         auto perp = [&](V3 v) { V3 p = v - d * Dot(v, d); return Len(p) > 1e-9 ? Norm(p) : V3(); };
         auto roll = [&](V3 a, V3 b) { return std::atan2(Dot(Cross(a, b), d), Dot(a, b)); };   // a から b へ、d のまわりの角度
         auto rot = [&](V3 v, double a) { return Norm(v * std::cos(a) + Cross(d, v) * std::sin(a)); };
-        int ref;
-        ApolloVel(app, app.voyProbe, app.tDays, &ref);
-        V3 u = Norm(app.B[app.voyProbe].pos - app.B[ref].pos);
+        V3 u = ApolloUpHint(app, app.voyProbe, app.tDays);
         double w = ApolloSmooth(Len(Cross(d, u)) / 0.4);
         V3 up = perp(u), prev = perp(app.voyUpPrevWant), cur = perp(app.voyUp);
         if (Len(cur) == 0) cur = perp(ApolloUpWant(app, d));

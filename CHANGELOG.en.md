@@ -4,6 +4,16 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.7 (2026-11-11)
+
+- Apollo program: fixed the camera and spacecraft motion between the lunar module extraction and arrival at the Moon (Apollo 8 and 10-17)
+  - After extraction, when the view returned from the side view of both craft to following the spacecraft, the spacecraft turned 34-50° in one frame (the orientation blend switched to turning the other way round partway). It now turns smoothly (at most 3.3° per frame)
+  - The picture rolled 80-180° during the coast (the top of the screen was set apart from the spacecraft's orientation, pointing away from the reference body, Earth or the Moon). Like the spacecraft's orientation, it now moves gradually from pointing away from the nearby body to ecliptic north between 20,000 and 40,000 km from it
+  - The camera jumped 100-270 m in one frame on the return. The view now returns as the two craft separate, and time slows enough that the return does not jump between frames (now at most about 8 m per frame)
+  - Time now slows to real time around the start and end of each burn of the followed craft. Before, time stayed fast and the spacecraft spun abruptly while turning before a burn
+- Apollo program: the camera direction no longer changes 98° at once on reaching Earth orbit (where the launch record ends); it now turns over 10 seconds on either side. The 8.5° jump at the start of the powered descent to the lunar surface is smoothed the same way
+- Apollo program: fixed the camera starting abruptly at the beginning of some scenes (Apollo 12 scene 6, Apollo 14 scene 5, Apollo 16 scene 5) and the spacecraft orientation jumping in one frame (54° in Apollo 10 scene 18, 35° in Apollo 11 scene 8)
+
 ## 2.37.6 (2026-11-10)
 
 - Apollo program: the scenes now show the first stage, the interstage ring and the second stage separating. Before, the spacecraft's shape just changed and the spent stage vanished on the spot. The spent stages fly from the trajectory's position and velocity at separation under Earth's gravity, slowed by their retro rockets, and fall away behind (first stage: 8 × 88,600 lbf for 0.666 s, 4 on Apollo 15; second stage: 4 × 34,810 lbf for 1.52 s; masses from the Apollo 11 flight evaluation report). The interstage ring is cast off 30 seconds after first stage separation (each flight evaluation report). Around each separation the camera shows both from the side and moves in on the vehicle as the stage recedes. Air drag and tumbling are not modeled. The launch escape tower still vanishes when jettisoned: no record was found of how its thrust was offset, and flown straight ahead it would hit the second stage

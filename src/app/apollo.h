@@ -877,6 +877,19 @@ static double ApolloSmooth(double x) {
     return x * x * (3 - 2 * x);
 }
 
+// 天体固定の区間での見方にする割合: 区間の中は 1、区間の前後 sec 秒で 0 から 1 へ（地球を回る軌道に入る時や月面への
+// 降下を始める時に、見る向きが一度に変わらないように）
+static double ApolloFixedFade(const BodyDef& d, double t, double sec) {
+    if (d.apollo < 0 || d.apollo >= (int)g_apollo.size()) return 0;
+    double best = 0;
+    for (const ApolloSeg& s : g_apollo[d.apollo].segs) {
+        if (!s.fixed) continue;
+        double out = std::max(s.t.front() - t, t - s.t.back()) * 86400;   // 区間の外へ何秒か（中は負）
+        best = std::max(best, 1 - ApolloSmooth(out / sec));
+    }
+    return best;
+}
+
 // 天体固定の区間で、地面に対して水平に進む向き（描画座標の単位ベクトル。v は ApolloVel、up は天体から外向き）。
 // 発射台・月面・パラシュートで降りる間は水平の速さがほぼ 0 で、速度の向きは位置の差の誤差で毎フレーム揺れ、記録の
 // 遅い点の向きもばらつくので、水平に秒速 30 m より遅い間は、区間の記録の水平の速度を時刻の近いものほど重く（1 分で
@@ -908,7 +921,20 @@ static V3 ApolloGroundDir(const App& app, int i, double t, V3 v, V3 up) {
     return Len(r) > 1e-9 ? Norm(r) : Norm(vh);
 }
 
-// 噴射していない時の機体の向き（時刻 t）: 打ち上げは上へ（速さが出ると進む向きへ。大気の中では空気に対する向き、高く上がる
+// 機体とカメラの上にする向き（時刻 t）: 天体固定の区間はその天体から外向き。慣性の区間は近い天体（月からの距離 6.5 万 km
+// より近ければ月、ほかは地球）から外向きを、その天体から 2〜4 万 km の間で黄道の北へ移す（月へ向かいながら遠ざかる間に、
+// 天体から外向きの向きが見る向きのまわりを大きく回り、画面が傾いていかないように）
+static V3 ApolloUpHint(const App& app, int i, double t) {
+    V3 p = PosAt(app.B, i, t);
+    int fixedBody = ApolloFixedBody(app.B[i].d, t);
+    if (fixedBody >= 0) return Norm(p - PosAt(app.B, fixedBody, t));
+    V3 rm = p - PosAt(app.B, B_MOON, t), re = p - PosAt(app.B, B_EARTH, t);
+    V3 near = ApolloSmooth((80000 - Len(rm)) / 30000) > 0.5 ? rm : re;
+    double a = ApolloSmooth((40000 - Len(near)) / 20000);
+    return Norm(Norm(near) * a + Y_UP * (1 - a));
+}
+
+// 噴射していない時の機体の向き（時刻 t）:打ち上げは上へ（速さが出ると進む向きへ。大気の中では空気に対する向き、高く上がる
 // につれて慣性の速度の向きへ）、月着陸船の降下は噴射を進む向きの逆へ（遅くなるにつれて真上へ）、月面と月を回る間は真上、
 // 司令船は機械船を切り離してから 3 分かけて耐熱シールドを前へ、パラシュートでは真上、そのほかは進む向き。
 // 機体の上（+Y）は、地球や月を回る間は天体から外向き、離れて飛ぶ間は黄道の北（月へ行き来する途中で基準天体が地球と
@@ -924,15 +950,12 @@ static Quaternion ApolloCoastPose(const App& app, int i, int model, double t) {
     V3 hint = up;
     if (fixedBody < 0) {
         // 慣性の区間: 地球に対する速度と月に対する速度を、月からの距離 5〜8 万 km の間で移す（基準天体が替わる所で
-        // 進む向きが飛ばないように）。上は、近い天体から 2〜4 万 km の間で外向きから黄道の北へ移す
+        // 進む向きが飛ばないように）。上は ApolloUpHint
         const double h = 0.5 / 86400;
         auto relVel = [&](int k) { return (PosAt(app.B, i, t + h) - PosAt(app.B, k, t + h) - PosAt(app.B, i, t - h) + PosAt(app.B, k, t - h)) * (1.0 / (2 * h)); };
-        V3 rm = PosAt(app.B, i, t) - PosAt(app.B, B_MOON, t), re = PosAt(app.B, i, t) - PosAt(app.B, B_EARTH, t);
-        double wm = ApolloSmooth((80000 - Len(rm)) / 30000);
+        double wm = ApolloSmooth((80000 - Len(PosAt(app.B, i, t) - PosAt(app.B, B_MOON, t))) / 30000);
         v = relVel(B_EARTH) * (1 - wm) + relVel(B_MOON) * wm;
-        V3 near = wm > 0.5 ? rm : re;
-        double a = ApolloSmooth((40000 - Len(near)) / 20000);
-        hint = Norm(Norm(near) * a + Y_UP * (1 - a));
+        hint = ApolloUpHint(app, i, t);
     }
     double speed = Len(v) / 86400;   // km/s
     V3 vdir = speed > 1e-9 ? Norm(v) : up;
@@ -1080,9 +1103,19 @@ static Quaternion ApolloTdePose(const App& app, int i, int model, double t, Quat
     Quaternion qs = ApolloTdeStackPose(app, i, m);
     auto pitched = [&](double a) { return QuaternionMultiply(qs, QuaternionFromAxisAngle({1, 0, 0}, (float)a)); };
     if (s < se) return pitched(ApolloTdeTurn(*m.tde, s));
-    // 引き出した後（8 号は第3段を描くのをやめた後）: 起こした向きを戻しながら（半回転を決まった軸のまわりに）、普段の向きへ移す
+    // 引き出した後（8 号は第3段を描くのをやめた後）: 起こした向きを戻しながら（半回転を決まった軸のまわりに）、普段の向きへ移す。
+    // QuaternionSlerp は 2 つの内積が負になると片方の符号を返して近い側を回るので、戻している途中で内積の符号が変わると
+    // 1 フレームで向きが跳ぶ。符号は戻し始めの普段の向きに合わせて決め、補間の間は返さない
     double w = ApolloSmooth((s - se - TDE_UNDO_DELAY) / TDE_UNDO_SEC);
-    return QuaternionSlerp(pitched(PI * (1 - w)), q, (float)w);
+    Quaternion a = pitched(PI * (1 - w));
+    Quaternion q0 = ApolloCoastPose(app, i, model, ApolloT(m, m.tde->sep) + (se + TDE_UNDO_DELAY) / 86400);
+    auto dot = [](Quaternion x, Quaternion y) { return (double)x.x * y.x + (double)x.y * y.y + (double)x.z * y.z + (double)x.w * y.w; };
+    if (dot(q, q0) < 0) q = {-q.x, -q.y, -q.z, -q.w};                  // q を戻し始めの向きと同じ側に
+    if (dot(pitched(PI), q0) < 0) a = {-a.x, -a.y, -a.z, -a.w};         // 起こした向きも同じ側に
+    double c = std::max(-1.0, std::min(1.0, dot(a, q))), th = std::acos(c);
+    if (th < 1e-6) return q;
+    double ka = std::sin((1 - w) * th) / std::sin(th), kb = std::sin(w * th) / std::sin(th);
+    return QuaternionNormalize({(float)(a.x * ka + q.x * kb), (float)(a.y * ka + q.y * kb), (float)(a.z * ka + q.z * kb), (float)(a.w * ka + q.w * kb)});
 }
 
 // 機体の向き（描画の回転）。主エンジンの噴射の間はエンジンを推力の反対へ向ける（減速の噴射では先端が後ろを向く）。
@@ -1223,6 +1256,35 @@ struct ApolloTdeView {
     double panelS;      // 離れてからの秒（板を描く間）。板を描かない時は負
 };
 static const double TDE_PANEL_SEC = 120;   // 捨てた板を描く間（秒速 2.5 m で 300 m 離れる）
+static const double TDE_VIEW_END = 60;     // 2 機を入れる見方は、手順の終わり（第3段が回避の向きへ回り始める）の 1 分前から戻す
+
+// 離れてからの秒 s の、司令船に対する第3段の原点のずれ（第3段の向き fwd の、機体の座標 km）
+static V3 ApolloTdeOffset(const App& app, int mission, V3 fwd, double t) {
+    const ApolloMission& m = APOLLO_MISSIONS[mission];
+    double s = (t - ApolloT(m, m.tde->sep)) * 86400;
+    V3 disp;
+    for (const ApolloTdeKick& k : ApolloTdeKicks(app, mission)) {
+        if (t <= k.t0) continue;
+        double dur = k.t1 - k.t0;
+        disp = disp + k.dv * (t < k.t1 && dur > 0 ? (t - k.t0) * (t - k.t0) / (2 * dur) : (t - k.t1) + dur / 2);
+    }
+    return fwd * ((TDE_CSM_Z0 - ApolloTdeDist(m, s)) * 0.001) - disp;
+}
+
+// 時刻 t の、カメラを 2 機が入る見方へ移す割合（離れる前の 20 秒で 0 から 1 へ。2 機の間が 150〜400 m の間と、
+// 手順の終わりの 1 分前から 0 へ戻す）
+static double ApolloTdeCamW(const App& app, int mission, double t) {
+    const ApolloMission& m = APOLLO_MISSIONS[mission];
+    if (!m.tde) return 0;
+    int c = ApolloBody(app, mission, 0);
+    if (c < 0) return 0;
+    double ts = ApolloT(m, m.tde->sep), tEnd = ApolloT(m, m.tde->end), lead = 20.0 / 86400;
+    if (t < ts - lead || t > tEnd) return 0;
+    if (t < ts) return ApolloSmooth((t - (ts - lead)) / lead);
+    V3 fwd = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloTdeStackPose(app, c, m)));
+    double gap = Len(ApolloTdeOffset(app, mission, fwd, t) - fwd * 0.012);
+    return (1 - ApolloSmooth((gap - 0.15) / 0.25)) * (1 - ApolloSmooth((t - (tEnd - TDE_VIEW_END / 86400)) * 86400 / TDE_VIEW_END));
+}
 
 // 時刻 t の手順の様子（ApolloTdeShiftBodies の後の司令船の位置から）。手順の外なら false
 static bool ApolloTdeAt(const App& app, int mission, ApolloTdeView* v) {
@@ -1236,32 +1298,24 @@ static bool ApolloTdeAt(const App& app, int mission, ApolloTdeView* v) {
     v->q = ApolloTdeStackPose(app, c, m);
     V3 fwd = FromF(Vector3RotateByQuaternion({0, 0, -1}, v->q));
     v->panelS = t >= ts && t < ts + TDE_PANEL_SEC / 86400 ? (t - ts) * 86400 : -1;
+    v->camW = ApolloTdeCamW(app, mission, t);
     if (t < ts) {
         // 離れる前の 20 秒: サターン（第3段と司令船）の真ん中を、2 機を入れる見方で見始める
         v->model = -1;
         v->sivb = app.B[c].pos;
-        v->camW = ApolloSmooth((t - (ts - lead)) / lead);
         v->camTarget = v->sivb + fwd * 0.0215;
         v->camSize = 0.044;
         return true;
     }
     double s = (t - ts) * 86400;
-    double zc = TDE_CSM_Z0 - ApolloTdeDist(m, s);
-    V3 disp;
-    for (const ApolloTdeKick& k : ApolloTdeKicks(app, mission)) {
-        if (t <= k.t0) continue;
-        double dur = k.t1 - k.t0;
-        disp = disp + k.dv * (t < k.t1 && dur > 0 ? (t - k.t0) * (t - k.t0) / (2 * dur) : (t - k.t1) + dur / 2);
-    }
-    v->sivb = app.B[c].pos + fwd * (zc * 0.001) - disp;
+    v->sivb = app.B[c].pos + ApolloTdeOffset(app, mission, fwd, t);
     v->model = s < ApolloTdeSec(m, m.tde->dock) && m.tde->dock ? PM_SIVB_LM : PM_SIVB_EMPTY;
     // 2 機の間（第3段は底から 12 m の所）を、離れた距離に合わせた大きさで見る。引き出した後（8 号は離れる噴射の後）、
-    // 150〜400 m 離れる間に司令船だけの見方へ戻す
+    // 150〜400 m 離れる間と手順の終わりの前に、司令船だけの見方へ戻す（ApolloTdeCamW）
     V3 mid = v->sivb - fwd * 0.012;
     double gap = Len(mid - app.B[c].pos);
     v->camTarget = (mid + app.B[c].pos) * 0.5;
     v->camSize = gap + 0.025;
-    v->camW = 1 - ApolloSmooth((gap - 0.15) / 0.25);
     return true;
 }
 
