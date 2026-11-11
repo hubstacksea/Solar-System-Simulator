@@ -1010,9 +1010,9 @@ static int ApolloNozzles(int model, int engine, ApolloNozzle* out, int* kind, fl
     auto quads = [&](float rad, float z) {
         for (int k = 0; k < 4; k++) out[n++] = {cosf(PI / 4 + PI / 2 * k) * rad, sinf(PI / 4 + PI / 2 * k) * rad, z, 0.08f};
     };
-    bool csm = model == PM_APOLLO_CSM || model == PM_APOLLO_CSM_LM || model == PM_APOLLO_CSM_LMA;
+    bool csm = model == PM_APOLLO_CSM || model == PM_APOLLO_CSM_LM || model == PM_APOLLO_CSM_LMG || model == PM_APOLLO_CSM_LMA;
     // ドッキングした形の月着陸船の接地点の高さ（ship_model.h の組み立てと同じ）
-    float lmBase = model == PM_APOLLO_CSM_LM ? -12.75f : model == PM_APOLLO_CM_LM ? -7.5f : 0;
+    float lmBase = model == PM_APOLLO_CSM_LM || model == PM_APOLLO_CSM_LMG ? -12.75f : model == PM_APOLLO_CM_LM ? -7.5f : 0;
     if (engine == AP_ENG_RCS || engine == AP_ENG_LM_RCS) {
         *kind = 3;
         if (engine == AP_ENG_LM_RCS && lmBase != 0) quads(2.0f, lmBase + 4.2f);

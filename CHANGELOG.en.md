@@ -4,6 +4,15 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.8 (2026-11-11)
+
+- Apollo program: the scenes now show the lunar module undocking in lunar orbit and the ascent stage docking (Apollo 10, 11, 12, 14, 15, 16 and 17). Before, only the followed craft switched: the lunar module left the command module's nose abruptly, and the ascent stage ran into the command module at about 7 m/s without braking (on Apollo 11 it was 14.4 km away at 127:41 against the recorded 2.8 km). Both craft are now seen from the side around undocking and docking, and the followed craft switches during that view. Time slows to real time at undocking and contact
+  - Undocking: the lunar module with its legs deployed backs away from the docking port, turns and moves off. The gear deployment and undocking times come from each mission report and the Apollo Flight Journal. The turn times are recorded for Apollo 10, 11, 12 and 15, and set 60 seconds after undocking for Apollo 14, 16 and 17 (estimate)
+  - Docking: the ascent stage closes in, stationkeeps, lines up and makes contact. Apollo 10, 11, 12, 15 and 16 pass through the recorded distances at their times (for example, 2.78 km at 127:41:21 and 12.2 m at 127:52:05 on Apollo 11). No approach record was found for Apollo 14 and 17, which use the procedure's values (stationkeeping at 12.2 m, contact at 3 cm/s). The start of stationkeeping and the line-up turn for Apollo 10 and 12 are estimated from the air-to-ground transcripts, the Apollo 16 stationkeeping distance is assumed to be 40 ft, and the Apollo 15 gear deployment time is the Flight Journal's planned time. On Apollo 11 the crew's range calls disagree, so contact and docking are both placed at the recorded docking time (128:03:00)
+  - The inspection turns after undocking are not drawn. After undocking, Apollo 14-17 separate as the trajectory records have them (1.5-2.9 m/s)
+- Apollo program: after the legs are deployed in lunar orbit, the docked shape now shows the lunar module with its legs deployed
+- Apollo program: in Apollo scenes, time no longer speeds up by more than 4 times per second (in scene 19 of Apollo 15 and 16 it jumped from 53× to 812× when stationkeeping began)
+
 ## 2.37.7 (2026-11-11)
 
 - Apollo program: fixed the camera and spacecraft motion between the lunar module extraction and arrival at the Moon (Apollo 8 and 10-17)

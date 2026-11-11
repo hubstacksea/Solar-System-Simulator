@@ -716,7 +716,7 @@ static void PlaceVoyageCamera(App& app, V3 dir) {
             if (model >= 0) mid = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, app.voyProbe, model))) * app.voyCamMid;
         }
         ApolloPieces tv;   // 離れていく部品（第3段・切り離した段）: 機体と部品の間を、両方が入る距離から見る
-        if (ApolloPiecesAt(app, app.apolloMission, &tv) && tv.camW > 0 && app.voyProbe == ApolloBody(app, app.apolloMission, 0)) {
+        if (ApolloPiecesAt(app, app.apolloMission, &tv) && tv.camW > 0 && (tv.pair || app.voyProbe == ApolloBody(app, app.apolloMission, 0))) {
             mid = mid * (1 - tv.camW) + (tv.camTarget - b.pos) * tv.camW;
             k = k * (1 - tv.camW) + tv.camSize * 1.3 / 0.034 * tv.camW;
         }
@@ -839,7 +839,7 @@ static V3 ApolloAimDir(const App& app, int* bodyOut) {
     // 離れていく部品（月着陸船を引き出す手順の第3段、切り離したサターンの段）: 機体と部品を横から（日の当たる側から、
     // 少し後ろ寄りに）見る
     ApolloPieces tv;
-    if (ApolloPiecesAt(app, app.apolloMission, &tv) && tv.camW > 0 && app.voyProbe == ApolloBody(app, app.apolloMission, 0)) {
+    if (ApolloPiecesAt(app, app.apolloMission, &tv) && tv.camW > 0 && (tv.pair || app.voyProbe == ApolloBody(app, app.apolloMission, 0))) {
         V3 a = FromF(Vector3RotateByQuaternion({0, 0, -1}, tv.axis)), sun = Norm(app.B[B_SUN].pos - tv.camTarget);
         V3 side = sun - a * Dot(sun, a);
         if (Len(side) < 0.2) side = Cross(a, Y_UP);
@@ -851,8 +851,8 @@ static V3 ApolloAimDir(const App& app, int* bodyOut) {
 }
 
 static void PrepareVoyageLocal(App& app, int k);
-// 時刻 t に応じた時間の速さと、出す知らせを決める
-static void UpdateVoyageRate(App& app) {
+// 時刻 t に応じた時間の速さと、出す知らせを決める（dt: 前のフレームからの画面の秒。頭出しの時は 0）
+static void UpdateVoyageRate(App& app, double dt = 0) {
     const double day = 86400.0;
     double rate = app.voyCruise;
     int card = -1;
@@ -884,6 +884,28 @@ static void UpdateVoyageRate(App& app) {
         double slope = std::fabs(ApolloTdeCamW(app, app.apolloMission, app.tDays + h) - ApolloTdeCamW(app, app.apolloMission, app.tDays - h)) / 2;
         if (slope > 0) rate = std::min(rate, std::max(1.0, 0.75 / slope));
     }
+    if (app.apolloMission >= 0 && APOLLO_MISSIONS[app.apolloMission].lunar) {
+        // 月を回る軌道での切り離しとドッキング: 接触（固くつながる前）も場面と同じように時間をゆっくりにし、2 機を入れる見方へ
+        // 移る間と戻す間は、月着陸船を引き出す手順と同じく、画面の 1 秒あたり 0.75 までの移り方にする
+        const ApolloMission& m = APOLLO_MISSIONS[app.apolloMission];
+        if (m.lunar->contact)
+            rate = std::min(rate, std::max(1.0, (std::fabs(app.tDays - ApolloT(m, m.lunar->contact)) * day - VOY_HOLD_SEC) / VOY_RAMP_SEC));
+        // 2 機を入れる見方の間は、入れる大きさ（2 機の間）が画面の 1 秒あたり半分より速く変わらないようにする
+        const double h = 1.0 / 86400;
+        ApolloPieces a, b;
+        double wa = ApolloRdvView(app, app.apolloMission, app.tDays + h, &a), wb = ApolloRdvView(app, app.apolloMission, app.tDays - h, &b);
+        double slope = std::fabs(wa - wb) / 2;
+        if (slope > 0) rate = std::min(rate, std::max(1.0, 0.75 / slope));
+        double grow = wa > 0 && wb > 0 ? std::fabs(a.camSize - b.camSize) / 2 : 0;
+        if (grow > 0) rate = std::min(rate, std::max(1.0, 0.5 * std::min(a.camSize, b.camSize) / grow));
+        // ドッキングの前に 2 機が 400 m まで近づく（見方を移し始める）前から、時間をゆっくりにしておく（速めたまま入ると、
+        // 1 フレームの間に見方が大きく移る）。そこまでの時間 Δ 秒から、できごとの前と同じように Δ / 1.5 + 20 倍まで
+        double ga, gb;
+        ApolloRdvView(app, app.apolloMission, app.tDays + h, nullptr, &ga);
+        ApolloRdvView(app, app.apolloMission, app.tDays - h, nullptr, &gb);
+        double closing = (gb - ga) / 2;   // km/s
+        if (ga > 0.4 && gb > 0 && closing > 0) rate = std::min(rate, std::max(1.0, (ga - 0.4) / closing / VOY_RAMP_SEC + 20));
+    }
     if (app.apolloMission >= 0 && app.voyProbe >= 0) {
         // 主エンジンの噴射（場面になっていない回避や軌道修正も）: 機体は噴射の前後 4 分かけて噴射の向きと回り合うので、
         // 噴射の始まりと終わりの前後は場面と同じように時間をゆっくりにする（速めたままだと 1 フレームで何十度も振り回される）
@@ -903,6 +925,9 @@ static void UpdateVoyageRate(App& app) {
             if (delta >= -20) card = delta < 1800 ? (int)k : -1;
         }
     }
+    // アポロ: 時間を速める時は画面の 1 秒あたり 4 倍まで（できごとの後に速める普段の速め方は 1 秒あたり 2 倍ほど。2 機を入れる
+    // 見方の制限が外れた時などに、1 フレームで何十倍にも跳ばないように）
+    if (app.apolloMission >= 0 && dt > 0) rate = std::min(rate, std::max(1.0, app.voyRate) * std::exp(dt * std::log(4.0)));
     if (app.voyDone) rate = 1;
     // 拡大図の軌跡は、場面に近づいた時に一度だけ求める（巡航の速さで 1 日以内）
     for (size_t k = 0; k < app.voySteps.size(); k++)
@@ -1211,7 +1236,7 @@ static void UpdateVoyage(App& app, double dt) {
             }
         }
     }
-    UpdateVoyageRate(app);
+    UpdateVoyageRate(app, dt);
     int aimBody;
     V3 want = VoyageAimDir(app, &aimBody);
     // カメラの向き: 同じ天体を追っている間は、その天体の見かけの動きの分だけ回す（毎秒 20° まで。通過の直後に

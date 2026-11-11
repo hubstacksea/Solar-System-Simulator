@@ -239,7 +239,9 @@ enum ProbeModel {
     PM_SIVB_LM, PM_SIVB_EMPTY, PM_SLA_PANEL, PM_LM_STOWED,
     // 第1段を切り離した後、段間リングを捨てる前のサターン（第2段の下に段間リング）と、切り離した第1段・段間リング・第2段
     // （上に第3段との間の円錐の段間が付いたまま）
-    PM_SATURN_SII_RING, PM_SIC_SPENT, PM_SII_RING_SPENT, PM_SII_SPENT, PM_COUNT
+    PM_SATURN_SII_RING, PM_SIC_SPENT, PM_SII_RING_SPENT, PM_SII_SPENT,
+    // 月着陸船の脚を開いた後のドッキングした形（脚は月を回る軌道で、切り離しの前に開く）
+    PM_APOLLO_CSM_LMG, PM_COUNT
 };
 
 // アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
@@ -276,8 +278,9 @@ inline float ApolloCM(ShipMeshBuilder& mb, float z0) {
 // 月着陸船。上昇段（不規則な形の乗員室と燃料タンク）と下降段（金色の八角形の箱と 4 本の脚）。
 // 天頂の向きは dir（-1: -Z、+1: +Z）、zb は脚の接地点の高さ（ドッキングした形では上昇段の上の口が先端になる）。
 // gear: 脚を開いた形（false は打ち上げから月を回る軌道で開くまでの、たたんだ形）。ys: -1 で前後（y）を逆に
-// （第3段の中の月着陸船を、ドッキングした形を半回転した向きにする）
-inline void ApolloLM(ShipMeshBuilder& mb, float zb, float dir, bool ascent, bool descent, bool gear = true, float ys = 1) {
+// （第3段の中の月着陸船を、ドッキングした形を半回転した向きにする）。xs: -1 で左右（x）を逆に（天頂の向きを逆にした形を、
+// 鏡に映した形でなく回した形にする）
+inline void ApolloLM(ShipMeshBuilder& mb, float zb, float dir, bool ascent, bool descent, bool gear = true, float ys = 1, float xs = 1) {
     const Color gold = {196, 156, 64, 255}, dark = {52, 54, 58, 255}, grey = {150, 150, 156, 255}, black = {30, 30, 32, 255};
     auto Z = [&](float h) { return zb + dir * h; };   // 接地点からの高さ h → z（dir が -1 なら天頂は -Z）
     if (descent) {
@@ -306,8 +309,8 @@ inline void ApolloLM(ShipMeshBuilder& mb, float zb, float dir, bool ascent, bool
             float a = PI / 4 + PI / 2 * i;
             mb.Box({cosf(a) * 2.0f, sinf(a) * 2.0f, Z(4.2f)}, {0.15f, 0.15f, 0.15f}, grey, SM_METAL);
         }
-        mb.Tube({0.9f, 1.2f * ys, Z(4.6f)}, {1.3f, 1.6f * ys, Z(5.6f)}, 0.03f, 6, grey, SM_METAL);   // ランデブー用レーダーとアンテナ
-        mb.Dish({1.3f, 1.6f * ys, Z(5.6f)}, {0.3f, 0.3f * ys, -dir}, 0.45f, 0.15f, {230, 230, 230, 255}, SM_PAINT);
+        mb.Tube({0.9f * xs, 1.2f * ys, Z(4.6f)}, {1.3f * xs, 1.6f * ys, Z(5.6f)}, 0.03f, 6, grey, SM_METAL);   // ランデブー用レーダーとアンテナ
+        mb.Dish({1.3f * xs, 1.6f * ys, Z(5.6f)}, {0.3f * xs, 0.3f * ys, -dir}, 0.45f, 0.15f, {230, 230, 230, 255}, SM_PAINT);
     }
 }
 // サターン V の段（z0 が底、-Z に積む）。S-IC（直径 10.1 m・長さ 42 m）、S-II（24.9 m）、S-IVB（直径 6.6 m・17.8 m）、
@@ -757,11 +760,13 @@ inline Mesh GenProbeMesh(int model) {
         ApolloLM(mb, 0.0f, -1, false, true);   // 月面に残る下降段: 原点が接地点
         break;
     case PM_APOLLO_CSM_LM:
+    case PM_APOLLO_CSM_LMG:
     case PM_APOLLO_CSM_LMA: {
-        // ドッキングした形: 司令船の先端に、月着陸船の上の口（天頂の側を +Z に向けて）。月から戻った後は上昇段だけ。
-        // 脚は月を回る軌道で切り離す前に開くが、それまでの形（たたんだ脚）のまま描く
+        // ドッキングした形: 司令船の先端に、月着陸船の上の口（天頂の側を +Z に向けて、司令船の上下の軸のまわりに半回転した
+        // 向き。離れた月着陸船を司令船の向きから半回転して描くと重なる）。月から戻った後は上昇段だけ。脚は月を回る軌道で
+        // 切り離しの前に開く（PM_APOLLO_CSM_LMG）
         float tip = ApolloCSM(mb, 3.75f);
-        ApolloLM(mb, tip - 5.4f, 1, true, model == PM_APOLLO_CSM_LM, false);
+        ApolloLM(mb, tip - 5.4f, 1, true, model != PM_APOLLO_CSM_LMA, model == PM_APOLLO_CSM_LMG, 1, -1);
         break;
     }
     case PM_SIVB_LM:
@@ -769,7 +774,7 @@ inline Mesh GenProbeMesh(int model) {
         // 司令船が離れた後の第3段（原点は底）。アダプターの残った部分の上に、脚をたたんだ月着陸船が天頂の側を前へ
         // 向けて載る。司令船がドッキングした時に、ドッキングした形（PM_APOLLO_CSM_LM を半回転した向き）と重なる
         SaturnStage(mb, 0, 3, false);
-        if (model == PM_SIVB_LM) ApolloLM(mb, -SIVB_LM_BASE, -1, true, true, false, -1);
+        if (model == PM_SIVB_LM) ApolloLM(mb, -SIVB_LM_BASE, -1, true, true, false, -1, -1);
         break;
     case PM_SLA_PANEL:
         SlaPanel(mb);
