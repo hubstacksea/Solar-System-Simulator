@@ -1491,7 +1491,8 @@ def apollo12(work):
     v2 = F.shoot(r, v, M, g, dock_t, rd)
     report("   TPI: %.2f m/s" % (1000 * np.linalg.norm(v2 - v)))
     coast(F, lm, M, g, r, v2, dock_t, rd)
-    # 上昇段の切り離し（148:04:30.9）→ 月面へ落とす噴射 → 月面に衝突（149:55:16.4、南緯 3.94°・西経 21.20°）
+    # 上昇段の切り離し（147:59:31.6）の後、司令船の分離の噴射（148:04:30.9）までは同じ道 → 月面へ落とす噴射 → 月面に衝突
+    # （149:55:16.4、南緯 3.94°・西経 21.20°）
     jet = hms("148:04:30.9")
     follow(lm, csm, dock_t, jet)
     ref, (tj, rj, vj) = state_at_time(F, csm, jet)

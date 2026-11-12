@@ -910,7 +910,7 @@ static void UpdateVoyageRate(App& app, double dt = 0) {
         if (ga > 0.4 && gb > 0 && closing > 0) rate = std::min(rate, std::max(1.0, (ga - 0.4) / closing / VOY_RAMP_SEC + 20));
     }
     if (app.apolloMission >= 0) {
-        // 機械船の切り離し（13 号は月着陸船の切り離しも）: 2 機を入れる見方へ移る間と戻す間は画面の 1 秒あたり 0.25 まで（横から
+        // 機械船の切り離し（13 号は月着陸船の切り離しも）と上昇段の切り離し: 2 機を入れる見方へ移る間と戻す間は画面の 1 秒あたり 0.25 まで（横から
         // 見る向きと普段の向きの違いが大きく、0.75 では 1 フレームで 10° 回る）、入れる大きさは 1 秒あたり半分まで。切り離しの向きへ回る間（切り離しの 10 分前から 4 分）は、
         // 噴射の前に向きを変える時と同じように、回り始めと回り終わりの前後で時間をゆっくりにする
         const ApolloMission& m = APOLLO_MISSIONS[app.apolloMission];
@@ -921,12 +921,18 @@ static void UpdateVoyageRate(App& app, double dt = 0) {
         if (slope > 0) rate = std::min(rate, std::max(1.0, 0.25 / slope));
         double grow = wa > 0 && wb > 0 ? std::fabs(a.camSize - b.camSize) / 2 : 0;
         if (grow > 0) rate = std::min(rate, std::max(1.0, 0.5 * std::min(a.camSize, b.camSize) / grow));
+        auto slow = [&](double t) { rate = std::min(rate, std::max(1.0, (std::fabs(app.tDays - t) * day - VOY_HOLD_SEC) / VOY_RAMP_SEC)); };
         bool stack = true;
         double ts = ApolloSmSepT(m, &stack);
         if (!stack) {
-            double t0 = ts - SMSEP_TURN0 / day, t1 = t0 + SMSEP_TURN / day;
-            double delta = std::min(std::fabs(app.tDays - t0), std::fabs(app.tDays - t1)) * day;
-            rate = std::min(rate, std::max(1.0, (delta - VOY_HOLD_SEC) / VOY_RAMP_SEC));
+            slow(ts - SMSEP_TURN0 / day);
+            slow(ts - (SMSEP_TURN0 - SMSEP_TURN) / day);
+        }
+        // 月を回る軌道での上昇段の切り離し（場面になっていない号が多い）: 切り離しの時と、司令船が回り始める時と回り終わる時
+        double ta = ApolloAscJettT(m);
+        if (std::isfinite(ta)) {
+            slow(ta);
+            for (double s : {-AJ_TURN0, -AJ_TURN0 + AJ_TURN, AJ_HOLD, AJ_HOLD + AJ_BACK}) slow(ta + s / day);
         }
     }
     if (app.apolloMission >= 0 && app.voyProbe >= 0) {

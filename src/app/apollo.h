@@ -57,6 +57,9 @@ struct ApolloLunarDock {
     const char* turn;       // 上昇段がドッキングの向きへ回り始める時刻（nullptr は最後に近づき始める 150 秒前）
     const ApolloTdeKey* keys = nullptr;   // ドッキングの前の 2 機の間（ドッキングした位置からの距離 m。無ければ手順書の
     int keyCount = 0;                     // 40 ft で 5 分待ち、0.1 ft/s で近づいて接触）
+    // 上昇段を切り離した時に 2 機が離れる速さ m/s（11 号は管制センターの「約 2 ft/s」。記録の無い号はその値。10 号はトンネルの
+    // 空気で月着陸船の窓口が開き、5 ft/s で飛び出した。10 号の Mission Report）
+    double jettV = 0.61;
 };
 struct ApolloMission {
     const char* name;       // assets/apollo.bin の飛行の名前
@@ -373,9 +376,9 @@ static const ApolloEvent APOLLO12_EVENTS[] = {
 static const ApolloShape APOLLO12_SHAPES[] = {
     {"-3:00:00", 0, PM_SATURN_V}, {"0:02:42.4", 0, PM_SATURN_SII_RING}, {"0:03:12.40", 0, PM_SATURN_SII_LES}, {"0:03:17.9", 0, PM_SATURN_SII},
     {"0:09:13.20", 0, PM_SATURN_SIVB}, {"3:18:04.9", 0, PM_APOLLO_CSM}, {"3:26:53.3", 0, PM_APOLLO_CSM_LM},
-    {"104:47:54", 0, PM_APOLLO_CSM_LMG}, {"107:54:02.3", 0, PM_APOLLO_CSM}, {"145:36:20.2", 0, PM_APOLLO_CSM_LMA}, {"148:04:30.9", 0, PM_APOLLO_CSM},
+    {"104:47:54", 0, PM_APOLLO_CSM_LMG}, {"107:54:02.3", 0, PM_APOLLO_CSM}, {"145:36:20.2", 0, PM_APOLLO_CSM_LMA}, {"147:59:31.6", 0, PM_APOLLO_CSM},
     {"244:07:20.1", 0, PM_APOLLO_CM}, {"244:30:39.7", 0, PM_CM_DROGUE}, {"244:31:30.2", 0, PM_CM_MAIN}, {"244:36:25", 0, PM_APOLLO_CM},
-    {"107:54:02.3", 1, PM_APOLLO_LM}, {"142:03:47.78", 1, PM_LM_ASCENT}, {"145:36:20.2", 1, -1}, {"148:04:30.9", 1, PM_LM_ASCENT},
+    {"107:54:02.3", 1, PM_APOLLO_LM}, {"142:03:47.78", 1, PM_LM_ASCENT}, {"145:36:20.2", 1, -1}, {"147:59:31.6", 1, PM_LM_ASCENT},
 };
 
 static const ApolloEvent APOLLO13_EVENTS[] = {
@@ -766,7 +769,7 @@ static const ApolloTde APOLLO17_TDE = {"3:42:27.6", "3:57:03", "4:45:02.3", "4:5
 // 10 号: 脚 97:45:03。ドッキングの前は 25 ft で止まり（Technical debrief）、106:20:14 に 5 ft、106:21:14 に捕まえた。
 // 待ち始めと回り始めの時刻は記録がないので、0.1 ft/s で近づいたとして決めた
 static const ApolloTdeKey APOLLO10_RDV[] = {{"106:11:51", 7.6}, {"106:16:51", 7.6}, {"106:20:14", 1.5}};
-static const ApolloLunarDock APOLLO10_LUNAR = {"97:45:03", "98:11:57", "98:12:53", "106:22:02", "106:21:14", "106:14:21", APOLLO10_RDV, 3};
+static const ApolloLunarDock APOLLO10_LUNAR = {"97:45:03", "98:11:57", "98:12:53", "106:22:02", "106:21:14", "106:14:21", APOLLO10_RDV, 3, 1.52};
 // 11 号: 脚 98:14:35、切り離した後は 100:13:13 に回り始めた。ドッキングの前は 127:41:21 に 1.5 海里、127:43:43 に 0.7 海里、
 // 127:52:05 に待ち始め（40 ft）、127:51:21 から回り、127:58:42 に 15 ft（127:59:14 の「10 ft、5 ft くらい」とは合わない乗員の目測）。
 // 接触はドッキングの時刻 128:03:00（Mission Report）とする
@@ -961,6 +964,21 @@ static double ApolloLmJettT(const ApolloMission& m) { return ApolloShapeChange(m
 // 7 分 42 秒後に「大気に入る向きに近づいている」）
 static const double SMSEP_TURN0 = 600, SMSEP_TURN = 240, SMSEP_BACK = 420, SMSEP_YAW = 45 * DEG;
 
+// 月を回る軌道で上昇段を切り離した時刻（無ければ NaN）
+static double ApolloAscJettT(const ApolloMission& m) { return ApolloShapeChange(m, PM_APOLLO_CSM_LMA, PM_APOLLO_CSM); }
+// 上昇段を切り離す前後の司令船の向き: 上昇段を月から真上（外）へ向けた向き（10 号「真上に向けて切り離した」、15 号は機械船の
+// エンジンを月へ向けた向き。Apollo Flight Journal。ほかの号は記録が見つからないので同じとする）。切り離しの向きへは機械船の
+// 切り離しと同じく 10 分前から 4 分かけて回り（推定）、切り離した後は 5 分そのまま（12・14・15 号は 5 分後に同じ向きで離れる噴射。
+// 14 号の Flight Journal）、4 分かけて戻す（推定）。上昇段は切り離した時の向きのまま（姿勢を保つモード）で、2 機が見えなくなった後、
+// 15 分から 10 分かけて普段の向きへ戻す
+static const double AJ_TURN0 = 600, AJ_TURN = 240, AJ_HOLD = 300, AJ_BACK = 240, AJ_FADE0 = 900, AJ_FADE = 600;
+// 上昇段を切り離す前後に司令船を回す割合（0: 普段の向き、1: 上昇段を真上へ向けた向き）
+static double ApolloAscJettTurn(const ApolloMission& m, double t) {
+    double s = (t - ApolloAscJettT(m)) * 86400;
+    if (!(s > -AJ_TURN0 && s < AJ_HOLD + AJ_BACK)) return 0;
+    return s < 0 ? ApolloSmooth((s + AJ_TURN0) / AJ_TURN) : 1 - ApolloSmooth((s - AJ_HOLD) / AJ_BACK);
+}
+
 // 天体固定の区間での見方にする割合: 区間の中は 1、区間の前後 sec 秒で 0 から 1 へ（地球を回る軌道に入る時や月面への
 // 降下を始める時に、見る向きが一度に変わらないように）
 static double ApolloFixedFade(const BodyDef& d, double t, double sec) {
@@ -1101,14 +1119,24 @@ static Quaternion ApolloCoastPose(const App& app, int i, int model, double t) {
         bool stack = true;
         if (since < 1e8) ApolloSmSepT(APOLLO_MISSIONS[mission], &stack);
         return stack ? shieldFwd(ApolloSmooth(since / 180)) : shieldFwd(1.0, SMSEP_YAW * (1 - ApolloSmooth(since / SMSEP_BACK)));
-    } else if (model == PM_APOLLO_CSM && fixedBody < 0) {
-        // 機械船を切り離す前: 切り離しの向きへ回る
+    } else if ((model == PM_APOLLO_CSM || model == PM_APOLLO_CSM_LMA) && fixedBody < 0) {
         int mission, vehicle;
         if (ApolloVehicleOf(app, i, &mission, &vehicle) && vehicle == 0) {
-            double s = (t - ApolloSmSepT(APOLLO_MISSIONS[mission])) * 86400 + SMSEP_TURN0;
-            if (s > 0 && s <= SMSEP_TURN0) {
+            const ApolloMission& m = APOLLO_MISSIONS[mission];
+            // 機械船を切り離す前: 切り離しの向きへ回る
+            double s = (t - ApolloSmSepT(m)) * 86400 + SMSEP_TURN0;
+            if (model == PM_APOLLO_CSM && s > 0 && s <= SMSEP_TURN0) {
                 double w = ApolloSmooth(s / SMSEP_TURN);
                 return shieldFwd(w, SMSEP_YAW * w);
+            }
+            // 上昇段を切り離す前後: 先端を進む向きから真上へ起こす（月に対して同じ向きのまま回っていく）
+            double w = ApolloAscJettTurn(m, t);
+            if (w > 0) {
+                if (Len(Cross(fwd, hint)) < 1e-6) hint = Len(Cross(fwd, Y_UP)) > 1e-6 ? Y_UP : V3(1, 0, 0);
+                V3 ax = Cross(fwd, up);
+                double ang = std::acos(std::max(-1.0, std::min(1.0, Dot(fwd, up))));
+                if (Len(ax) > 1e-9)
+                    return QuaternionMultiply(QuaternionFromAxisAngle(ToF(Norm(ax)), (float)(ang * w)), QuatFromBasis(fwd, hint));
             }
         }
     }
@@ -1275,6 +1303,14 @@ static Quaternion ApolloRdvPose(const App& app, int i, int model, double t, Quat
         if (c < 0 || mc < 0) return q;
         return QuaternionMultiply(ApolloPose(app, c, mc, t), QuaternionFromAxisAngle({0, 1, 0}, PI));
     };
+    double ta = ApolloAscJettT(m);
+    if (model == PM_LM_ASCENT && std::isfinite(ta) && t >= ta) {
+        // 上昇段を切り離した後: 切り離した時のつながっていた向きのまま
+        int c = ApolloBody(app, mission, 0);
+        if (c < 0) return q;
+        Quaternion qh = QuaternionMultiply(ApolloPose(app, c, PM_APOLLO_CSM, ta), QuaternionFromAxisAngle({0, 1, 0}, PI));
+        return QuaternionSlerp(qh, q, (float)ApolloSmooth(((t - ta) * 86400 - AJ_FADE0) / AJ_FADE));
+    }
     if (model == PM_APOLLO_LM) {
         double s = (t - ApolloT(m, m.lunar->undock)) * 86400, ts = ApolloUndockTurnSec(m);
         if (s < 0 || s > ts + RDV_TURN) return q;
@@ -1357,12 +1393,49 @@ static V3 ApolloLmJettPos(V3 cp, V3 nose, V3 lp, double s) {
     double b = ApolloSmooth((Len(rel) - 0.05) / 0.45);
     return cp + nose * ((0.0075 + LMJ_V * s) * (1 - b)) + rel * b;
 }
+// 上昇段を切り離した後の上昇段を描く位置（記録の軌跡の位置 lp から）。記録の軌跡は、司令船が離れる噴射までは司令船と同じ道で、
+// 切り離した時の 2 機が離れる動きは入っていない。つながっていた位置（司令船の先端の先 12.75 m）から、切り離した時の司令船の
+// 先端の向きへ jettV で離れる動きを足す。2 機の間の動きは月の重力で曲がる（円軌道のまわりの相対運動の式、Clohessy-Wiltshire。
+// 軌道の高さ 100 km ほどでは 1 周 2 時間で、数十分で曲がり方が大きい）。2 機が見えなくなった後、15 分から 10 分かけて足した分を
+// 外す（10 号は切り離して 27 分後に上昇段のエンジンを噴射。12・14〜17 号は 1 時間あまり後に月面へ落とす噴射。噴射は記録の軌跡の通り）
+static const double AJ_GM_MOON = 4902.8, AJ_SHOW = 900;   // km³/s²、2 機を横から見る見方を使う秒
+static V3 ApolloAscJettPos(const App& app, int mission, V3 lp, double t) {
+    const ApolloMission& m = APOLLO_MISSIONS[mission];
+    double ta = ApolloAscJettT(m), s = (t - ta) * 86400;
+    int c = ApolloBody(app, mission, 0), l = ApolloBody(app, mission, 1);
+    if (!(s >= 0) || c < 0 || l < 0) return lp;
+    double f = 1 - ApolloSmooth((s - AJ_FADE0) / AJ_FADE);
+    if (f <= 0) return lp;
+    V3 n0 = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, c, PM_APOLLO_CSM, ta)));
+    // 切り離した時と今の、軌道の向き（月の中心から外・進む向き・軌道面の北）
+    auto frame = [&](int i, double tt, V3* er, V3* et, V3* eh) {
+        V3 r = PosAt(app.B, i, tt) - PosAt(app.B, B_MOON, tt), v = ApolloVel(app, i, tt);
+        *er = Norm(r);
+        *eh = Norm(Cross(r, v));
+        *et = Cross(*eh, *er);
+        return Len(r);
+    };
+    V3 er0, et0, eh0, er, et, eh;
+    double r0 = frame(c, ta, &er0, &et0, &eh0);
+    frame(l, t, &er, &et, &eh);
+    double n = std::sqrt(AJ_GM_MOON / (r0 * r0 * r0)), nt = n * s, dv = m.lunar->jettV * 0.001;   // 1/s、km/s
+    double vx = Dot(n0, er0) * dv, vy = Dot(n0, et0) * dv, vz = Dot(n0, eh0) * dv;
+    double x = vx / n * std::sin(nt) + 2 * vy / n * (1 - std::cos(nt));
+    double y = 2 * vx / n * (std::cos(nt) - 1) + vy / n * (4 * std::sin(nt) - 3 * nt);
+    double z = vz / n * std::sin(nt);
+    return lp + (n0 * RDV_PORT + er * x + et * y + eh * z) * f;
+}
 static void ApolloDockPort(App& app) {
     for (int k = 0; k < APOLLO_COUNT; k++) {
         int c = ApolloBody(app, k, 0), l = ApolloBody(app, k, 1);
         if (c < 0 || l < 0 || !app.B[c].active || !app.B[l].active) continue;
         int mc = ApolloModel(APOLLO_MISSIONS[k], 0, app.tDays), ml = ApolloModel(APOLLO_MISSIONS[k], 1, app.tDays);
         if (ml < 0 || (mc != PM_APOLLO_CSM && mc != PM_APOLLO_CM)) continue;
+        double ta = ApolloAscJettT(APOLLO_MISSIONS[k]);
+        if (ml == PM_LM_ASCENT && std::isfinite(ta) && app.tDays >= ta) {
+            app.B[l].pos = ApolloAscJettPos(app, k, app.B[l].pos, app.tDays);
+            continue;
+        }
         double tj = ApolloLmJettT(APOLLO_MISSIONS[k]);
         if (std::isfinite(tj) && app.tDays >= tj) {
             V3 n0 = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloPose(app, c, PM_APOLLO_CM_LM, tj)));
@@ -1666,6 +1739,7 @@ static double ApolloSmSpin(const ApolloMission& m, double s) {
 // 機械船の切り離し（13 号は月着陸船の切り離しも）を、司令船と離れていく機体の横から見る見方と、切り離した機械船。機械船は
 // 切り離す 20 秒前から移り始め、0.1〜0.3 km 離れる間に司令船へ寄せ、0.6 km までに戻す（サターンの段と同じ。13 号は 20 分、
 // ほかは 5 分描く）。13 号の月着陸船は ApolloDockPort の位置で、0.15〜0.4 km 離れる間に戻す（月を回る軌道での切り離しと同じ）。
+// 月を回る軌道での上昇段の切り離しも同じ見方（上昇段は ApolloAscJettPos の位置）。
 // 見方の割合を返す（out があれば、見方と機械船を入れる）
 static double ApolloSepView(const App& app, int mission, double t, ApolloPieces* out) {
     const ApolloMission& m = APOLLO_MISSIONS[mission];
@@ -1703,6 +1777,24 @@ static double ApolloSepView(const App& app, int mission, double t, ApolloPieces*
             out->axis = ApolloPose(app, c, PM_APOLLO_CM_LM, tj);
             out->camW = w;
             out->camTarget = (cp + cL) * 0.5;
+            out->camSize = gap + 0.014;
+            out->pair = true;
+        }
+        best = std::max(best, w);
+    }
+    // 月を回る軌道での上昇段の切り離し: 司令船の真ん中と上昇段の真ん中（接地点から司令船の側へ 3.9 m）。0.15〜0.4 km 離れる間に戻す
+    double ta = ApolloAscJettT(m);
+    if (m.lunar && std::isfinite(ta) && l >= 0 && t >= ta - lead && t <= ta + AJ_SHOW / 86400) {
+        Quaternion q0 = ApolloPose(app, c, PM_APOLLO_CSM, ta);
+        V3 nose = FromF(Vector3RotateByQuaternion({0, 0, -1}, q0)), cp = PosAt(app.B, c, t);
+        V3 lp = t < ta ? cp + nose * RDV_PORT : ApolloAscJettPos(app, mission, PosAt(app.B, l, t), t);
+        V3 cC = cp + nose * 0.0018, cL = lp - nose * 0.0039;
+        double gap = Len(cL - cC), w = 1 - ApolloSmooth((gap - 0.15) / 0.25);
+        if (t < ta) w *= ApolloSmooth((t - (ta - lead)) / lead);
+        if (out && w > best) {
+            out->axis = q0;
+            out->camW = w;
+            out->camTarget = (cC + cL) * 0.5;
             out->camSize = gap + 0.014;
             out->pair = true;
         }
