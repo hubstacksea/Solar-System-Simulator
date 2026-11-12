@@ -112,11 +112,11 @@ open build/SolarSystemVoyager.app
 
 ### Automatic builds and releases (GitHub Actions)
 
-Pushing a tag such as `v2.37.9` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux build is also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` in the run (a failed launch does not stop the release). The macOS build is only checked for reading its data, because GitHub's Mac virtual machines have no GPU and cannot open a window. The browser version is also opened in headless Chrome (`tools/web_smoke.py`, including voyage links and key, click and drag input), and its screen and console output are saved as `screenshots-web`.
+Pushing a tag such as `v2.37.10` runs `.github/workflows/release.yml`, which builds Linux (.deb / .rpm), Windows (.7z), macOS (.zip) and the browser version, creates the GitHub release with the packages, and publishes the browser version to the `gh-pages` branch for GitHub Pages. The Linux build is also launched to take screenshots (Earth, Mars, the map and the English settings) and logs, saved as `screenshots-linux` in the run (a failed launch does not stop the release). The macOS build is only checked for reading its data, because GitHub's Mac virtual machines have no GPU and cannot open a window. The browser version is also opened in headless Chrome (`tools/web_smoke.py`, including voyage links and key, click and drag input), and its screen and console output are saved as `screenshots-web`.
 
 ```sh
-git tag v2.37.9
-git push origin master v2.37.9
+git tag v2.37.10
+git push origin master v2.37.10
 ```
 
 ### Checks before a release
