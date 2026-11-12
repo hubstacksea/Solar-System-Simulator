@@ -240,14 +240,14 @@ enum ProbeModel {
     // 第1段を切り離した後、段間リングを捨てる前のサターン（第2段の下に段間リング）と、切り離した第1段・段間リング・第2段
     // （上に第3段との間の円錐の段間が付いたまま）
     PM_SATURN_SII_RING, PM_SIC_SPENT, PM_SII_RING_SPENT, PM_SII_SPENT,
-    // 月着陸船の脚を開いた後のドッキングした形（脚は月を回る軌道で、切り離しの前に開く）
-    PM_APOLLO_CSM_LMG, PM_COUNT
+    // 月着陸船の脚を開いた後のドッキングした形（脚は月を回る軌道で、切り離しの前に開く）、大気に入る前に切り離した機械船
+    PM_APOLLO_CSM_LMG, PM_APOLLO_SM, PM_COUNT
 };
 
 // アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
 // 司令・機械船（CSM）: 機械船（直径 3.9 m・長さ 7.5 m、主エンジンのノズル、反動制御の噴射口 4 組、高利得アンテナ）と
-// 円錐の司令船（高さ 3.2 m）。withNozzle: 主エンジンのノズルを描く
-inline float ApolloCSM(ShipMeshBuilder& mb, float z0, bool withNozzle = true) {
+// 円錐の司令船（高さ 3.2 m）。withNozzle: 主エンジンのノズルを描く。withCM: 司令船を描く（false は切り離した機械船だけ）
+inline float ApolloCSM(ShipMeshBuilder& mb, float z0, bool withNozzle = true, bool withCM = true) {
     const Color sm = {208, 210, 214, 255}, cm = {222, 224, 228, 255}, dark = {40, 40, 44, 255}, metal = {120, 122, 128, 255};
     if (withNozzle) mb.Revolve(0, 0, {{z0 + 2.9f, 1.25f}, {z0 + 1.6f, 0.95f}, {z0 + 0.4f, 0.55f}, {z0 + 0.05f, 0.5f}}, 24, dark, SM_NOZZLE);
     mb.Tube({0, 0, z0}, {0, 0, z0 - 7.5f}, 1.956f, 32, sm, SM_METAL);
@@ -264,6 +264,7 @@ inline float ApolloCSM(ShipMeshBuilder& mb, float z0, bool withNozzle = true) {
     for (int i = 0; i < 4; i++)
         mb.Dish({2.4f + 0.3f * ((i & 1) ? 1 : -1), -2.4f + 0.3f * ((i & 2) ? 1 : -1), z0 + 1.2f}, {0.7f, -0.7f, 0}, 0.31f, 0.1f, {230, 230, 230, 255}, SM_PAINT);
     float b = z0 - 7.5f;
+    if (!withCM) return b;
     mb.Revolve(0, 0, {{b + 0.05f, 1.956f}, {b - 0.2f, 1.93f}, {b - 2.9f, 0.45f}, {b - 3.2f, 0.42f}, {b - 3.25f, 0.0f}}, 32, cm, SM_METAL);
     mb.Tube({0, 0, b - 3.2f}, {0, 0, b - 3.6f}, 0.1f, 8, metal, SM_METAL);   // ドッキングの探り棒
     return b - 3.6f;
@@ -750,6 +751,9 @@ inline Mesh GenProbeMesh(int model) {
     case PM_APOLLO_CSM:
         ApolloCSM(mb, 3.75f);
         break;
+    case PM_APOLLO_SM:   // 司令・機械船と同じ座標
+        ApolloCSM(mb, 3.75f, true, false);
+        break;
     case PM_APOLLO_LM:
         ApolloLM(mb, 0.0f, -1, true, true);   // 原点が接地点（月面に降りた時に軌跡の点が月面になる）
         break;
@@ -792,10 +796,10 @@ inline Mesh GenProbeMesh(int model) {
         ApolloLM(mb, 0.0f, -1, true, true, false);
         break;
     case PM_APOLLO_CM_LM: {
-        // 機械船を切り離した後、月着陸船とつながったままの司令船（13 号）
+        // 機械船を切り離した後、月着陸船とつながったままの司令船（13 号）。月着陸船は PM_APOLLO_CSM_LM と同じく回した形
         float tip = ApolloCM(mb, 1.5f);
         mb.Tube({0, 0, tip + 0.05f}, {0, 0, tip - 0.35f}, 0.1f, 8, {120, 122, 128, 255}, SM_METAL);
-        ApolloLM(mb, tip - 0.35f - 5.4f, 1, true, true, false);
+        ApolloLM(mb, tip - 0.35f - 5.4f, 1, true, true, false, 1, -1);
         break;
     }
     case PM_APOLLO_CM:

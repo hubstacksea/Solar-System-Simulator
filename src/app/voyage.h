@@ -844,8 +844,11 @@ static V3 ApolloAimDir(const App& app, int* bodyOut) {
         V3 side = sun - a * Dot(sun, a);
         if (Len(side) < 0.2) side = Cross(a, Y_UP);
         V3 d = Norm(Norm(side) * -1.0 + a * 0.25);
-        V3 r = dir * (1 - tv.camW) + d * tv.camW;
-        if (Len(r) > 1e-9) dir = Norm(r);
+        // 2 つの向きの間を同じ速さで回して移す（足し合わせると、逆に近い向きどうし（地球を見る向きと横から見る向き）の
+        // 間では、半分の所で 1 フレームに何度も振れる）
+        double th = std::acos(std::max(-1.0, std::min(1.0, Dot(dir, d)))), sn = std::sin(th);
+        if (sn > 1e-3) dir = Norm(dir * (std::sin((1 - tv.camW) * th) / sn) + d * (std::sin(tv.camW * th) / sn));
+        else if (th < 1) dir = d;
     }
     return dir;
 }
@@ -905,6 +908,26 @@ static void UpdateVoyageRate(App& app, double dt = 0) {
         ApolloRdvView(app, app.apolloMission, app.tDays - h, nullptr, &gb);
         double closing = (gb - ga) / 2;   // km/s
         if (ga > 0.4 && gb > 0 && closing > 0) rate = std::min(rate, std::max(1.0, (ga - 0.4) / closing / VOY_RAMP_SEC + 20));
+    }
+    if (app.apolloMission >= 0) {
+        // 機械船の切り離し（13 号は月着陸船の切り離しも）: 2 機を入れる見方へ移る間と戻す間は画面の 1 秒あたり 0.25 まで（横から
+        // 見る向きと普段の向きの違いが大きく、0.75 では 1 フレームで 10° 回る）、入れる大きさは 1 秒あたり半分まで。切り離しの向きへ回る間（切り離しの 10 分前から 4 分）は、
+        // 噴射の前に向きを変える時と同じように、回り始めと回り終わりの前後で時間をゆっくりにする
+        const ApolloMission& m = APOLLO_MISSIONS[app.apolloMission];
+        const double h = 1.0 / 86400;
+        ApolloPieces a, b;
+        double wa = ApolloSepView(app, app.apolloMission, app.tDays + h, &a), wb = ApolloSepView(app, app.apolloMission, app.tDays - h, &b);
+        double slope = std::fabs(wa - wb) / 2;
+        if (slope > 0) rate = std::min(rate, std::max(1.0, 0.25 / slope));
+        double grow = wa > 0 && wb > 0 ? std::fabs(a.camSize - b.camSize) / 2 : 0;
+        if (grow > 0) rate = std::min(rate, std::max(1.0, 0.5 * std::min(a.camSize, b.camSize) / grow));
+        bool stack = true;
+        double ts = ApolloSmSepT(m, &stack);
+        if (!stack) {
+            double t0 = ts - SMSEP_TURN0 / day, t1 = t0 + SMSEP_TURN / day;
+            double delta = std::min(std::fabs(app.tDays - t0), std::fabs(app.tDays - t1)) * day;
+            rate = std::min(rate, std::max(1.0, (delta - VOY_HOLD_SEC) / VOY_RAMP_SEC));
+        }
     }
     if (app.apolloMission >= 0 && app.voyProbe >= 0) {
         // 主エンジンの噴射（場面になっていない回避や軌道修正も）: 機体は噴射の前後 4 分かけて噴射の向きと回り合うので、
