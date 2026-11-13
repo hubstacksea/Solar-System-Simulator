@@ -241,7 +241,9 @@ enum ProbeModel {
     // （上に第3段との間の円錐の段間が付いたまま）
     PM_SATURN_SII_RING, PM_SIC_SPENT, PM_SII_RING_SPENT, PM_SII_SPENT,
     // 月着陸船の脚を開いた後のドッキングした形（脚は月を回る軌道で、切り離しの前に開く）、大気に入る前に切り離した機械船
-    PM_APOLLO_CSM_LMG, PM_APOLLO_SM, PM_COUNT
+    PM_APOLLO_CSM_LMG, PM_APOLLO_SM,
+    // 15・16 号が月を回る軌道で機械船の科学機器室から放った子衛星（ブームをたたんだ形と開いた形）
+    PM_SUBSAT_STOWED, PM_SUBSAT, PM_COUNT
 };
 
 // アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
@@ -754,6 +756,26 @@ inline Mesh GenProbeMesh(int model) {
     case PM_APOLLO_SM:   // 司令・機械船と同じ座標
         ApolloCSM(mb, 3.75f, true, false);
         break;
+    case PM_SUBSAT_STOWED:
+    case PM_SUBSAT: {
+        // 子衛星: 長さ 31 in（0.79 m）、差し渡し 14 in（0.36 m）の六角柱で、側面は太陽電池。底のまわりに 120° おきに 3 本の
+        // ブームが付き、放つと 5 ft（1.52 m）に開く。1 本の先に磁力計（NASA の写真 S71-39481 の説明、15 号の Mission Report）。
+        // 原点が底、-Z が上。上の S バンドのアンテナと磁力計の大きさ、たたんだブームの形（側面に沿わせる）は推定
+        const Color cells = {84, 96, 128, 255}, metal = {150, 150, 156, 255};
+        mb.Prism({0, 0, 0}, {0, 0, -0.79f}, 0.18f, 6, 0, cells, SM_METAL);
+        mb.Disc({0, 0, 0.001f}, {0, 0, 1}, 0.18f, 6, metal, SM_METAL);
+        mb.Disc({0, 0, -0.791f}, {0, 0, -1}, 0.18f, 6, metal, SM_METAL);
+        mb.Tube({0, 0, -0.79f}, {0, 0, -0.95f}, 0.02f, 6, metal, SM_METAL);
+        for (int k = 0; k < 3; k++) {
+            float a = 2 * PI * k / 3;
+            bool open = model == PM_SUBSAT;
+            Vector3 root = {cosf(a) * (open ? 0.16f : 0.2f), sinf(a) * (open ? 0.16f : 0.2f), -0.02f};
+            Vector3 tip = open ? Vector3{cosf(a) * 1.68f, sinf(a) * 1.68f, -0.02f} : Vector3{root.x, root.y, -0.77f};
+            mb.Tube(root, tip, 0.012f, 4, metal, SM_METAL);
+            if (k == 0) mb.Box(tip, {0.04f, 0.04f, 0.04f}, metal, SM_METAL);
+        }
+        break;
+    }
     case PM_APOLLO_LM:
         ApolloLM(mb, 0.0f, -1, true, true);   // 原点が接地点（月面に降りた時に軌跡の点が月面になる）
         break;

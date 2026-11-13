@@ -910,7 +910,7 @@ static void UpdateVoyageRate(App& app, double dt = 0) {
         if (ga > 0.4 && gb > 0 && closing > 0) rate = std::min(rate, std::max(1.0, (ga - 0.4) / closing / VOY_RAMP_SEC + 20));
     }
     if (app.apolloMission >= 0) {
-        // 機械船の切り離し（13 号は月着陸船の切り離しも）と上昇段の切り離し: 2 機を入れる見方へ移る間と戻す間は画面の 1 秒あたり 0.25 まで（横から
+        // 機械船の切り離し（13 号は月着陸船の切り離しも）と上昇段の切り離しと子衛星: 2 機を入れる見方へ移る間と戻す間は画面の 1 秒あたり 0.25 まで（横から
         // 見る向きと普段の向きの違いが大きく、0.75 では 1 フレームで 10° 回る）、入れる大きさは 1 秒あたり半分まで。切り離しの向きへ回る間（切り離しの 10 分前から 4 分）は、
         // 噴射の前に向きを変える時と同じように、回り始めと回り終わりの前後で時間をゆっくりにする
         const ApolloMission& m = APOLLO_MISSIONS[app.apolloMission];
@@ -933,6 +933,12 @@ static void UpdateVoyageRate(App& app, double dt = 0) {
         if (std::isfinite(ta)) {
             slow(ta);
             for (double s : {-AJ_TURN0, -AJ_TURN0 + AJ_TURN, AJ_HOLD, AJ_HOLD + AJ_BACK}) slow(ta + s / day);
+        }
+        // 子衛星を放つ時と、司令船が回り始める時と回り終わる時
+        double tss = ApolloSubsatT(m);
+        if (std::isfinite(tss)) {
+            double t0 = ApolloSubsatTurnT(m);
+            for (double tt : {tss, t0, t0 + SS_TURN / day, tss + SS_HOLD / day, tss + (SS_HOLD + SS_BACK) / day}) slow(tt);
         }
     }
     if (app.apolloMission >= 0 && app.voyProbe >= 0) {

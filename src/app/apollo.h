@@ -60,6 +60,9 @@ struct ApolloLunarDock {
     // 上昇段を切り離した時に 2 機が離れる速さ m/s（11 号は管制センターの「約 2 ft/s」。記録の無い号はその値。10 号はトンネルの
     // 空気で月着陸船の窓口が開き、5 ft/s で飛び出した。10 号の Mission Report）
     double jettV = 0.61;
+    // 機械船の科学機器室から子衛星を放った時刻と、放つ向きへ回り始めた時刻（nullptr は 30 分前。15・16 号）
+    const char* subsat = nullptr;
+    const char* subsatTurn = nullptr;
 };
 struct ApolloMission {
     const char* name;       // assets/apollo.bin の飛行の名前
@@ -784,18 +787,20 @@ static const ApolloLunarDock APOLLO12_LUNAR = {"104:47:54", "107:54:02.3", "107:
                                                APOLLO12_RDV, (int)(sizeof APOLLO12_RDV / sizeof APOLLO12_RDV[0])};
 // 14 号: 脚 102:59:12（開いたと報告）。ドッキングの前の距離の記録は見つからないので手順書の値
 static const ApolloLunarDock APOLLO14_LUNAR = {"102:59:12", "103:47:41.6", nullptr, "143:32:50.5", nullptr, nullptr};
-// 15 号: 脚 98:40 頃（Flight Journal の予定の時刻）、切り離した後は 100:40:47 に回り始めた。ドッキングの前は 173:09:13 に 1 海里、
+// 15 号: 子衛星は 222:39:29（Mission Report）。脚 98:40 頃（Flight Journal の予定の時刻）、切り離した後は 100:40:47 に回り始めた。ドッキングの前は 173:09:13 に 1 海里、
 // 3,000 ft・1,500 ft と減速し、173:15:44 に 120 ft で待ち始め、173:28:03 に回り始めた。173:36:28 に固くつながった
 static const ApolloTdeKey APOLLO15_RDV[] = {{"173:09:13", 1852}, {"173:11:05", 914}, {"173:12:18", 457}, {"173:15:44", 37}, {"173:30:03", 37}};
-static const ApolloLunarDock APOLLO15_LUNAR = {"98:40:01", "100:39:16.2", "100:40:47", "173:36:25.5", nullptr, "173:28:03", APOLLO15_RDV, 5};
-// 16 号: 脚 94:00 頃（94:00:09 に開く手順）。ドッキングの前は 3.15 海里から 200 ft まで乗員が距離を読み上げ（176:57:06〜177:11:16）、
+static const ApolloLunarDock APOLLO15_LUNAR = {"98:40:01", "100:39:16.2", "100:40:47", "173:36:25.5", nullptr, "173:28:03", APOLLO15_RDV, 5, 0.61,
+                                               "222:39:29.1", nullptr};
+// 16 号: 子衛星は 196:02:09（Mission Report）、195:27:28 に放つ向きへ回り始めた（Flight Journal）。脚 94:00 頃（94:00:09 に開く手順）。ドッキングの前は 3.15 海里から 200 ft まで乗員が距離を読み上げ（176:57:06〜177:11:16）、
 // 177:12:18 に待ち始め（距離の記録はないので 40 ft）、177:34:02 に回り始め、177:38:58 に 5 ft、177:41:18 に捕まえた
 static const ApolloTdeKey APOLLO16_RDV[] = {{"176:57:06", 5834}, {"177:00:03", 4572}, {"177:03:45", 2438}, {"177:05:25", 1524},
                                             {"177:06:19", 1219}, {"177:07:50", 610}, {"177:09:07", 244}, {"177:09:37", 165},
                                             {"177:10:04", 122}, {"177:10:39", 73}, {"177:11:16", 61}, {"177:12:18", 12.2},
                                             {"177:36:02", 12.2}, {"177:38:58", 1.5}};
 static const ApolloLunarDock APOLLO16_LUNAR = {"94:00:09", "96:13:31", nullptr, "177:41:18", nullptr, "177:34:02",
-                                               APOLLO16_RDV, (int)(sizeof APOLLO16_RDV / sizeof APOLLO16_RDV[0])};
+                                               APOLLO16_RDV, (int)(sizeof APOLLO16_RDV / sizeof APOLLO16_RDV[0]), 0.61,
+                                               "196:02:09", "195:27:28"};
 // 17 号: 脚 106:22:03（記録の GET 109:02:03）。ドッキングの前の記録は Flight Journal にまだ無いので手順書の値
 static const ApolloLunarDock APOLLO17_LUNAR = {"106:22:03", "107:47:56", nullptr, "187:37:15", nullptr, nullptr};
 
@@ -979,6 +984,33 @@ static double ApolloAscJettTurn(const ApolloMission& m, double t) {
     return s < 0 ? ApolloSmooth((s + AJ_TURN0) / AJ_TURN) : 1 - ApolloSmooth((s - AJ_HOLD) / AJ_BACK);
 }
 
+// 子衛星を放った時刻（無ければ NaN）
+static double ApolloSubsatT(const ApolloMission& m) { return m.lunar && m.lunar->subsat ? ApolloT(m, m.lunar->subsat) : NAN; }
+// 子衛星を放つ前後の司令船の向き: 科学機器室を子衛星を放つ向きへ向ける。16 号は 195:27:28 に放つ向きへ回り始めた（Flight
+// Journal）。15 号は記録が見つからず 30 分前（Flight Journal では放つ 24 分前に交信が戻る前に向きを変えた）。4 分かけて回り、放った後
+// 5 分そのままで、4 分かけて戻す（推定）
+static const double SS_TURN0 = 1800, SS_TURN = 240, SS_HOLD = 300, SS_BACK = 240;
+static double ApolloSubsatTurnT(const ApolloMission& m) {
+    double ts = ApolloSubsatT(m);
+    return std::isfinite(ts) && m.lunar->subsatTurn ? ApolloT(m, m.lunar->subsatTurn) : ts - SS_TURN0 / 86400;
+}
+// 子衛星を放つ前後に司令船を回す割合（0: 普段の向き、1: 科学機器室を放つ向きへ向けた向き）
+static double ApolloSubsatTurn(const ApolloMission& m, double t) {
+    double ts = ApolloSubsatT(m);
+    if (!std::isfinite(ts)) return 0;
+    double s = (t - ts) * 86400, s0 = (ApolloSubsatTurnT(m) - ts) * 86400;
+    if (!(s > s0 && s < SS_HOLD + SS_BACK)) return 0;
+    return s < 0 ? ApolloSmooth((s - s0) / SS_TURN) : 1 - ApolloSmooth((s - SS_HOLD) / SS_BACK);
+}
+// 科学機器室の外向き（司令・機械船の座標。高利得アンテナの反対側とする。推定）
+static const Vector3 SS_BAY = {-0.70710678f, 0.70710678f, 0};
+// 子衛星を放つ向き: 軌道面に垂直（NASA の写真 S71-39481 の説明「軌道面の外へ」）で、黄道の北の側（15 号の Mission Report「回転の軸は
+// 黄道面にほぼ垂直」。どちらの側かの記録は見つからない）。rel, v は月に対する位置と速度
+static V3 ApolloSubsatDir(V3 rel, V3 v) {
+    V3 h = Norm(Cross(rel, v));
+    return Dot(h, Y_UP) >= 0 ? h : h * -1.0;
+}
+
 // 天体固定の区間での見方にする割合: 区間の中は 1、区間の前後 sec 秒で 0 から 1 へ（地球を回る軌道に入る時や月面への
 // 降下を始める時に、見る向きが一度に変わらないように）
 static double ApolloFixedFade(const BodyDef& d, double t, double sec) {
@@ -1137,6 +1169,14 @@ static Quaternion ApolloCoastPose(const App& app, int i, int model, double t) {
                 double ang = std::acos(std::max(-1.0, std::min(1.0, Dot(fwd, up))));
                 if (Len(ax) > 1e-9)
                     return QuaternionMultiply(QuaternionFromAxisAngle(ToF(Norm(ax)), (float)(ang * w)), QuatFromBasis(fwd, hint));
+            }
+            // 子衛星を放つ前後: 科学機器室を放つ向きへ
+            w = ApolloSubsatTurn(m, t);
+            if (w > 0) {
+                if (Len(Cross(fwd, hint)) < 1e-6) hint = Len(Cross(fwd, Y_UP)) > 1e-6 ? Y_UP : V3(1, 0, 0);
+                Quaternion q = QuatFromBasis(fwd, hint);
+                Quaternion qr = QuaternionFromVector3ToVector3(Vector3RotateByQuaternion(SS_BAY, q), ToF(ApolloSubsatDir(rel, v)));
+                return QuaternionMultiply(QuaternionSlerp(QuaternionIdentity(), qr, (float)w), q);
             }
         }
     }
@@ -1399,6 +1439,8 @@ static V3 ApolloLmJettPos(V3 cp, V3 nose, V3 lp, double s) {
 // 軌道の高さ 100 km ほどでは 1 周 2 時間で、数十分で曲がり方が大きい）。2 機が見えなくなった後、15 分から 10 分かけて足した分を
 // 外す（10 号は切り離して 27 分後に上昇段のエンジンを噴射。12・14〜17 号は 1 時間あまり後に月面へ落とす噴射。噴射は記録の軌跡の通り）
 static const double AJ_GM_MOON = 4902.8, AJ_SHOW = 900;   // km³/s²、2 機を横から見る見方を使う秒
+// 子衛星の離れる速さ m/s、放った時とブームが開いた後の毎分の回転数、ブームが開く秒、描く秒（ApolloSepView）
+static const double SS_V = 1.22, SS_RPM0 = 140, SS_RPM = 12, SS_DEPLOY = 3, SS_SHOW = 600;
 static V3 ApolloAscJettPos(const App& app, int mission, V3 lp, double t) {
     const ApolloMission& m = APOLLO_MISSIONS[mission];
     double ta = ApolloAscJettT(m), s = (t - ta) * 86400;
@@ -1739,7 +1781,7 @@ static double ApolloSmSpin(const ApolloMission& m, double s) {
 // 機械船の切り離し（13 号は月着陸船の切り離しも）を、司令船と離れていく機体の横から見る見方と、切り離した機械船。機械船は
 // 切り離す 20 秒前から移り始め、0.1〜0.3 km 離れる間に司令船へ寄せ、0.6 km までに戻す（サターンの段と同じ。13 号は 20 分、
 // ほかは 5 分描く）。13 号の月着陸船は ApolloDockPort の位置で、0.15〜0.4 km 離れる間に戻す（月を回る軌道での切り離しと同じ）。
-// 月を回る軌道での上昇段の切り離しも同じ見方（上昇段は ApolloAscJettPos の位置）。
+// 月を回る軌道での上昇段の切り離しも同じ見方（上昇段は ApolloAscJettPos の位置）。15・16 号の子衛星も、司令船と子衛星を入れる。
 // 見方の割合を返す（out があれば、見方と機械船を入れる）
 static double ApolloSepView(const App& app, int mission, double t, ApolloPieces* out) {
     const ApolloMission& m = APOLLO_MISSIONS[mission];
@@ -1797,6 +1839,36 @@ static double ApolloSepView(const App& app, int mission, double t, ApolloPieces*
             out->camTarget = (cC + cL) * 0.5;
             out->camSize = gap + 0.014;
             out->pair = true;
+        }
+        best = std::max(best, w);
+    }
+    // 子衛星: 科学機器室の外（機械船の側面の外 0.4 m、機械船の真ん中から 1.5 m 後ろ。推定）から、放つ向きへ 4 ft/s（1.22 m/s）で
+    // 離れる（15 号の Mission Report、NASA の写真 S71-39481 の説明）。軌道面に垂直に離れるので、2 機の間は月を回る軌道の相対運動の式
+    // （Clohessy-Wiltshire）の軌道面に垂直な振動になる。放った時は毎分 140 回転で、ブームが開くと毎分 12 回転（S71-39481 の説明）。
+    // ブームが開くのは放った 3 秒後とする（推定）。10 分描く（約 700 m 離れる）
+    double tss = ApolloSubsatT(m);
+    if (std::isfinite(tss) && t >= tss - lead && t <= tss + SS_SHOW / 86400) {
+        Quaternion q0 = ApolloPose(app, c, PM_APOLLO_CSM, tss);
+        V3 nose = FromF(Vector3RotateByQuaternion({0, 0, -1}, q0)), cp = PosAt(app.B, c, t);
+        V3 r0 = PosAt(app.B, c, tss) - PosAt(app.B, B_MOON, tss), d = ApolloSubsatDir(r0, ApolloVel(app, c, tss));
+        V3 start = FromF(Vector3RotateByQuaternion(Vector3Add(Vector3Scale(SS_BAY, 2.36f), {0, 0, 1.5f}), q0)) * 0.001;
+        double s = (t - tss) * 86400, n = std::sqrt(AJ_GM_MOON / std::pow(Len(r0), 3));
+        V3 sp = cp + start + d * (SS_V * 0.001 / n * std::sin(n * std::max(0.0, s)));
+        V3 cC = cp + nose * 0.004;   // 司令・機械船の真ん中
+        double gap = Len(sp - cC), w = 1 - ApolloSmooth((gap - 0.03) / 0.05);   // 子衛星は小さいので 30〜80 m で戻す
+        if (t < tss) w *= ApolloSmooth((t - (tss - lead)) / lead);
+        Quaternion qs = QuatFromBasis(d, nose);
+        if (out && s >= 0) {
+            double spin = s < SS_DEPLOY ? SS_RPM0 * s : SS_RPM0 * SS_DEPLOY + SS_RPM * (s - SS_DEPLOY);   // 回転
+            out->parts.push_back({s < SS_DEPLOY ? PM_SUBSAT_STOWED : PM_SUBSAT, sp,
+                                  QuaternionMultiply(qs, QuaternionFromAxisAngle({0, 0, 1}, (float)std::fmod(spin / 60 * 2 * PI, 2 * PI)))});
+        }
+        if (out && w > best) {
+            out->axis = qs;
+            out->camW = w;
+            out->camTarget = (cC + sp) * 0.5;
+            out->camSize = gap + 0.014;
+            out->pair = false;
         }
         best = std::max(best, w);
     }
