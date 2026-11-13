@@ -1170,9 +1170,9 @@ static void DrawProbes(App& app) {
         const Body& b = app.B[i];
         if ((b.d.probe < 0 && b.d.apollo < 0) || !b.active) continue;
         // アポロ: 時刻に応じた機体の形（つながっている間の月着陸船は司令船の側で描く）
-        int apModel = -1;
+        int apModel = -1, mission = -1;
         if (b.d.apollo >= 0) {
-            int mission, vehicle;
+            int vehicle;
             if (!ApolloVehicleOf(app, (int)i, &mission, &vehicle)) continue;
             apModel = ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays);
             if (apModel < 0) continue;
@@ -1219,6 +1219,9 @@ static void DrawProbes(App& app) {
                                       MatrixTranslate((float)rel.x, (float)rel.y, (float)rel.z));
         rlDisableBackfaceCulling();
         DrawMesh(app.probeMesh[pm], app.shipMat, model);
+        // 15〜17 号: 科学機器室の扉を捨てた後は、機械船に開いた所を重ねる
+        bool withSm = pm == PM_APOLLO_CSM || pm == PM_APOLLO_CSM_LM || pm == PM_APOLLO_CSM_LMG || pm == PM_APOLLO_CSM_LMA;
+        if (withSm && mission >= 0 && app.tDays >= ApolloSimDoorT(APOLLO_MISSIONS[mission])) DrawMesh(app.probeMesh[PM_SIM_BAY], app.shipMat, model);
         rlEnableBackfaceCulling();
         if (near)
             for (const ApolloPiece& p : *near) meshAt(p.pm, p.pos, p.q);

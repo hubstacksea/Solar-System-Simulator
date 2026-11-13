@@ -243,8 +243,14 @@ enum ProbeModel {
     // 月着陸船の脚を開いた後のドッキングした形（脚は月を回る軌道で、切り離しの前に開く）、大気に入る前に切り離した機械船
     PM_APOLLO_CSM_LMG, PM_APOLLO_SM,
     // 15・16 号が月を回る軌道で機械船の科学機器室から放った子衛星（ブームをたたんだ形と開いた形）
-    PM_SUBSAT_STOWED, PM_SUBSAT, PM_COUNT
+    PM_SUBSAT_STOWED, PM_SUBSAT,
+    // 15〜17 号の機械船の科学機器室: 扉を捨てた後の開いた所（司令・機械船と同じ座標で重ねて描く）と、捨てた扉
+    PM_SIM_BAY, PM_SIM_DOOR, PM_COUNT
 };
+// 科学機器室の扉: 幅 5 ft・長さ 9.5 ft（1.5 × 2.9 m）、170 lb（15 号の Flight Journal の管制センターの説明）。機械船の側面の
+// 向き SIM_ANG（高利得アンテナの反対側とする）を中心に幅の分の角度 ±SIM_HALF、機械船の真ん中（z 0）から SIM_ZC を中心に長さ
+// SIM_LEN（機械船の長さの向きの位置は推定）
+const float SIM_ANG = 0.75f * PI, SIM_HALF = 0.398f, SIM_ZC = 0.3f, SIM_LEN = 2.9f;
 
 // アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
 // 司令・機械船（CSM）: 機械船（直径 3.9 m・長さ 7.5 m、主エンジンのノズル、反動制御の噴射口 4 組、高利得アンテナ）と
@@ -774,6 +780,31 @@ inline Mesh GenProbeMesh(int model) {
             mb.Tube(root, tip, 0.012f, 4, metal, SM_METAL);
             if (k == 0) mb.Box(tip, {0.04f, 0.04f, 0.04f}, metal, SM_METAL);
         }
+        break;
+    }
+    case PM_SIM_BAY:
+    case PM_SIM_DOOR: {
+        // 機械船の側面に沿って曲がった板を 4 枚の平らな板で。開いた所は側面の少し外に暗い板と中の機器（機器の形と並びは推定）。
+        // 扉は原点が外の面の真ん中で +X が外向き、Z が長さの向き（厚さ 25 mm の蜂の巣の板。15 号の Flight Journal）
+        bool bay = model == PM_SIM_BAY;
+        float r = bay ? 1.99f : 1.956f, a0 = bay ? SIM_ANG : 0, x0 = bay ? 0 : -1.956f;
+        const Color skin = {208, 210, 214, 255}, inner = {150, 140, 110, 255}, dark = {34, 34, 38, 255}, metal = {120, 122, 128, 255};
+        for (int k = 0; k < 4; k++) {
+            float a = a0 + SIM_HALF * (2 * k - 3) / 4, w = r * sinf(SIM_HALF / 4);
+            Vector3 n = {cosf(a), sinf(a), 0}, tg = {-sinf(a), cosf(a), 0};
+            Vector3 c0 = {x0 + n.x * (r - 0.0125f), n.y * (r - 0.0125f), bay ? SIM_ZC : 0};
+            if (bay) {
+                mb.OBox(c0, Vector3Scale(n, 0.005f), Vector3Scale(tg, w), {0, 0, SIM_LEN * 0.5f}, dark, SM_PAINT);
+            } else {
+                mb.OBox(Vector3Add(c0, Vector3Scale(n, 0.006f)), Vector3Scale(n, 0.006f), Vector3Scale(tg, w), {0, 0, SIM_LEN * 0.5f}, skin, SM_METAL);
+                mb.OBox(Vector3Subtract(c0, Vector3Scale(n, 0.006f)), Vector3Scale(n, 0.006f), Vector3Scale(tg, w), {0, 0, SIM_LEN * 0.5f}, inner, SM_METAL);
+            }
+        }
+        if (bay)
+            for (int k = 0; k < 3; k++) {   // 中の機器（カメラなど）が扉の所から少しのぞく
+                float a = SIM_ANG + SIM_HALF * 0.5f * (k - 1);
+                mb.Box({cosf(a) * 1.9f, sinf(a) * 1.9f, SIM_ZC - SIM_LEN * 0.3f + 0.6f * k}, {0.2f, 0.2f, 0.25f}, metal, SM_METAL);
+            }
         break;
     }
     case PM_APOLLO_LM:

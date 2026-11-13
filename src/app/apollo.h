@@ -84,6 +84,10 @@ struct ApolloMission {
     // 後の司令船の差）、後ろへ離れる噴射（-X の 4 基）の秒、回す噴射（ロールの 4 基、切り離して 2 秒後から）の秒。0 は噴射しない
     // （13 号: 機械船は電源が無く、月着陸船の噴射で離れた）
     double smLb = 0, smBurn = 0, smRoll = 0;
+    // 機械船の科学機器室の扉を捨てた時刻（月へ向かう途中、月を回る軌道に入る前。15〜17 号）と、扉の離れる速さ m/s（15 号は管制センター
+    // の説明「約 7 ft/s」、16・17 号はプレスキットの予定の表の 13.7 ft/s。どちらも飛行の前の値で、測った値は見つからない）
+    const char* simDoor = nullptr;
+    double simDoorV = 0;
 };
 
 static const ApolloEvent APOLLO11_EVENTS[] = {
@@ -832,15 +836,18 @@ static const ApolloMission APOLLO_MISSIONS[] = {
     {"Apollo 15", "アポロ15号", "Apollo 15", 1971, 7, 26, 13, 34, 0.6, {"Apollo 15 Endeavour", "Apollo 15 Falcon"},
      "ハドリー谷に着陸、初めて月面車を使用", "Landing at Hadley Rille; first lunar rover",
      APOLLO15_EVENTS, (int)(sizeof APOLLO15_EVENTS / sizeof APOLLO15_EVENTS[0]),
-     APOLLO15_SHAPES, (int)(sizeof APOLLO15_SHAPES / sizeof APOLLO15_SHAPES[0]), 26.13222, 3.63386, "171:37:23.2", &APOLLO15_TDE, 4, &APOLLO15_LUNAR, 13358, 25, 2},
+     APOLLO15_SHAPES, (int)(sizeof APOLLO15_SHAPES / sizeof APOLLO15_SHAPES[0]), 26.13222, 3.63386, "171:37:23.2", &APOLLO15_TDE, 4, &APOLLO15_LUNAR, 13358, 25, 2,
+     "74:06:47.1", 2.13},
     {"Apollo 16", "アポロ16号", "Apollo 16", 1972, 4, 16, 17, 54, 0.0, {"Apollo 16 Casper", "Apollo 16 Orion"},
      "デカルト高地に着陸", "Landing in the Descartes highlands",
      APOLLO16_EVENTS, (int)(sizeof APOLLO16_EVENTS / sizeof APOLLO16_EVENTS[0]),
-     APOLLO16_SHAPES, (int)(sizeof APOLLO16_SHAPES / sizeof APOLLO16_SHAPES[0]), -8.97301, 15.50019, "175:31:47.9", &APOLLO16_TDE, 8, &APOLLO16_LUNAR, 14199, 25, 2},
+     APOLLO16_SHAPES, (int)(sizeof APOLLO16_SHAPES / sizeof APOLLO16_SHAPES[0]), -8.97301, 15.50019, "175:31:47.9", &APOLLO16_TDE, 8, &APOLLO16_LUNAR, 14199, 25, 2,
+     "69:59:01", 4.18},
     {"Apollo 17", "アポロ17号", "Apollo 17", 1972, 12, 7, 5, 33, 0.0, {"Apollo 17 America", "Apollo 17 Challenger"},
      "タウルス・リットロウ谷に着陸、アポロ計画の最後", "Landing at Taurus-Littrow; the last Apollo mission",
      APOLLO17_EVENTS, (int)(sizeof APOLLO17_EVENTS / sizeof APOLLO17_EVENTS[0]),
-     APOLLO17_SHAPES, (int)(sizeof APOLLO17_SHAPES / sizeof APOLLO17_SHAPES[0]), 20.19080, 30.77168, "185:21:37", &APOLLO17_TDE, 8, &APOLLO17_LUNAR, 13507, 25, 2},
+     APOLLO17_SHAPES, (int)(sizeof APOLLO17_SHAPES / sizeof APOLLO17_SHAPES[0]), 20.19080, 30.77168, "185:21:37", &APOLLO17_TDE, 8, &APOLLO17_LUNAR, 13507, 25, 2,
+     "81:32:40", 4.18},
 };
 static const int APOLLO_COUNT = (int)(sizeof APOLLO_MISSIONS / sizeof APOLLO_MISSIONS[0]);
 
@@ -1002,8 +1009,10 @@ static double ApolloSubsatTurn(const ApolloMission& m, double t) {
     if (!(s > s0 && s < SS_HOLD + SS_BACK)) return 0;
     return s < 0 ? ApolloSmooth((s - s0) / SS_TURN) : 1 - ApolloSmooth((s - SS_HOLD) / SS_BACK);
 }
-// 科学機器室の外向き（司令・機械船の座標。高利得アンテナの反対側とする。推定）
+// 科学機器室の外向き（司令・機械船の座標。高利得アンテナの反対側とする。推定。ship_model.h の SIM_ANG）
 static const Vector3 SS_BAY = {-0.70710678f, 0.70710678f, 0};
+// 科学機器室の扉を捨てた時刻（無ければ NaN）
+static double ApolloSimDoorT(const ApolloMission& m) { return m.simDoor ? ApolloT(m, m.simDoor) : NAN; }
 // 子衛星を放つ向き: 軌道面に垂直（NASA の写真 S71-39481 の説明「軌道面の外へ」）で、黄道の北の側（15 号の Mission Report「回転の軸は
 // 黄道面にほぼ垂直」。どちらの側かの記録は見つからない）。rel, v は月に対する位置と速度
 static V3 ApolloSubsatDir(V3 rel, V3 v) {
@@ -1441,6 +1450,9 @@ static V3 ApolloLmJettPos(V3 cp, V3 nose, V3 lp, double s) {
 static const double AJ_GM_MOON = 4902.8, AJ_SHOW = 900;   // km³/s²、2 機を横から見る見方を使う秒
 // 子衛星の離れる速さ m/s、放った時とブームが開いた後の毎分の回転数、ブームが開く秒、描く秒（ApolloSepView）
 static const double SS_V = 1.22, SS_RPM0 = 140, SS_RPM = 12, SS_DEPLOY = 3, SS_SHOW = 600;
+// 捨てた扉の毎分の回転数（17 号の乗員「5 秒に 1 回」、ほとんど長さの向きのまわり。15 号は「ゆっくり回る」、16 号は「回っている」で、
+// 速さの記録が無いので 17 号の値）と描く秒
+static const double SIM_DOOR_RPM = 12, SIM_DOOR_SHOW = 1800;
 static V3 ApolloAscJettPos(const App& app, int mission, V3 lp, double t) {
     const ApolloMission& m = APOLLO_MISSIONS[mission];
     double ta = ApolloAscJettT(m), s = (t - ta) * 86400;
@@ -1797,7 +1809,11 @@ static double ApolloSepView(const App& app, int mission, double t, ApolloPieces*
         V3 cm = track + nose * (s < 0 ? SMSEP_SHIFT : ApolloSmShift(m, t)), sm = track - nose * (ApolloSmDist(m, s) * 0.001);
         double gap = Len(sm - cm), near = 1 - ApolloSmooth((gap - 0.1) / 0.2);
         double w = s < 0 ? ApolloSmooth((t - (ts - lead)) / lead) : (1 - ApolloSmooth((gap - 0.3) / 0.3)) * (1 - ApolloSmooth((s - (show - 60)) / 60));
-        if (out && s >= 0) out->parts.push_back({PM_APOLLO_SM, sm, QuaternionMultiply(q0, QuaternionFromAxisAngle({0, 0, 1}, (float)ApolloSmSpin(m, s)))});
+        if (out && s >= 0) {
+            Quaternion qs = QuaternionMultiply(q0, QuaternionFromAxisAngle({0, 0, 1}, (float)ApolloSmSpin(m, s)));
+            out->parts.push_back({PM_APOLLO_SM, sm, qs});
+            if (m.simDoor) out->parts.push_back({PM_SIM_BAY, sm, qs});
+        }
         if (out && w > 0) {
             out->axis = q0;
             out->camW = w;
@@ -1868,6 +1884,31 @@ static double ApolloSepView(const App& app, int mission, double t, ApolloPieces*
             out->camW = w;
             out->camTarget = (cC + sp) * 0.5;
             out->camSize = gap + 0.014;
+            out->pair = false;
+        }
+        best = std::max(best, w);
+    }
+    // 科学機器室の扉: 縁の火薬の紐で切り離し、四隅の火薬で外へ押し出す（15 号の Flight Journal の管制センターの説明）。機械船の
+    // 側面から外向きにまっすぐ離れ、長さの向きのまわりに回る。月から 2 万 km ほどで、30 分の間の月の重力の差による 2 機の間の
+    // ずれは数 m なので入れない。ドッキングした形の真ん中（司令・機械船の原点から前へ 3 m）との間が 50〜150 m の間に戻す
+    double tdr = ApolloSimDoorT(m);
+    if (std::isfinite(tdr) && t >= tdr - lead && t <= tdr + SIM_DOOR_SHOW / 86400) {
+        Quaternion q0 = ApolloPose(app, c, ApolloModel(m, 0, tdr), tdr);
+        V3 nose = FromF(Vector3RotateByQuaternion({0, 0, -1}, q0)), cp = PosAt(app.B, c, t), d = FromF(Vector3RotateByQuaternion(SS_BAY, q0));
+        V3 start = FromF(Vector3RotateByQuaternion(Vector3Add(Vector3Scale(SS_BAY, 1.956f), {0, 0, SIM_ZC}), q0)) * 0.001;
+        double s = (t - tdr) * 86400;
+        V3 dp = cp + start + d * (m.simDoorV * 0.001 * std::max(0.0, s)), cC = cp + nose * 0.003;
+        double gap = Len(dp - cC), w = 1 - ApolloSmooth((gap - 0.05) / 0.1);
+        if (t < tdr) w *= ApolloSmooth((t - (tdr - lead)) / lead);
+        if (out && s >= 0) {
+            float spin = (float)std::fmod(SIM_DOOR_RPM / 60 * 2 * PI * s, 2 * PI);
+            out->parts.push_back({PM_SIM_DOOR, dp, QuaternionMultiply(q0, QuaternionFromAxisAngle({0, 0, 1}, SIM_ANG + spin))});
+        }
+        if (out && w > best) {
+            out->axis = QuatFromBasis(d, nose);
+            out->camW = w;
+            out->camTarget = (cC + dp) * 0.5;
+            out->camSize = gap * 1.6 + 0.035;   // ドッキングした 2 機（長さ 20 m）と扉が、見る点の右寄せ（画面の 4 分の 1）の分も入る大きさ
             out->pair = false;
         }
         best = std::max(best, w);
