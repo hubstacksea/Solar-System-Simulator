@@ -1639,7 +1639,7 @@ static double ApolloTdeCamW(const App& app, int mission, double t) {
     if (t < ts - lead || t > tEnd) return 0;
     if (t < ts) return ApolloSmooth((t - (ts - lead)) / lead);
     V3 fwd = FromF(Vector3RotateByQuaternion({0, 0, -1}, ApolloTdeStackPose(app, c, m)));
-    double gap = Len(ApolloTdeOffset(app, mission, fwd, t) - fwd * 0.012);
+    double gap = Len(ApolloTdeOffset(app, mission, fwd, t) + fwd * 0.012);
     return (1 - ApolloSmooth((gap - 0.15) / 0.25)) * (1 - ApolloSmooth((t - (tEnd - TDE_VIEW_END / 86400)) * 86400 / TDE_VIEW_END));
 }
 
@@ -1669,7 +1669,7 @@ static bool ApolloTdeAt(const App& app, int mission, ApolloTdeView* v) {
     v->model = s < ApolloTdeSec(m, m.tde->dock) && m.tde->dock ? PM_SIVB_LM : PM_SIVB_EMPTY;
     // 2 機の間（第3段は底から 12 m の所）を、離れた距離に合わせた大きさで見る。引き出した後（8 号は離れる噴射の後）、
     // 150〜400 m 離れる間と手順の終わりの前に、司令船だけの見方へ戻す（ApolloTdeCamW）
-    V3 mid = v->sivb - fwd * 0.012;
+    V3 mid = v->sivb + fwd * 0.012;
     double gap = Len(mid - app.B[c].pos);
     v->camTarget = (mid + app.B[c].pos) * 0.5;
     v->camSize = gap + 0.025;

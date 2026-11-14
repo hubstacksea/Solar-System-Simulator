@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.13 (2026-11-14)
+
+- Apollo program: in the separation from the S-IVB scenes (Apollo 8 and 10-17), the camera no longer zooms out instantly at separation. Before separation the camera is close in on the middle of the stack, but after separation it aimed at a point 12 m behind the S-IVB's base instead of 12 m in front of it, so the aim point jumped 24 m and the framed size jumped from 44 m to 68 m. The view now continues unchanged through separation
+
 ## 2.37.12 (2026-11-14)
 
 - Apollo program: the scenes now show the scientific instrument module bay door that Apollo 15, 16 and 17 jettisoned from the service module on the way to the Moon. Neither the door nor the open bay after jettison was drawn before. The door is 5 ft wide and 9.5 ft long (1.5 × 2.9 m) and weighs 170 lb (Apollo 15 Flight Journal). It is jettisoned at 74:06:47.1 on Apollo 15, 69:59:01 on Apollo 16 and 81:32:40 on Apollo 17. Explosive cord pushes it straight out from the side of the service module, at "approximately 7 ft/s" (2.13 m/s) on Apollo 15, as the ground announced beforehand, and at the planned 13.7 ft/s (4.18 m/s) from the press kits on Apollo 16 and 17. It tumbles about its long axis at 12 rpm (the Apollo 17 crew's "1 revolution per 5 seconds"). The command and service module and the door are seen from the side around the jettison, and the view returns to normal by the time they are 50-150 m apart. The door is drawn for 30 minutes after jettison. After jettison the open bay (a dark panel with instrument boxes) is drawn on the command and service module and on the service module jettisoned before the return to Earth
