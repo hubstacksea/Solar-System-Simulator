@@ -64,6 +64,16 @@ struct ApolloLunarDock {
     const char* subsat = nullptr;
     const char* subsatTurn = nullptr;
 };
+// 地球へ戻る途中の船外活動（15〜17 号）: 司令船操縦士が科学機器室のフィルムのカセットを取りに行く。ハッチを開けた時刻と閉めた時刻、
+// 司令船操縦士がいた所の時刻（EVA_IN: 中かハッチに立つ、EVA_HATCH: ハッチの外、EVA_BAY: 科学機器室の足の留め具）。続く 2 つで
+// 所が違う間は、その間をかけて動く
+enum { EVA_IN, EVA_HATCH, EVA_BAY };
+struct ApolloEvaKey { const char* get; int at; };
+struct ApolloEva {
+    const char *open, *close;
+    const ApolloEvaKey* keys;
+    int keyCount;
+};
 struct ApolloMission {
     const char* name;       // assets/apollo.bin の飛行の名前
     const char *jp, *en;
@@ -88,6 +98,7 @@ struct ApolloMission {
     // の説明「約 7 ft/s」、16・17 号はプレスキットの予定の表の 13.7 ft/s。どちらも飛行の前の値で、測った値は見つからない）
     const char* simDoor = nullptr;
     double simDoorV = 0;
+    const ApolloEva* eva = nullptr;   // 地球へ戻る途中の船外活動（無ければ nullptr）
 };
 
 static const ApolloEvent APOLLO11_EVENTS[] = {
@@ -808,6 +819,33 @@ static const ApolloLunarDock APOLLO16_LUNAR = {"94:00:09", "96:13:31", nullptr, 
 // 17 号: 脚 106:22:03（記録の GET 109:02:03）。ドッキングの前の記録は Flight Journal にまだ無いので手順書の値
 static const ApolloLunarDock APOLLO17_LUNAR = {"106:22:03", "107:47:56", nullptr, "187:37:15", nullptr, nullptr};
 
+// 地球へ戻る途中の船外活動。15 号: Flight Journal（ハッチを開けた・閉めた乗員の報告、ウォーデンが外へ出た 242:07:29 は管制センター
+// の説明）。外へ出るのにかかった 30 秒、1 つ目のカセットを持って留め具を離れた時刻、2 つ目を取りに行って留め具に着いた時刻（1 回目の
+// 行きの 80 秒）、最後に機器室を見に行った往復、中へ入った時刻は推定
+static const ApolloEvaKey APOLLO15_EVA_KEYS[] = {
+    {"242:07:29", EVA_IN}, {"242:07:59", EVA_HATCH}, {"242:09:20", EVA_HATCH}, {"242:10:40", EVA_BAY}, {"242:12:32", EVA_BAY},
+    {"242:13:43", EVA_HATCH}, {"242:15:02", EVA_HATCH}, {"242:16:22", EVA_BAY}, {"242:19:39", EVA_BAY}, {"242:21:25", EVA_HATCH},
+    {"242:22:23", EVA_HATCH}, {"242:22:53", EVA_BAY}, {"242:23:11", EVA_BAY}, {"242:23:40", EVA_HATCH}, {"242:24:05", EVA_HATCH},
+    {"242:24:35", EVA_IN}};
+static const ApolloEva APOLLO15_EVA = {"242:04:25", "242:25:15", APOLLO15_EVA_KEYS, (int)(sizeof APOLLO15_EVA_KEYS / sizeof APOLLO15_EVA_KEYS[0])};
+// 16 号: Flight Journal（記録の GET。管制センターは 24:45:52 進めた GET を使う）。ハッチを開けた時刻（218:47:06 に留め金を外し、
+// 218:49:17 に袋を外へ捨てた間）、1 つ目のカセットを持ってハッチに着いた時刻、中へ入る前の時刻は推定。中へ入った後は、ハッチに
+// 立って微生物の実験（MEED）をした
+static const ApolloEvaKey APOLLO16_EVA_KEYS[] = {
+    {"218:49:17", EVA_IN}, {"218:49:46", EVA_HATCH}, {"218:54:12", EVA_HATCH}, {"218:55:45", EVA_BAY}, {"218:59:11", EVA_BAY},
+    {"219:00:33", EVA_HATCH}, {"219:01:30", EVA_HATCH}, {"219:02:10", EVA_BAY}, {"219:11:20", EVA_BAY}, {"219:12:24", EVA_HATCH},
+    {"219:18:10", EVA_HATCH}, {"219:18:40", EVA_IN}};
+static const ApolloEva APOLLO16_EVA = {"218:48:30", "219:46:50", APOLLO16_EVA_KEYS, (int)(sizeof APOLLO16_EVA_KEYS / sizeof APOLLO16_EVA_KEYS[0])};
+// 17 号: 技術の交信記録（Technical Air-to-Ground Voice Transcription。時計を直す前の GET）。3 回カセットを運んだ（月の地下を調べる
+// レーダーの記録、パノラマカメラ、地図カメラ）。外へ出るのにかかった 30 秒、1 つ目と 2 つ目をハッチへ届けた時刻、3 回目に機器室へ
+// 着いた時刻と離れた時刻は推定
+static const ApolloEvaKey APOLLO17_EVA_KEYS[] = {
+    {"255:04:18", EVA_IN}, {"255:04:48", EVA_HATCH}, {"255:06:37", EVA_HATCH}, {"255:08:05", EVA_BAY}, {"255:11:40", EVA_BAY},
+    {"255:13:00", EVA_HATCH}, {"255:14:19", EVA_HATCH}, {"255:15:48", EVA_BAY}, {"255:21:24", EVA_BAY}, {"255:22:30", EVA_HATCH},
+    {"255:23:00", EVA_HATCH}, {"255:24:00", EVA_BAY}, {"255:35:30", EVA_BAY}, {"255:37:42", EVA_HATCH}, {"255:43:21", EVA_HATCH},
+    {"255:47:23", EVA_IN}};
+static const ApolloEva APOLLO17_EVA = {"255:00:39", "255:49:11", APOLLO17_EVA_KEYS, (int)(sizeof APOLLO17_EVA_KEYS / sizeof APOLLO17_EVA_KEYS[0])};
+
 static const ApolloMission APOLLO_MISSIONS[] = {
     {"Apollo 8", "アポロ8号", "Apollo 8", 1968, 12, 21, 12, 51, 0.0, {"Apollo 8", nullptr},
      "人類が初めて月を回った", "First crewed flight around the Moon",
@@ -837,17 +875,17 @@ static const ApolloMission APOLLO_MISSIONS[] = {
      "ハドリー谷に着陸、初めて月面車を使用", "Landing at Hadley Rille; first lunar rover",
      APOLLO15_EVENTS, (int)(sizeof APOLLO15_EVENTS / sizeof APOLLO15_EVENTS[0]),
      APOLLO15_SHAPES, (int)(sizeof APOLLO15_SHAPES / sizeof APOLLO15_SHAPES[0]), 26.13222, 3.63386, "171:37:23.2", &APOLLO15_TDE, 4, &APOLLO15_LUNAR, 13358, 25, 2,
-     "74:06:47.1", 2.13},
+     "74:06:47.1", 2.13, &APOLLO15_EVA},
     {"Apollo 16", "アポロ16号", "Apollo 16", 1972, 4, 16, 17, 54, 0.0, {"Apollo 16 Casper", "Apollo 16 Orion"},
      "デカルト高地に着陸", "Landing in the Descartes highlands",
      APOLLO16_EVENTS, (int)(sizeof APOLLO16_EVENTS / sizeof APOLLO16_EVENTS[0]),
      APOLLO16_SHAPES, (int)(sizeof APOLLO16_SHAPES / sizeof APOLLO16_SHAPES[0]), -8.97301, 15.50019, "175:31:47.9", &APOLLO16_TDE, 8, &APOLLO16_LUNAR, 14199, 25, 2,
-     "69:59:01", 4.18},
+     "69:59:01", 4.18, &APOLLO16_EVA},
     {"Apollo 17", "アポロ17号", "Apollo 17", 1972, 12, 7, 5, 33, 0.0, {"Apollo 17 America", "Apollo 17 Challenger"},
      "タウルス・リットロウ谷に着陸、アポロ計画の最後", "Landing at Taurus-Littrow; the last Apollo mission",
      APOLLO17_EVENTS, (int)(sizeof APOLLO17_EVENTS / sizeof APOLLO17_EVENTS[0]),
      APOLLO17_SHAPES, (int)(sizeof APOLLO17_SHAPES / sizeof APOLLO17_SHAPES[0]), 20.19080, 30.77168, "185:21:37", &APOLLO17_TDE, 8, &APOLLO17_LUNAR, 13507, 25, 2,
-     "81:32:40", 4.18},
+     "81:32:40", 4.18, &APOLLO17_EVA},
 };
 static const int APOLLO_COUNT = (int)(sizeof APOLLO_MISSIONS / sizeof APOLLO_MISSIONS[0]);
 
@@ -1790,6 +1828,69 @@ static double ApolloSmSpin(const ApolloMission& m, double s) {
     return u < T ? 0.5 * w / T * u * u : 0.5 * w * T + w * (u - T);
 }
 
+// 船外活動の人の置き方（司令・機械船の座標 m。p は腰、q は -Z が頭・+Y が顔の向き）。手すりの道筋と姿勢は推定:
+// 中（ハッチの口に立ち、腰から上が外）、ハッチの外（ハッチの横で円錐の側面に沿い、頭が先端の向き）、機械船の前の縁と機器室の横
+// （機器室の脇の手すりに沿い、頭が司令船の向き）、機器室（足の留め具に足を入れて側面から外へ立ち、司令船の側を向く）
+struct ApolloEvaPose { V3 p; Quaternion q; };
+static const double EVA_HATCH_SEC = 10, EVA_FADE = 60, EVA_CAM = 0.014, EVA_RATE = 30;
+static ApolloEvaPose ApolloEvaSpot(int k) {
+    auto n = [](float a) { return V3(std::cos(a), std::sin(a), 0); };
+    auto N = [&](float a) { return Norm(n(a) + V3(0, 0, -CM_CONE_K)); };          // 円錐の側面の外向き
+    auto g = [&](float a) { return Norm(n(a) * -CM_CONE_K + V3(0, 0, -1)); };      // 円錐の母線の、先端の向き
+    const V3 fwd(0, 0, -1);
+    float side = SIM_ANG + 0.5f, beside = SIM_ANG + 0.42f, bay = SIM_ANG + 0.12f;
+    switch (k) {
+    case 0: return {n(SIM_ANG) * CmConeR(HATCH_ZC) + V3(0, 0, HATCH_ZC) - N(SIM_ANG) * 0.3, QuatFromBasis(N(SIM_ANG), g(SIM_ANG) * -1.0)};
+    case 1: return {n(beside) * CmConeR(-4.6f) + V3(0, 0, -4.6) + N(beside) * 0.3, QuatFromBasis(g(beside), N(beside) * -1.0)};
+    case 2: return {n(side) * 2.3 + V3(0, 0, -3.4), QuatFromBasis(fwd, n(side) * -1.0)};
+    case 3: return {n(side) * 2.3 + V3(0, 0, SIM_ZC - 0.8), QuatFromBasis(fwd, n(side) * -1.0)};
+    default: return {n(bay) * 2.9 + V3(0, 0, SIM_ZC + 0.3), QuatFromBasis(n(bay), fwd)};
+    }
+}
+// 道筋（ApolloEvaSpot の番号の列）の u（0〜1、長さの割合）の所
+static ApolloEvaPose ApolloEvaRoute(const int* spots, int n, double u) {
+    std::vector<ApolloEvaPose> s;
+    std::vector<double> acc(1, 0.0);
+    for (int i = 0; i < n; i++) s.push_back(ApolloEvaSpot(spots[i]));
+    for (int i = 1; i < n; i++) acc.push_back(acc.back() + Len(s[i].p - s[i - 1].p));
+    double d = u * acc.back();
+    int i = 1;
+    while (i < n - 1 && d > acc[i]) i++;
+    double f = acc[i] > acc[i - 1] ? std::max(0.0, std::min(1.0, (d - acc[i - 1]) / (acc[i] - acc[i - 1]))) : 1;
+    return {s[i - 1].p + (s[i].p - s[i - 1].p) * f, QuaternionSlerp(s[i - 1].q, s[i].q, (float)f)};
+}
+// 時刻 t の司令船操縦士の置き方。中にいる間（動いていない時）は false。moving: 中とハッチの外の間を動いている（ハッチに立つ乗員は
+// 描かない）
+static bool ApolloEvaCmp(const ApolloMission& m, double t, ApolloEvaPose* pose, bool* moving) {
+    const ApolloEva& e = *m.eva;
+    *moving = false;
+    int a = EVA_IN, b = EVA_IN;
+    double u = 0;
+    for (int i = 0; i < e.keyCount; i++) {
+        double ti = ApolloT(m, e.keys[i].get);
+        if (t < ti) {
+            if (i > 0) {
+                double tp = ApolloT(m, e.keys[i - 1].get);
+                a = e.keys[i - 1].at, b = e.keys[i].at, u = ApolloSmooth((t - tp) / (ti - tp));
+            }
+            break;
+        }
+        a = b = e.keys[i].at;
+    }
+    if (a == b) {
+        if (a == EVA_IN) return false;
+        *pose = ApolloEvaSpot(a == EVA_HATCH ? 1 : 4);
+        return true;
+    }
+    static const int door[] = {0, 1}, rail[] = {1, 2, 3, 4};
+    bool viaHatch = a == EVA_IN || b == EVA_IN;
+    *moving = viaHatch;
+    const int* r = viaHatch ? door : rail;
+    int n = viaHatch ? 2 : 4;
+    *pose = ApolloEvaRoute(r, n, a < b ? u : 1 - u);
+    return true;
+}
+
 // 機械船の切り離し（13 号は月着陸船の切り離しも）を、司令船と離れていく機体の横から見る見方と、切り離した機械船。機械船は
 // 切り離す 20 秒前から移り始め、0.1〜0.3 km 離れる間に司令船へ寄せ、0.6 km までに戻す（サターンの段と同じ。13 号は 20 分、
 // ほかは 5 分描く）。13 号の月着陸船は ApolloDockPort の位置で、0.15〜0.4 km 離れる間に戻す（月を回る軌道での切り離しと同じ）。
@@ -1912,6 +2013,44 @@ static double ApolloSepView(const App& app, int mission, double t, ApolloPieces*
             out->pair = false;
         }
         best = std::max(best, w);
+    }
+    // 地球へ戻る途中の船外活動: ハッチを開ける 1 分前から司令・機械船を横から見る見方へ移り、閉めた後 1 分で戻す。ハッチは 10 秒で
+    // 90° 開く（開く角と速さは推定）。開いている間は、ハッチの口に 1 人立つ（外へ出る司令船操縦士がハッチを通る間を除く）。
+    // 宇宙船の向きは巡航の向きのまま（船外活動の向きへ回したことと、16 号の微生物の実験の向きへ回したことは入れない）
+    if (m.eva) {
+        double t0 = ApolloT(m, m.eva->open), t1 = ApolloT(m, m.eva->close), fade = EVA_FADE / 86400;
+        int mc = ApolloModel(m, 0, t);
+        if (t >= t0 - fade && t <= t1 + fade && mc >= 0) {
+            Quaternion qc = ApolloPose(app, c, mc, t);
+            V3 cp = PosAt(app.B, c, t);
+            auto world = [&](V3 p) { return cp + FromF(Vector3RotateByQuaternion(ToF(p), qc)) * 0.001; };
+            double ang = PI / 2 * ApolloSmooth((t - t0) * 86400 / EVA_HATCH_SEC) * (1 - ApolloSmooth((t - t1) * 86400 / EVA_HATCH_SEC + 1));
+            if (out && ang > 0) {
+                out->parts.push_back({PM_CM_HATCHWAY, cp, qc});
+                // 扉: ちょうつがいは口の SIM_ANG の小さい側の縁（推定）
+                float r = CmConeR(HATCH_ZC), a = SIM_ANG - HATCH_W * 0.5f / r;
+                V3 n(std::cos(a), std::sin(a), 0), tg(-std::sin(a), std::cos(a), 0), g = Norm(n * -CM_CONE_K + V3(0, 0, -1));
+                Quaternion qd = QuaternionMultiply(QuatFromBasis(g, tg), QuaternionFromAxisAngle({0, 0, 1}, (float)-ang));
+                out->parts.push_back({PM_CM_HATCH, world(n * r + V3(0, 0, HATCH_ZC)), QuaternionMultiply(qc, qd)});
+                ApolloEvaPose p;
+                bool moving, outside = ApolloEvaCmp(m, t, &p, &moving);
+                if (outside) out->parts.push_back({PM_EVA_SUIT, world(p.p), QuaternionMultiply(qc, p.q)});
+                if (!moving && ang > PI / 4) {
+                    ApolloEvaPose h = ApolloEvaSpot(0);
+                    out->parts.push_back({PM_EVA_HATCH_CREW, world(h.p), QuaternionMultiply(qc, h.q)});
+                }
+            }
+            double w = t < t0 ? ApolloSmooth((t - (t0 - fade)) / fade) : 1 - ApolloSmooth((t - t1) / fade);
+            if (out && w > best) {
+                out->axis = qc;
+                out->camW = w;
+                // ハッチ（z -5 m）と機器室（z 0.3 m）の間、機器室の側へ 2 m の所
+                out->camTarget = world(V3(std::cos(SIM_ANG), std::sin(SIM_ANG), 0) * 2.0 + V3(0, 0, -2.3));
+                out->camSize = EVA_CAM;
+                out->pair = false;
+            }
+            best = std::max(best, w);
+        }
     }
     return best;
 }

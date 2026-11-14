@@ -940,6 +940,17 @@ static void UpdateVoyageRate(App& app, double dt = 0) {
             double t0 = ApolloSubsatTurnT(m);
             for (double tt : {tss, t0, t0 + SS_TURN / day, tss + SS_HOLD / day, tss + (SS_HOLD + SS_BACK) / day}) slow(tt);
         }
+        // 地球へ戻る途中の船外活動: ハッチを開ける時と閉める時、司令船操縦士が外へ出始める時と中へ入り終わる時。その間は 30 倍まで
+        // （機器室への行き来の 1〜2 分が画面で数秒）
+        if (m.eva) {
+            const ApolloEva& e = *m.eva;
+            double t0 = ApolloT(m, e.open), t1 = ApolloT(m, e.close);
+            slow(t0);
+            slow(t1);
+            slow(ApolloT(m, e.keys[0].get));
+            slow(ApolloT(m, e.keys[e.keyCount - 1].get));
+            if (app.tDays > t0 - EVA_FADE / day && app.tDays < t1 + EVA_FADE / day) rate = std::min(rate, EVA_RATE);
+        }
     }
     if (app.apolloMission >= 0 && app.voyProbe >= 0) {
         // 主エンジンの噴射（場面になっていない回避や軌道修正も）: 機体は噴射の前後 4 分かけて噴射の向きと回り合うので、

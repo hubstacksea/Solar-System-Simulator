@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.37.14 (2026-11-14)
+
+- Apollo program: the deep-space EVAs Apollo 15-17 made on the way back to Earth are shown. The hatch opens and the command module pilot moves along the service module's handrails to the scientific instrument bay, stands in the foot restraint and brings back the cassettes one by one, while another crew member stands in the hatch. The view is from the side; during the EVA time runs at most 30 times real time and slows further as the hatch opens and closes and as the pilot goes out and comes back in
+- Times are from the records. Apollo 15: hatch open 242:04:25, closed 242:25:15 (Apollo Flight Journal). Apollo 16: hatch unlatched 218:47:06, back inside 219:18:40, closed 219:46:50 (Apollo Flight Journal, actual GET). Apollo 17: hatch open 255:00:39, back inside 255:47:23, closed 255:49:11 (air-to-ground transcript, original GET; Schmitt stood in the hatch, per the Mission Report)
+- Estimated: the hatch position (facing the same way as the bay) and size (0.74 x 0.86 m), the hinge side and the 90 degree opening, the flat door, the handrail route and body poses, the figure (about 1.9 m tall, no backpack), and the times of stretches the records give no time for (including when Apollo 16's hatch opened)
+- Not drawn: the attitude maneuver for the EVA and Apollo 16's MEED experiment attitude, the umbilical, the TV pole and camera, the cassettes themselves, the bag Apollo 16 threw out, and arm and leg motion
+
 ## 2.37.13 (2026-11-14)
 
 - Apollo program: in the separation from the S-IVB scenes (Apollo 8 and 10-17), the camera no longer zooms out instantly at separation. Before separation the camera is close in on the middle of the stack, but after separation it aimed at a point 12 m behind the S-IVB's base instead of 12 m in front of it, so the aim point jumped 24 m and the framed size jumped from 44 m to 68 m. The view now continues unchanged through separation

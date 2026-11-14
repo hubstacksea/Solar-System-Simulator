@@ -245,12 +245,20 @@ enum ProbeModel {
     // 15・16 号が月を回る軌道で機械船の科学機器室から放った子衛星（ブームをたたんだ形と開いた形）
     PM_SUBSAT_STOWED, PM_SUBSAT,
     // 15〜17 号の機械船の科学機器室: 扉を捨てた後の開いた所（司令・機械船と同じ座標で重ねて描く）と、捨てた扉
-    PM_SIM_BAY, PM_SIM_DOOR, PM_COUNT
+    PM_SIM_BAY, PM_SIM_DOOR,
+    // 15〜17 号の地球へ戻る途中の船外活動: 宇宙服の司令船操縦士、ハッチに立つ乗員（上半身）、司令船の開いたハッチの口（司令・
+    // 機械船と同じ座標で重ねて描く）とハッチの扉
+    PM_EVA_SUIT, PM_EVA_HATCH_CREW, PM_CM_HATCHWAY, PM_CM_HATCH, PM_COUNT
 };
 // 科学機器室の扉: 幅 5 ft・長さ 9.5 ft（1.5 × 2.9 m）、170 lb（15 号の Flight Journal の管制センターの説明）。機械船の側面の
 // 向き SIM_ANG（高利得アンテナの反対側とする）を中心に幅の分の角度 ±SIM_HALF、機械船の真ん中（z 0）から SIM_ZC を中心に長さ
 // SIM_LEN（機械船の長さの向きの位置は推定）
 const float SIM_ANG = 0.75f * PI, SIM_HALF = 0.398f, SIM_ZC = 0.3f, SIM_LEN = 2.9f;
+// 司令船の横のハッチ: 司令・機械船の座標で、円錐の側面の z HATCH_ZC を中心に幅 HATCH_W・高さ HATCH_H（母線に沿った長さ）。
+// 向きは科学機器室と同じ SIM_ANG（ハッチから機械船の側面の手すりを伝って機器室へまっすぐ行けた。15 号の Flight Journal の図）。
+// 大きさと高さの位置は推定。円錐は z -3.95 で半径 1.93 m、z -6.65 で 0.45 m（ApolloCSM）
+const float HATCH_ZC = -5.0f, HATCH_W = 0.74f, HATCH_H = 0.86f, CM_CONE_K = 1.48f / 2.7f;
+inline float CmConeR(float z) { return 1.93f - (-3.95f - z) * CM_CONE_K; }
 
 // アポロの機体の部品。z0 から -Z の向きに積み上げる（z0 は部品の底）。返り値は部品の先端の z
 // 司令・機械船（CSM）: 機械船（直径 3.9 m・長さ 7.5 m、主エンジンのノズル、反動制御の噴射口 4 組、高利得アンテナ）と
@@ -805,6 +813,46 @@ inline Mesh GenProbeMesh(int model) {
                 float a = SIM_ANG + SIM_HALF * 0.5f * (k - 1);
                 mb.Box({cosf(a) * 1.9f, sinf(a) * 1.9f, SIM_ZC - SIM_LEN * 0.3f + 0.6f * k}, {0.2f, 0.2f, 0.25f}, metal, SM_METAL);
             }
+        break;
+    }
+    case PM_EVA_SUIT:
+    case PM_EVA_HATCH_CREW: {
+        // 宇宙服の人（身長 1.9 m ほど、推定）。原点が腰、-Z が頭、+Y が顔の向き。ハッチに立つ乗員は腰から上だけ。
+        // 背負う生命維持装置は無く、宇宙船から管でつないだ（管は描かない）
+        const Color suit = {236, 236, 230, 255}, visor = {200, 160, 60, 255}, boot = {150, 150, 150, 255};
+        bool whole = model == PM_EVA_SUIT;
+        mb.Box({0, 0, -0.32f}, {0.24f, 0.15f, 0.32f}, suit, SM_PAINT);   // 胴
+        mb.Revolve(0, 0, {{-0.6f, 0.0f}, {-0.63f, 0.12f}, {-0.76f, 0.17f}, {-0.89f, 0.12f}, {-0.93f, 0.0f}}, 12, suit, SM_PAINT);   // ヘルメット
+        mb.Box({0, 0.13f, -0.77f}, {0.12f, 0.04f, 0.09f}, visor, SM_GLASS);   // 金色のバイザー
+        for (int s = -1; s <= 1; s += 2) {
+            mb.Tube({s * 0.3f, 0, -0.58f}, {s * 0.34f, 0.12f, -0.1f}, 0.07f, 8, suit, SM_PAINT);   // 腕
+            if (whole) {
+                mb.Tube({s * 0.12f, 0, 0}, {s * 0.13f, 0, 0.82f}, 0.09f, 8, suit, SM_PAINT);    // 脚
+                mb.Box({s * 0.13f, 0.05f, 0.88f}, {0.07f, 0.13f, 0.06f}, boot, SM_PAINT);    // 靴
+            }
+        }
+        if (whole) mb.Box({0, 0, 0.02f}, {0.22f, 0.14f, 0.1f}, suit, SM_PAINT);   // 腰
+        break;
+    }
+    case PM_CM_HATCHWAY: {
+        // ハッチの口: 円錐の側面の少し外に暗い板（側面の曲がりに沿って 4 枚の平らな板）
+        const Color dark = {20, 20, 22, 255};
+        float r = CmConeR(HATCH_ZC), half = HATCH_W * 0.5f / r;
+        for (int k = 0; k < 4; k++) {
+            float a = SIM_ANG + half * (2 * k - 3) / 4, w = r * sinf(half / 4);
+            Vector3 n = {cosf(a), sinf(a), 0}, tg = {-sinf(a), cosf(a), 0};
+            Vector3 N = Vector3Normalize({n.x, n.y, -CM_CONE_K}), g = Vector3Normalize({-n.x * CM_CONE_K, -n.y * CM_CONE_K, -1});
+            Vector3 c0 = Vector3Add({n.x * r, n.y * r, HATCH_ZC}, Vector3Scale(N, 0.012f));
+            mb.OBox(c0, Vector3Scale(N, 0.004f), Vector3Scale(tg, w), Vector3Scale(g, HATCH_H * 0.5f), dark, SM_PAINT);
+        }
+        break;
+    }
+    case PM_CM_HATCH: {
+        // ハッチの扉: 原点がちょうつがいの真ん中、+X が閉じた時の外向き、+Y がちょうつがいから扉の反対の縁へ、Z が母線の向き。
+        // 厚さ 0.1 m の平らな板（実際は側面に沿って曲がる）
+        const Color outer = {222, 224, 228, 255}, inner = {150, 150, 156, 255};
+        mb.Box({-0.025f, HATCH_W * 0.5f, 0}, {0.025f, HATCH_W * 0.5f, HATCH_H * 0.5f}, outer, SM_METAL);
+        mb.Box({-0.075f, HATCH_W * 0.5f, 0}, {0.025f, HATCH_W * 0.5f - 0.03f, HATCH_H * 0.5f - 0.03f}, inner, SM_METAL);
         break;
     }
     case PM_APOLLO_LM:
