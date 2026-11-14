@@ -39,6 +39,7 @@ struct Body {
     bool active = true;     // 探査機: その時刻に飛んでいるか（打ち上げ前・運用終了後は false で、表示しない）
     int shape = -1;         // 実際の形（g_shapes の番号。-1 は楕円体）
     int map = -1;           // 探査機の画像による地図（App::maps の番号。-1 はなし）
+    int terrain = -1;       // 標高データ（g_terrain の番号。-1 はなし）
     double primeOffset = 0; // 自転角 0 の X 軸から IAU の基準（赤道と ICRF 赤道の昇交点）までの角度 rad
     V3 pole0, ex0, ez0;     // J2000 の自転軸と赤道の基底（地球は歳差でここから回す）
 };
@@ -54,6 +55,53 @@ struct Shape {
     float rmax = 0;
 };
 static std::vector<Shape> g_shapes;
+
+// ---------------------------------------------------------------- 標高（地球・月・火星）
+// シェーダに渡すのと同じ画像の値を持ち、頂点シェーダと同じ双線形補間で高さを求める（高度・衝突・地表に置く物に使う）。
+// 地球は海面より下を 0（海面）にする
+struct Terrain {
+    int w = 0, h = 0;
+    bool earth = false;              // 地球の高さコード（R）。他は上位・下位バイト（0.5 m 単位、-10000 m から）
+    std::vector<unsigned short> v;   // 画像の値
+    double lo = 0, hi = 0;           // 最低・最高 km
+    double Km(int i) const {
+        double c = v[i];
+        if (!earth) return (c * 0.5 - 10000.0) / 1000.0;
+        double t = (c - 128.0) / 127.0;
+        return c >= 128 ? t * t * 8.9 : 0.0;
+    }
+};
+static std::vector<Terrain> g_terrain;
+
+// 本体の座標系（X, 自転軸, Z）の向き o の地表の高さ km。楕円体の上の点は、向きを (x, y / (1 − 扁平率), z) にした
+// 球面の点で地図を引く（球のメッシュと同じ）
+static double TerrainKm(const Body& b, V3 o) {
+    const Terrain& T = g_terrain[b.terrain];
+    V3 p = Norm(V3(o.x, o.y / (1 - b.d.flattening), o.z));
+    double lat = std::asin(std::max(-1.0, std::min(1.0, p.y))), lon = std::atan2(-p.z, p.x);
+    double x = (lon / (2 * PI) + 0.5) * T.w - 0.5, y = (0.5 - lat / PI) * T.h - 0.5;
+    int x0 = (int)std::floor(x), y0 = (int)std::floor(y);
+    double fx = x - x0, fy = y - y0;
+    auto at = [&](int i, int j) {
+        i = ((i % T.w) + T.w) % T.w;
+        j = std::max(0, std::min(T.h - 1, j));
+        return T.Km(j * T.w + i);
+    };
+    return (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy;
+}
+
+// 天体固定座標 f（x: 経度 0°, y: 東経 90°, z: 北極）の点を、楕円体の上 15 km より下では地表の高さの分だけ持ち上げる
+// （アポロの記録の道は月の平均半径・地球の楕円体の上に降りるので、描いた地形の上に降ろす。15 km から地表へなめらかに）
+static V3 TerrainLift(const Body& b, V3 f) {
+    double r = Len(f);
+    if (b.terrain < 0 || r <= 0) return f;
+    V3 u = f * (1.0 / r);
+    double a = b.d.radius, c = a * (1 - b.d.flattening);
+    double rell = 1.0 / std::sqrt((1 - u.z * u.z) / (a * a) + u.z * u.z / (c * c));
+    double x = std::max(0.0, std::min(1.0, 1.0 - (r - rell) / 15.0));
+    if (x <= 0) return f;
+    return f + u * (TerrainKm(b, V3(u.x, u.z, -u.y)) * x * x * (3 - 2 * x));
+}
 
 static void LoadShapes() {
     EmbeddedFile f = ShapesBin();
@@ -744,9 +792,10 @@ static V3 FixedToRender(const Body& b, double spin, V3 f) {
     return X * f.x - Z * f.y + b.pole * f.z;
 }
 
-// アポロの宇宙船の位置。bodyAt(番号) はその時刻の地球・月の位置、spinAt(番号) は自転角。データの範囲外では *active = false
+// アポロの宇宙船の位置。bodyAt(番号) はその時刻の地球・月の位置、spinAt(番号) は自転角。データの範囲外では *active = false。
+// lift = false は地形で持ち上げる前の記録の道（機体の向きを決める速度に使う。地形の傾きで向きが揺れないように）
 template <class F, class G>
-static V3 ApolloPosAt(const std::vector<Body>& B, int track, double t, F bodyAt, G spinAt, bool* active) {
+static V3 ApolloPosAt(const std::vector<Body>& B, int track, double t, F bodyAt, G spinAt, bool* active, bool lift = true) {
     *active = false;
     if (track < 0 || track >= (int)g_apollo.size() || g_apollo[track].segs.empty()) return V3(1e15, 0, 0);
     const std::vector<ApolloSeg>& S = g_apollo[track].segs;
@@ -761,7 +810,7 @@ static V3 ApolloPosAt(const std::vector<Body>& B, int track, double t, F bodyAt,
     auto raw = [&](size_t j, double tt) {
         const ApolloSeg& s = S[j];
         V3 p = HermiteAt(s.t, s.p, s.v, tt);
-        if (s.fixed) return bodyAt(s.body) + FixedToRender(B[s.body], spinAt(s.body), p);
+        if (s.fixed) return bodyAt(s.body) + FixedToRender(B[s.body], spinAt(s.body), lift ? TerrainLift(B[s.body], p) : p);
         return bodyAt(s.body) + p;
     };
     const ApolloSeg& s = S[k];
@@ -1135,7 +1184,13 @@ static double SurfaceRadius(const Body& b, V3 dir) {
     }
     double a = b.d.radius, c = a * (1 - b.d.flattening);
     double y = Dot(dir, b.pole);
-    return 1.0 / std::sqrt((1 - y * y) / (a * a) + y * y / (c * c));
+    double r = 1.0 / std::sqrt((1 - y * y) / (a * a) + y * y / (c * c));
+    if (b.terrain >= 0) {   // 地表の高さ（自転込みの本体の座標系で地図を引く）
+        double cs = std::cos(b.spin), sn = std::sin(b.spin);
+        V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;
+        r += TerrainKm(b, V3(Dot(dir, X), y, Dot(dir, Z)));
+    }
+    return r;
 }
 // 点 p（ワールド座標）から楕円体表面までの距離（高度）
 static double SurfaceDist(const Body& b, V3 p) {

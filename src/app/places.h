@@ -58,7 +58,9 @@ static std::string BookmarkLabel(const App& app, const Bookmark& bm) {
     const Body& b = app.B[bm.body];
     double r = Len(bm.pos);
     V3 dir = bm.pos * (1.0 / r);
-    double alt = r - SurfaceRadius(b, b.ex * dir.x + b.pole * dir.y + b.ez * dir.z);  // 楕円体は自転に依らない
+    V3 X, Z;
+    BodyFixedAxes(b, &X, &Z);
+    double alt = r - SurfaceRadius(b, X * dir.x + b.pole * dir.y + Z * dir.z);
     char buf[160];
     snprintf(buf, sizeof buf, "%s  %s %.1f°  %s %.1f°  %s", TR(b.d.jp, b.d.en), dir.y >= 0 ? "N" : "S",
              std::fabs(std::asin(std::max(-1.0, std::min(1.0, dir.y))) / DEG), std::atan2(-dir.z, dir.x) >= 0 ? "E" : "W",

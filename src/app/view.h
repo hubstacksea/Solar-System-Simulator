@@ -39,6 +39,35 @@ static Mesh GenUVSphere(int rings, int slices) {
     return m;
 }
 
+// 地表近くの地形の格子: 頂点は (u, φ, 0)。u は中心からの輪の番号 / 輪の数、φ は 1 周の角度。並びと三角形の向きは
+// GenUVSphere と同じ（中心が北極、φ が経度にあたる）
+static const int TERRAIN_RINGS = 240, TERRAIN_SLICES = 256;
+static Mesh GenTerrainGrid(int rings, int slices) {
+    Mesh m = {0};
+    m.vertexCount = (rings + 1) * (slices + 1);
+    m.triangleCount = rings * slices * 2;
+    m.vertices = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.normals = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.indices = (unsigned short*)MemAlloc(m.triangleCount * 3 * sizeof(unsigned short));
+    int k = 0;
+    for (int r = 0; r <= rings; r++)
+        for (int s = 0; s <= slices; s++, k++) {
+            m.vertices[k * 3] = (float)r / rings;
+            m.vertices[k * 3 + 1] = (float)(2 * PI * s / slices);
+            m.vertices[k * 3 + 2] = 0;
+            m.normals[k * 3 + 1] = 1;
+        }
+    int t = 0;
+    for (int r = 0; r < rings; r++)
+        for (int s = 0; s < slices; s++) {
+            unsigned short a = r * (slices + 1) + s, b = (r + 1) * (slices + 1) + s;
+            m.indices[t++] = a; m.indices[t++] = b + 1; m.indices[t++] = b;
+            m.indices[t++] = a; m.indices[t++] = a + 1; m.indices[t++] = b + 1;
+        }
+    UploadMesh(&m, false);
+    return m;
+}
+
 static Mesh GenRing(float inner, float outer, int segs) {
     Mesh m = {0};
     m.vertexCount = (segs + 1) * 2;

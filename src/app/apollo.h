@@ -967,7 +967,13 @@ static V3 ApolloVel(const App& app, int i, double t, int* refOut = nullptr) {
             if (s.t.front() <= t && t <= s.t.back()) ref = s.body;
     if (refOut) *refOut = ref;
     const double h = 0.5 / 86400;
-    V3 a = PosAt(app.B, i, t - h) - PosAt(app.B, ref, t - h), b = PosAt(app.B, i, t + h) - PosAt(app.B, ref, t + h);
+    // 地形で持ち上げる前の記録の道の速度（降下・上昇で地形の傾きを拾わないように）
+    auto track = [&](double tt) {
+        bool act;
+        if (d.apollo < 0) return PosAt(app.B, i, tt);
+        return ApolloPosAt(app.B, d.apollo, tt, [&](int k) { return PosAt(app.B, k, tt); }, [&](int k) { return SpinAt(app.B, k, tt); }, &act, false);
+    };
+    V3 a = track(t - h) - PosAt(app.B, ref, t - h), b = track(t + h) - PosAt(app.B, ref, t + h);
     V3 v = (b - a) * (1.0 / (2 * h));
     if (fixedBody >= 0) v = v - ApolloSpinVel(app.B[fixedBody], (a + b) * 0.5);   // 地面に対する速度: 自転で動く分を引く
     return v;
@@ -2163,7 +2169,7 @@ static bool ApolloDescentStage(const App& app, int mission, V3* pos, V3* up) {
         if (s.fixed && s.body == B_MOON && s.t.front() <= tl && tl <= s.t.back()) {
             const Body& moon = app.B[B_MOON];
             V3 f = HermiteAt(s.t, s.p, s.v, tl);
-            *pos = moon.pos + FixedToRender(moon, moon.spin, f);
+            *pos = moon.pos + FixedToRender(moon, moon.spin, TerrainLift(moon, f));
             *up = Norm(*pos - moon.pos);
             return true;
         }

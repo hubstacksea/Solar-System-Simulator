@@ -17,15 +17,61 @@ uniform mat4 matView;
 uniform mat4 matProjection;
 uniform float relBeta;   // 光速に近い時の見え方の β（0 なら何もしない）
 uniform vec3 relDir;     // 進む向き（カメラからの相対座標）
+// 地表近くの地形の格子（terrA.x > 0 の時）: 頂点は (u, φ)。カメラの真下の向き c を中心に、c からの角度
+// θ = θa (exp(u lnK) − 1) の輪を φ の向きに並べ、標高の分だけ持ち上げる。座標は赤道半径を 1 とし、原点は真下の
+// 楕円体の上の点（カメラの近くでも桁落ちしないよう、そこからの差を求める）
+uniform vec4 terrA;      // x: 1 で格子, y: θa, z: lnK, w: 高さの形式（1 地球の高さコード, 2 上位・下位バイト）
+uniform vec4 terrB;      // xyz: 真下の向き c（本体の座標系の球面の点）, w: 極半径 / 赤道半径
+uniform vec4 terrC;      // xyz: c に垂直な向き, w: 1 m あたりの長さ（1 / 赤道半径 m）
+uniform vec4 terrD;      // x, y: 標高の画像の幅と高さ, z: 輪の数, w: 1 周の頂点の数
+uniform sampler2D texture1;
 out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
+
+float terrDecode(vec4 t) {
+    if (terrA.w < 1.5) {   // 陸 128..255 = 0..8900 m（平方根で詰めてある）。海は海面（0）
+        float v = t.r * 255.0, s = (v - 128.0) / 127.0;
+        return v >= 127.5 ? s * s * 8900.0 : 0.0;
+    }
+    return (t.r * 255.0 * 256.0 + t.a * 255.0) * 0.5 - 10000.0;
+}
+// 標高 m。頂点の間隔が画素より細かい所は CPU 側と同じく 4 画素の値から双線形に補間し、粗い所は縮小した画像を使う
+float terrHeight(vec3 d, float lod) {
+    float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927);
+    if (lod > 0.0) return terrDecode(textureLod(texture1, uv, lod));
+    vec2 xy = uv * terrD.xy - 0.5, f = fract(xy);
+    ivec2 i0 = ivec2(floor(xy)), wh = ivec2(terrD.xy);
+    int x0 = i0.x < 0 ? i0.x + wh.x : (i0.x >= wh.x ? i0.x - wh.x : i0.x), x1 = x0 + 1 >= wh.x ? 0 : x0 + 1;
+    int y0 = clamp(i0.y, 0, wh.y - 1), y1 = clamp(i0.y + 1, 0, wh.y - 1);
+    float h00 = terrDecode(texelFetch(texture1, ivec2(x0, y0), 0)), h10 = terrDecode(texelFetch(texture1, ivec2(x1, y0), 0));
+    float h01 = terrDecode(texelFetch(texture1, ivec2(x0, y1), 0)), h11 = terrDecode(texelFetch(texture1, ivec2(x1, y1), 0));
+    return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
+
 void main() {
+    vec3 pos = vertexPosition, nrm = vertexNormal;
     fragObj = vertexPosition;
-    fragWorld = vec3(matModel * vec4(vertexPosition, 1.0));
-    fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));
+    if (terrA.x > 0.5) {
+        float th = terrA.y * (exp(vertexPosition.x * terrA.z) - 1.0), ph = vertexPosition.y;
+        vec3 c = terrB.xyz, e1 = terrC.xyz, e2 = cross(e1, c);
+        vec3 t = cos(ph) * e1 + sin(ph) * e2;
+        float st = sin(th), s2 = sin(0.5 * th), cm1 = -2.0 * s2 * s2;   // cos θ − 1
+        vec3 d = c * (1.0 + cm1) + t * st;
+        // 頂点の間隔（輪の間と 1 周の向きの大きい方）が標高の 1 画素の何倍か
+        float sp = max((th + terrA.y) * terrA.z / terrD.z, st * 6.2831853 / terrD.w);
+        float lod = log2(max(sp * terrD.y / 3.1415927, 1.0));
+        vec3 E = vec3(1.0, terrB.w, 1.0);
+        float h = terrHeight(d, lod) * terrC.w;
+        pos = E * (c * cm1 + t * st) + normalize(E * d) * h;
+        nrm = vec3(d.x, d.y / terrB.w, d.z);
+        fragObj = d;
+    }
+    fragWorld = vec3(matModel * vec4(pos, 1.0));
+    fragNormal = normalize(vec3(matNormal * vec4(nrm, 0.0)));
     if (relBeta <= 0.0) {
-        gl_Position = mvp * vec4(vertexPosition, 1.0);
+        gl_Position = mvp * vec4(pos, 1.0);
         return;
     }
     // 光行差: カメラから見た頂点の向きを、距離はそのままで進む向きへ寄せる（cos θ′ = (cos θ + β) / (1 + β cos θ)）。
@@ -58,6 +104,7 @@ uniform int occN;
 uniform float sunAng;      // 太陽の視半径 rad
 uniform vec3 color1;
 uniform vec3 color2;
+uniform vec4 terrCut;      // 地形の格子が覆う範囲: xyz 中心の向き, w その角度の cos（この内側の球は描かない。1 以上なら無効）
 uniform vec3 atmColor;
 uniform vec4 params;       // x: 種別（4 環, 5 上空のもや）, y: 縞の数 / 環の基準半径km, z: シード, w: 大気の強さ
 uniform vec4 ringInfo;     // 環: x 不透明度の表の内側 km, y 表の幅 km, z 海王星のアダムズ環の弧の位置 rad（無ければ -1）,
@@ -751,6 +798,7 @@ void main() {
 
     vec3 Ng = normalize(fragNormal);
     vec3 p = normalize(fragObj);
+    if (dot(p, terrCut.xyz) > terrCut.w) discard;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     float mu = max(dot(Ng, V), 0.0);
     fw = max(length(fragWorld) * detail.y / max(mu, 0.25), 1e-8);

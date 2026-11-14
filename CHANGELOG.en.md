@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.38.0 (2026-11-15)
+
+- Surface heights on Earth, the Moon and Mars: within 8 body radii the elevation data is drawn as real 3D terrain at its true height (1x). Mountains and valleys that were only shading before now rise above the horizon. A mesh centered below the camera reaches past the horizon; beyond it the old sphere is drawn
+- The altitude readout and surface collisions are measured from the terrain. The Apollo lunar modules and the descent stages left on the Moon also sit on the terrain (the recorded paths come down onto the Moon's mean radius, so below 15 km they are lifted smoothly by the terrain height; the vehicle attitude still follows the velocity of the path before the lift)
+- The data is the same as before: Earth ETOPO (about 9.8 km spacing), Moon LOLA (about 5.3 km), Mars MOLA (about 14.8 km). Relief finer than that is flat, and no procedural detail is added to the shape. Earth's oceans sit at sea level. The shading exaggeration (Earth 2.5x, Moon 1.5x) is unchanged
+- The README screenshots are grouped by topic, with new shots of Mons Hadley on the Moon, the inside of Valles Marineris and Apollo 15 (undocking, landing, deep-space EVA, splashdown). The old low-flight Moon shot with the outdated display was removed
+
 ## 2.37.14 (2026-11-14)
 
 - Apollo program: the deep-space EVAs Apollo 15-17 made on the way back to Earth are shown. The hatch opens and the command module pilot moves along the service module's handrails to the scientific instrument bay, stands in the foot restraint and brings back the cassettes one by one, while another crew member stands in the hatch. The view is from the side; during the EVA time runs at most 30 times real time and slows further as the hatch opens and closes and as the pilot goes out and comes back in

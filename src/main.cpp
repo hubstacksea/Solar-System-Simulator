@@ -393,6 +393,12 @@ int main(int argc, char** argv) {
     app.locAtmOzone = GetShaderLocation(app.shader, "atmOzone");
     app.locAtmHaze = GetShaderLocation(app.shader, "atmHaze");
     app.locCamUp = GetShaderLocation(app.shader, "camUp");
+    app.locTerrA = GetShaderLocation(app.shader, "terrA");
+    app.locTerrB = GetShaderLocation(app.shader, "terrB");
+    app.locTerrC = GetShaderLocation(app.shader, "terrC");
+    app.locTerrD = GetShaderLocation(app.shader, "terrD");
+    app.locTerrCut = GetShaderLocation(app.shader, "terrCut");
+    TerrainOff(app);
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
     LoadMoonTextures(app);
@@ -418,6 +424,7 @@ int main(int argc, char** argv) {
     app.locSkySunVis = GetShaderLocation(app.skyShader, "sunVis");
     app.mat.shader = app.shader;
     app.sphere = GenUVSphere(128, 256);
+    app.terrainMesh = GenTerrainGrid(TERRAIN_RINGS, TERRAIN_SLICES);
     for (const Shape& sh : g_shapes) {
         double r = 1;
         for (const Body& b : app.B)

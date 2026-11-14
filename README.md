@@ -10,44 +10,83 @@
 
 ![日本上空から見た昼の地球](docs/screenshots/earth_day.jpg)
 
+**地球と月**
+
 | | |
 |---|---|
-| ![土星と環](docs/screenshots/saturn.jpg) 土星と環（本体に落ちる環の影） | ![夜のヨーロッパの街明かり](docs/screenshots/earth_night.jpg) 夜のヨーロッパの街明かり |
-| ![月の表側](docs/screenshots/moon.jpg) 月の表側（NASA の実データ） | ![ティコ付近の低空飛行](docs/screenshots/moon_surface.jpg) ティコ付近の低空飛行 |
-| ![2027年8月2日の皆既日食](docs/screenshots/solar_eclipse.jpg) 2027年8月2日の日食（月の影が北アフリカに落ちる） | ![2025年9月7日の皆既月食](docs/screenshots/lunar_eclipse.jpg) 2025年9月7日の皆既月食 |
-| ![木星](docs/screenshots/jupiter.jpg) 木星 | ![ワープ](docs/screenshots/warp.jpg) ワープ演出 |
-| ![星座線と名前](docs/screenshots/constellations.jpg) 実在の星空と星座線（C キー） | ![1986年2月9日のハレー彗星](docs/screenshots/halley.jpg) 1986年2月9日（近日点）のハレー彗星 |
-| ![ボイジャー1号の木星最接近](docs/screenshots/voyager1_jupiter.jpg) 1979年3月5日、木星に最接近するボイジャー1号（K キー → 探査機のページ） | ![ボイジャー2号の海王星最接近](docs/screenshots/voyager2_neptune.jpg) 1989年8月25日、海王星の夜側を通過するボイジャー2号 |
-| ![2032年11月13日の水星の太陽面通過](docs/screenshots/mercury_transit.jpg) 2032年11月13日の水星の太陽面通過 | ![地球に接近する百武彗星](docs/screenshots/hyakutake.jpg) 1996年3月25日、地球から 0.1 AU を通過する百武彗星 |
-| ![土星に到着したカッシーニ](docs/screenshots/cassini.jpg) 2004年7月1日、土星に到着したカッシーニ（側面にホイヘンス・プローブ） | ![天の川を背にした木星](docs/screenshots/milky_way.jpg) 天の川を背にした木星 |
-| ![太平洋の夕暮れ](docs/screenshots/sunset.jpg) 太平洋上の夕暮れ | ![火星の昼の空](docs/screenshots/mars_sky.jpg) 火星の黄褐色の昼の空 |
-| ![チュリュモフ・ゲラシメンコ彗星に到着したロゼッタ](docs/screenshots/rosetta.jpg) 自動ツアー（U キー）: 2014年8月6日、彗星に到着したロゼッタ | ![木星を周回し始めたジュノー](docs/screenshots/juno.jpg) 2016年7月5日、木星の周回軌道に入ったジュノー |
-| ![高度 10 km から見た日本近海](docs/screenshots/haze.jpg) 高度 10 km から見た、かすむ地平線 | ![写真モードの土星](docs/screenshots/saturn_photo.jpg) 写真モード（Z キー）の土星 |
+| ![夜のヨーロッパの街明かり](docs/screenshots/earth_night.jpg) 夜のヨーロッパの街明かり | ![太平洋の夕暮れ](docs/screenshots/sunset.jpg) 太平洋上の夕暮れ |
+| ![海の夕焼け](docs/screenshots/sunset_sea.jpg) 海の夕焼け | ![高度 10 km から見た日本近海](docs/screenshots/haze.jpg) 高度 10 km から見た、かすむ地平線 |
+| ![国際宇宙ステーション](docs/screenshots/iss.jpg) 地球の上空を回る国際宇宙ステーション | ![月の表側](docs/screenshots/moon.jpg) 月の表側（NASA の実データ） |
+| ![月のハドリー山](docs/screenshots/moon_terrain.jpg) 月面の低空飛行: アポロ 15 号の着陸地点のそばのハドリー山（LOLA の標高を実際の高さで立体に） | ![2025年9月7日の皆既月食](docs/screenshots/lunar_eclipse.jpg) 2025年9月7日の皆既月食 |
+| ![2027年8月2日の皆既日食](docs/screenshots/solar_eclipse.jpg) 2027年8月2日の日食（月の影が北アフリカに落ちる） | ![地上から見た皆既日食](docs/screenshots/eclipse_ground.jpg) 2027年8月2日の皆既日食を地上から（コロナ） |
+
+**アポロ計画**
+
+| | |
+|---|---|
+| ![月着陸船の切り離し](docs/screenshots/apollo15_undock.jpg) 1971 年 7 月 30 日、月を回る軌道で司令・機械船から切り離す月着陸船（アポロ 15 号） | ![アポロ 15 号の着陸](docs/screenshots/apollo15_landing.jpg) 月面の地形の上に降りるアポロ 15 号の月着陸船（着陸の直前） |
+| ![アポロ 15 号の船外活動](docs/screenshots/apollo15_eva.jpg) 地球へ戻る途中の船外活動: 機械船の側面の科学機器室へ向かう司令船操縦士（アポロ 15 号） | ![アポロ 15 号の着水](docs/screenshots/apollo15_splashdown.jpg) 1971 年 8 月 7 日、3 つの主パラシュートのうち 2 つで着水するアポロ 15 号の司令船 |
+
+**惑星と衛星**
+
+| | |
+|---|---|
+| ![マリネリス峡谷の見える火星](docs/screenshots/mars_map.jpg) Viking の地図と MOLA の標高による火星（中央にマリネリス峡谷） | ![マリネリス峡谷の中](docs/screenshots/mars_terrain.jpg) マリネリス峡谷の中を低空から東へ（MOLA の標高を実際の高さで立体に） |
+| ![火星の昼の空](docs/screenshots/mars_sky.jpg) 火星の黄褐色の昼の空 | ![木星](docs/screenshots/jupiter.jpg) 木星 |
+| ![大赤斑の見える木星](docs/screenshots/jupiter_map.jpg) Cassini の地図による木星（右下に大赤斑） | ![天の川を背にした木星](docs/screenshots/milky_way.jpg) 天の川を背にした木星 |
+| ![シューメーカー・レビー第 9 彗星の衝突痕](docs/screenshots/shoemaker_levy9.jpg) 1994 年 7 月 18 日、シューメーカー・レビー第 9 彗星の破片が残した木星の衝突痕 | ![イオ](docs/screenshots/io.jpg) Galileo / Voyager の地図によるイオ |
+| ![土星と環](docs/screenshots/saturn.jpg) 土星と環（本体に落ちる環の影） | ![Voyager の観測による土星の環](docs/screenshots/saturn_rings.jpg) Voyager 2 の観測による濃淡の土星の環 |
+| ![天王星の環](docs/screenshots/uranus_rings.jpg) 横倒しの天王星と細い環 | ![ハートの見える冥王星](docs/screenshots/pluto.jpg) New Horizons の地図による冥王星 |
+
+**彗星と小惑星**
+
+| | |
+|---|---|
+| ![1986年2月9日のハレー彗星](docs/screenshots/halley.jpg) 1986年2月9日（近日点）のハレー彗星 | ![地球に接近する百武彗星](docs/screenshots/hyakutake.jpg) 1996年3月25日、地球から 0.1 AU を通過する百武彗星 |
 | ![チュリュモフ・ゲラシメンコ彗星](docs/screenshots/comet_67p.jpg) 実際の形のチュリュモフ・ゲラシメンコ彗星（2015年8月、近日点） | ![リュウグウ](docs/screenshots/ryugu.jpg) そろばん玉形の小惑星リュウグウ |
-| ![マリネリス峡谷の見える火星](docs/screenshots/mars_map.jpg) Viking の地図と MOLA の標高による火星（中央にマリネリス峡谷） | ![ハートの見える冥王星](docs/screenshots/pluto.jpg) New Horizons の地図による冥王星 |
-| ![イオ](docs/screenshots/io.jpg) Galileo / Voyager の地図によるイオ | ![海の夕焼け](docs/screenshots/sunset_sea.jpg) 海の夕焼け |
-| ![小惑星帯とトロヤ群](docs/screenshots/asteroid_belt.jpg) 15 AU 上から見た小惑星帯（輪）と木星のトロヤ群（緑） | ![大赤斑の見える木星](docs/screenshots/jupiter_map.jpg) Cassini の地図による木星（右下に大赤斑） |
-| ![地上から見た皆既日食](docs/screenshots/eclipse_ground.jpg) 2027年8月2日の皆既日食を地上から（コロナ） | ![DART の衝突 1 分前](docs/screenshots/dart_impact.jpg) DART の衝突 1 分前のディディモスとディモルフォス |
-| ![イトカワ](docs/screenshots/itokawa.jpg) 実際の形のイトカワ | ![Voyager の観測による土星の環](docs/screenshots/saturn_rings.jpg) Voyager 2 の観測による濃淡の土星の環 |
-| ![国際宇宙ステーション](docs/screenshots/iss.jpg) 地球の上空を回る国際宇宙ステーション | ![重力モード](docs/screenshots/gravity_mode.jpg) 重力モード（R キー）: 地球を回る軌道の予測線 |
-| ![ブラウザ版](docs/screenshots/browser.jpg) ブラウザ版（WebGL2） | ![スマホでのタッチ操作](docs/screenshots/touch.jpg) スマホの横向きでのタッチ操作（ツアー中） |
-| ![初回の案内](docs/screenshots/first_run.jpg) 最初の起動時の案内 | ![共有リンク](docs/screenshots/share_link.jpg) 共有リンクで開いた場面（火星上空、F2 でコピー） |
-| ![文字の大きさ 特大](docs/screenshots/settings_large.jpg) 設定画面（文字の大きさ「特大」） | ![全体図](docs/screenshots/system_map.jpg) 全体図（F3。1989 年、ボイジャー 1 号の軌跡） |
-| ![天体の情報](docs/screenshots/body_info.jpg) 天体の情報（I キー。木星） | ![天王星の環](docs/screenshots/uranus_rings.jpg) 横倒しの天王星と細い環 |
-| ![エウロパ・クリッパー](docs/screenshots/europa_clipper.jpg) 木星へ向かうエウロパ・クリッパー（太陽電池パネルは両翼で 30 m） | ![マウナケア山頂から見た南の空](docs/screenshots/sky_from_ground.jpg) マウナケア山頂の地上から見た夜の南の空（検索の「地上」） |
+| ![イトカワ](docs/screenshots/itokawa.jpg) 実際の形のイトカワ | ![小惑星帯とトロヤ群](docs/screenshots/asteroid_belt.jpg) 15 AU 上から見た小惑星帯（輪）と木星のトロヤ群（緑） |
+
+**探査機**
+
+| | |
+|---|---|
+| ![ボイジャー1号の木星最接近](docs/screenshots/voyager1_jupiter.jpg) 1979年3月5日、木星に最接近するボイジャー1号（K キー → 探査機のページ） | ![ボイジャー2号の海王星最接近](docs/screenshots/voyager2_neptune.jpg) 1989年8月25日、海王星の夜側を通過するボイジャー2号 |
+| ![土星に到着したカッシーニ](docs/screenshots/cassini.jpg) 2004年7月1日、土星に到着したカッシーニ（側面にホイヘンス・プローブ） | ![木星を周回し始めたジュノー](docs/screenshots/juno.jpg) 2016年7月5日、木星の周回軌道に入ったジュノー |
+| ![チュリュモフ・ゲラシメンコ彗星に到着したロゼッタ](docs/screenshots/rosetta.jpg) 自動ツアー（U キー）: 2014年8月6日、彗星に到着したロゼッタ | ![DART の衝突 1 分前](docs/screenshots/dart_impact.jpg) DART の衝突 1 分前のディディモスとディモルフォス |
+| ![エウロパ・クリッパー](docs/screenshots/europa_clipper.jpg) 木星へ向かうエウロパ・クリッパー（太陽電池パネルは両翼で 30 m） | ![ジュノー](docs/screenshots/probe_view.jpg) 探査機へのワープ: ズームした視野で中央に大きく（木星を回るジュノー） |
+| ![ベピコロンボの水星到着](docs/screenshots/voyage_bepicolombo.jpg) 探査機の旅: 2026 年 11 月、水星を回る軌道に入る直前のベピコロンボ（右上はこれまでの軌道の全体図） | ![小惑星ディンキネシュ](docs/screenshots/voyage_dinkinesh.jpg) 探査機の旅: 2023 年 11 月、ルーシーが 422 km まで近づいた小惑星ディンキネシュ（自動でズーム） |
+
+**地上から見る空と歴史上の出来事**
+
+| | |
+|---|---|
+| ![星座線と名前](docs/screenshots/constellations.jpg) 実在の星空と星座線（C キー） | ![マウナケア山頂から見た南の空](docs/screenshots/sky_from_ground.jpg) マウナケア山頂の地上から見た夜の南の空（検索の「地上」） |
 | ![東京の地上から](docs/screenshots/ground_view.jpg) 東京の明け方の南の空。地平線・方位と、金星の高度・方位・出入りの時刻（左下） | ![ふたご座流星群の夜](docs/screenshots/geminids.jpg) ふたご座流星群の夜の東京（左上に流れ星）。右は木星の明るさ・満ち欠け・見かけの大きさ |
-| ![基準系を自機に固定](docs/screenshots/frame_lock.jpg) 基準系を自機に固定（Shift+F）: 秒速 30 km で去っていく地球（右上） | ![シリウス A](docs/screenshots/sirius.jpg) 8.7 光年先のシリウス A（左上は 30 AU 先の白色矮星シリウス B） |
-| ![恒星間ワープ](docs/screenshots/interstellar_warp.jpg) 恒星間ワープ（星空が前方へ集まって青くなり、渦を巻く光のトンネルを抜ける） | ![エリダヌス座イプシロン星 b](docs/screenshots/exoplanet.jpg) 10.5 光年先の木星くらいの惑星、エリダヌス座イプシロン星 b |
-| ![太陽のまわりの恒星](docs/screenshots/star_map.jpg) 全体図の「太陽のまわりの恒星」（縮小し切ると。縦の線は黄道面からの高さ） | ![プロキシマ・ケンタウリ b の地上](docs/screenshots/proxima_b_ground.jpg) プロキシマ・ケンタウリ b の地上（想像図）。赤い恒星が空の同じ位置に止まって見える |
-| ![北斗七星の今と 10 万年後](docs/screenshots/star_epoch.jpg) 設定の「星空の年代」: 北斗七星の今（左）と 10 万年後（右）。星が固有運動で動いて形が崩れる | ![ハビタブルゾーン](docs/screenshots/habitable_zone.jpg) プロキシマ・ケンタウリを中心にした全体図とハビタブルゾーン（緑）。b がその中を回る |
-| ![褐色矮星](docs/screenshots/brown_dwarf.jpg) 雲の帯とまだらな雲のある褐色矮星ルーマン 16 B | ![アルタイル](docs/screenshots/altair.jpg) 速い自転でつぶれた形のアルタイル（16.7 光年） |
-| ![超光速](docs/screenshots/hyperdrive.jpg) 超光速エンジン（8）: 1 秒に 1 光年でケンタウルス座アルファ星へ | ![光速の 99%](docs/screenshots/relativistic.jpg) 光速の 99% で飛ぶ: 星と天の川が前方へ集まって青く明るくなる（光行差・ドップラー効果） |
-| ![ジュノー](docs/screenshots/probe_view.jpg) 探査機へのワープ: ズームした視野で中央に大きく（木星を回るジュノー） | ![エディントンの日食](docs/screenshots/historic_eclipse.jpg) 歴史上の日食: 1919 年、エディントンらが一般相対性理論を確かめたプリンシペ島の皆既日食 |
-| ![1054 年の超新星](docs/screenshots/supernova_1054.jpg) 1054 年 7 月、宋の都・開封の明け方の空に輝く超新星（のちのかに星雲） | ![シューメーカー・レビー第 9 彗星の衝突痕](docs/screenshots/shoemaker_levy9.jpg) 1994 年 7 月 18 日、シューメーカー・レビー第 9 彗星の破片が残した木星の衝突痕 |
-| ![ガリレオの見た木星](docs/screenshots/galileo_1610.jpg) 1610 年 1 月 7 日、パドヴァでガリレオが見た木星と衛星（東に 2 つ、西に 1 つ） | ![アンドロメダ銀河](docs/screenshots/andromeda.jpg) ズームしたアンドロメダ銀河と、伴銀河の M32・M110 |
-| ![イータカリーナ星雲](docs/screenshots/carina_nebula.jpg) イータカリーナ星雲（名前の表示は C キー） | ![ベピコロンボの水星到着](docs/screenshots/voyage_bepicolombo.jpg) 探査機の旅: 2026 年 11 月、水星を回る軌道に入る直前のベピコロンボ（右上はこれまでの軌道の全体図） |
-| ![小惑星ディンキネシュ](docs/screenshots/voyage_dinkinesh.jpg) 探査機の旅: 2023 年 11 月、ルーシーが 422 km まで近づいた小惑星ディンキネシュ（自動でズーム） | |
-| ![シリウス B](docs/screenshots/sirius_b.jpg) 自動ツアー: 白色矮星シリウス B と、20 AU 先のシリウス A | ![プロキシマ・ケンタウリのフレア](docs/screenshots/red_dwarf_flare.jpg) 大きな黒点のある赤色矮星プロキシマ・ケンタウリと、青白く光るフレア |
+| ![2032年11月13日の水星の太陽面通過](docs/screenshots/mercury_transit.jpg) 2032年11月13日の水星の太陽面通過 | ![エディントンの日食](docs/screenshots/historic_eclipse.jpg) 歴史上の日食: 1919 年、エディントンらが一般相対性理論を確かめたプリンシペ島の皆既日食 |
+| ![1054 年の超新星](docs/screenshots/supernova_1054.jpg) 1054 年 7 月、宋の都・開封の明け方の空に輝く超新星（のちのかに星雲） | ![ガリレオの見た木星](docs/screenshots/galileo_1610.jpg) 1610 年 1 月 7 日、パドヴァでガリレオが見た木星と衛星（東に 2 つ、西に 1 つ） |
+| ![アンドロメダ銀河](docs/screenshots/andromeda.jpg) ズームしたアンドロメダ銀河と、伴銀河の M32・M110 | ![イータカリーナ星雲](docs/screenshots/carina_nebula.jpg) イータカリーナ星雲（名前の表示は C キー） |
+
+**恒星と系外惑星**
+
+| | |
+|---|---|
+| ![シリウス A](docs/screenshots/sirius.jpg) 8.7 光年先のシリウス A（左上は 30 AU 先の白色矮星シリウス B） | ![シリウス B](docs/screenshots/sirius_b.jpg) 自動ツアー: 白色矮星シリウス B と、20 AU 先のシリウス A |
+| ![プロキシマ・ケンタウリのフレア](docs/screenshots/red_dwarf_flare.jpg) 大きな黒点のある赤色矮星プロキシマ・ケンタウリと、青白く光るフレア | ![褐色矮星](docs/screenshots/brown_dwarf.jpg) 雲の帯とまだらな雲のある褐色矮星ルーマン 16 B |
+| ![アルタイル](docs/screenshots/altair.jpg) 速い自転でつぶれた形のアルタイル（16.7 光年） | ![エリダヌス座イプシロン星 b](docs/screenshots/exoplanet.jpg) 10.5 光年先の木星くらいの惑星、エリダヌス座イプシロン星 b |
+| ![プロキシマ・ケンタウリ b の地上](docs/screenshots/proxima_b_ground.jpg) プロキシマ・ケンタウリ b の地上（想像図）。赤い恒星が空の同じ位置に止まって見える | ![ハビタブルゾーン](docs/screenshots/habitable_zone.jpg) プロキシマ・ケンタウリを中心にした全体図とハビタブルゾーン（緑）。b がその中を回る |
+| ![太陽のまわりの恒星](docs/screenshots/star_map.jpg) 全体図の「太陽のまわりの恒星」（縮小し切ると。縦の線は黄道面からの高さ） | ![北斗七星の今と 10 万年後](docs/screenshots/star_epoch.jpg) 設定の「星空の年代」: 北斗七星の今（左）と 10 万年後（右）。星が固有運動で動いて形が崩れる |
+| ![恒星間ワープ](docs/screenshots/interstellar_warp.jpg) 恒星間ワープ（星空が前方へ集まって青くなり、渦を巻く光のトンネルを抜ける） | ![超光速](docs/screenshots/hyperdrive.jpg) 超光速エンジン（8）: 1 秒に 1 光年でケンタウルス座アルファ星へ |
+| ![光速の 99%](docs/screenshots/relativistic.jpg) 光速の 99% で飛ぶ: 星と天の川が前方へ集まって青く明るくなる（光行差・ドップラー効果） | ![基準系を自機に固定](docs/screenshots/frame_lock.jpg) 基準系を自機に固定（Shift+F）: 秒速 30 km で去っていく地球（右上） |
+
+**機能と画面**
+
+| | |
+|---|---|
+| ![ワープ](docs/screenshots/warp.jpg) ワープ演出 | ![写真モードの土星](docs/screenshots/saturn_photo.jpg) 写真モード（Z キー）の土星 |
+| ![重力モード](docs/screenshots/gravity_mode.jpg) 重力モード（R キー）: 地球を回る軌道の予測線 | ![全体図](docs/screenshots/system_map.jpg) 全体図（F3。1989 年、ボイジャー 1 号の軌跡） |
+| ![天体の情報](docs/screenshots/body_info.jpg) 天体の情報（I キー。木星） | ![共有リンク](docs/screenshots/share_link.jpg) 共有リンクで開いた場面（火星上空、F2 でコピー） |
+| ![初回の案内](docs/screenshots/first_run.jpg) 最初の起動時の案内 | ![文字の大きさ 特大](docs/screenshots/settings_large.jpg) 設定画面（文字の大きさ「特大」） |
+| ![ブラウザ版](docs/screenshots/browser.jpg) ブラウザ版（WebGL2） | ![スマホでのタッチ操作](docs/screenshots/touch.jpg) スマホの横向きでのタッチ操作（ツアー中） |
 
 ## はじめての方へ
 
@@ -294,6 +333,7 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 - **表面**: 木星は Cassini の全球図で、大赤斑は観測記録に合わせた今の位置（体系 II 経度。1962 年以降の記録と、それ以降の年 16° のずれ）に来るよう回ります。土星も Cassini の全球図（2011 年 8 月。北半球の大嵐の名残が見えます）で、両極と、環の影で写っていない赤道から南緯 17° までは手続き的な雲です。水星・火星・ケレス・ベスタ・冥王星と、イオ・エウロパ・ガニメデ・カリスト・ミマス・エンケラドゥス・テティス・ディオネ・レア・イアペトゥス・ミランダ・アリエル・ウンブリエル・チタニア・オベロン・トリトン・カロンは、探査機の画像による実際の地図を貼っています（オリンポス山やマリネリス峡谷、冥王星のハート、エンケラドゥスの縞などが本当の位置に見えます）。火星は MOLA の標高で起伏の陰影も付きます。水星・火星・ケレス・ベスタ・冥王星は IAU の本初子午線に合わせて自転し、衛星はいつも同じ面を母惑星に向けます。撮影されていない範囲（天王星の衛星の北半球、冥王星・トリトン・カロンの一部など）と、地図より細かい模様・起伏は手続き的に補います。イアペトゥスは地図の明暗がならされているので、明るい半球と暗い半球は手続き的に塗り分けます。天王星・海王星・金星は、自由に再配布できる全球図が見つからない（天王星と金星は目に見える光ではほとんど模様もない）ため、手続き的な模様のままです。そのほかの天体はシェーダで手続き的に生成。近づくほど細かい模様と起伏が現れ、地表付近でも模様が潰れません
 - **地球**: NASA の実データで、大陸・海岸線・標高（起伏の陰影）・水深（浅瀬の色）・海氷・夜の街明かりを再現（約 10 km 解像度。それより細かい部分は手続き的に補完）。自転の向きはグリニッジ恒星時に合わせてあるので、PC の時刻で実際に昼の地域が明るく、夜の地域に街明かりが見えます。地表の色は Blue Marble の 12 か月分から日付に合わせて変わり（冬の雪、雨季の緑など）、雲は NASA の雲の全球画像（ある日の分布）に細かい筋を足して描きます
 - **月**: NASA の実データ（LRO の色と LOLA 標高、約 3〜5 km 解像度）。海・クレーター・光条が実際の位置にあり、それより細かいクレーターは手続き的に補完
+- **地表の高さ**: 地球・月・火星は、天体の半径の 8 倍より近づくと、標高データを実際の高さ（1 倍）で立体の地形にして描きます。高度と地表との衝突は地形から測り、アポロの月着陸船と月面に残る降下段も地形の上に置きます。データの間隔（地球約 10 km・月約 5 km・火星約 15 km）より細かい起伏は平らで、地球の海は海面の高さです
 - **音楽**: 一番近い天体の曲を流します。惑星はホルスト《惑星》（衛星の近くではその母惑星の曲）、太陽はグリーグ「朝」、地球はベートーヴェン「田園」第1楽章、月はドビュッシー「月の光」。近いほど大きく、離れると小さくなり、影響圏の外（太陽は 1 AU）で消えます。曲が変わる時はフェードで切り替わり、戻ってくると続きから流れます。冥王星の近くでは流れません（冥王星の曲は後年の別の作曲者の作品で著作権が残っているため）。準惑星・小惑星・彗星の近くでも流れません
 - **地球のまわりの宇宙機**: 国際宇宙ステーション（ISS）とハッブル宇宙望遠鏡は CelesTrak の軌道要素（TLE、2026 年 10 月 28 日）から、地球の扁平による軌道面の回転も入れて位置を計算します（Horizons との差は約 35 km）。元期から離れるほどずれ、ISS は数日で数百 km、数か月で軌道上の位置が分からなくなります。ジェイムズ・ウェッブ宇宙望遠鏡（JWST）は JPL Horizons の軌跡で、地球から 150 万 km の L2 点のまわりを回ります（2031 年 10 月まで）。どれも Tab キーで選んで G キーで近くへワープできます
 - **重力モード**: 設定画面か R キーで切り替えます。太陽・惑星・大きな衛星など質量 10²⁰ kg 以上の天体の重力を受けて飛び、ワープで着いた時と切り替えた時は今いる天体のまわりの円軌道に乗ります。天体の位置はフレームごとに更新し、その間は止まっているとして細かい刻みで計算します（刻みが足りないほど時間を速めた時は、自動で時間の進みを抑えます）

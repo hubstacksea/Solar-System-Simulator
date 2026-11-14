@@ -248,9 +248,30 @@ static void DrawCometTails(const App& app) {
 }
 
 // 埋め込みの地球データをテクスチャにする（経度方向は繰り返し、緯度方向は端で止める）
-static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext) {
+static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext, int terrainBody = -1, App* app = nullptr) {
     Image img = LoadImageFromMemory(ext, f.data, (int)f.size);
     if (!img.data) return Texture2D{};
+    if (app && terrainBody >= 0 && app->B[terrainBody].terrain < 0) {   // 標高の画像: 同じ値を CPU 側にも持つ（地球は R、月・火星は上位バイト R と下位バイト A）
+        Terrain T;
+        T.w = img.width;
+        T.h = img.height;
+        T.earth = terrainBody == B_EARTH;
+        Color* px = LoadImageColors(img);
+        T.v.resize((size_t)T.w * T.h);
+        for (size_t k = 0; k < T.v.size(); k++) T.v[k] = T.earth ? px[k].r : (unsigned short)(px[k].r * 256 + px[k].a);
+        UnloadImageColors(px);
+        T.lo = 1e9;
+        T.hi = -1e9;
+        for (size_t k = 0; k < T.v.size(); k++) {
+            double h = T.Km((int)k);
+            T.lo = std::min(T.lo, h);
+            T.hi = std::max(T.hi, h);
+        }
+        Body& b = app->B[terrainBody];
+        b.terrain = (int)g_terrain.size();
+        b.outer = std::max(b.outer, b.d.radius + T.hi);
+        g_terrain.push_back(std::move(T));
+    }
     Texture2D t = LoadTextureFromImage(img);
     UnloadImage(img);
     if (!t.id) return t;
@@ -309,9 +330,50 @@ static void SetRingInfo(const App& app, const RingSet& rs) {
     SetShaderValue(app.shader, app.locRingInfo, info, SHADER_UNIFORM_VEC4);
 }
 
+// 地形の格子を使わない状態に戻す（同じシェーダで描くほかの天体・環のため）
+static void TerrainOff(App& app) {
+    float a[4] = {0, 0, 0, 0}, cut[4] = {0, 0, 0, 2};
+    SetShaderValue(app.shader, app.locTerrA, a, SHADER_UNIFORM_VEC4);
+    SetShaderValue(app.shader, app.locTerrCut, cut, SHADER_UNIFORM_VEC4);
+}
+
+// 標高データのある天体（地球・月・火星）の地表近く: カメラの真下を中心に、近くほど細かい格子を地平線の先まで敷き、
+// 標高の分だけ持ち上げて描く（等倍）。その範囲の球は描かない。範囲は、どこの地表も最低の高さより低くはないので、
+// 最高の地表がカメラから見て最低の高さの球の陰に入るまで（それより先の球との境目は見えない）
+static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt, double s, int texW, int texH) {
+    const Terrain& T = g_terrain[b.terrain];
+    const BodyDef& d = b.d;
+    double e = 1 - d.flattening, a = d.radius;
+    double cw = std::cos(b.spin), sw = std::sin(b.spin);
+    V3 X = b.ex * cw - b.ez * sw, Z = b.ex * sw + b.ez * cw;
+    V3 up = rel * (-1.0 / dist);
+    V3 c = Norm(V3(Dot(up, X), Dot(up, b.pole) / e, Dot(up, Z)));   // 真下の向き（球面の点）
+    double rlo = a * e + T.lo, rhi = a + T.hi;
+    double thMax = std::acos(std::min(1.0, rlo / dist)) + std::acos(std::min(1.0, rlo / rhi));
+    thMax = std::min(thMax * 1.02 + 1e-5, PI * 0.95);
+    double thA = std::max(1e-9, std::min(0.5 * std::max(alt, 0.001) / a, thMax * 0.02));
+    V3 ref = std::fabs(c.y) < 0.9999 ? V3(0, 1, 0) : V3(1, 0, 0);   // 格子の φ = 0 は東（極のすぐ近くだけ別の向き）
+    V3 e1 = Norm(Cross(ref, c));
+    float ta[4] = {1, (float)thA, (float)std::log(thMax / thA + 1), T.earth ? 1.0f : 2.0f};
+    float tb[4] = {(float)c.x, (float)c.y, (float)c.z, (float)e};
+    float tc[4] = {(float)e1.x, (float)e1.y, (float)e1.z, (float)(1.0 / (a * 1000))};
+    float td[4] = {(float)texW, (float)texH, (float)TERRAIN_RINGS, (float)TERRAIN_SLICES};
+    SetShaderValue(app.shader, app.locTerrA, ta, SHADER_UNIFORM_VEC4);
+    SetShaderValue(app.shader, app.locTerrB, tb, SHADER_UNIFORM_VEC4);
+    SetShaderValue(app.shader, app.locTerrC, tc, SHADER_UNIFORM_VEC4);
+    SetShaderValue(app.shader, app.locTerrD, td, SHADER_UNIFORM_VEC4);
+    // 原点は真下の楕円体の上の点（カメラからの位置を倍精度で求める）、軸は本体の座標系、長さは赤道半径を 1 とする
+    V3 o = rel + (X * c.x + b.pole * (c.y * e) + Z * c.z) * a;
+    Matrix m = BodyMatrix(b, o * s, a * s, a * s, b.spin);
+    DrawMesh(app.terrainMesh, app.mat, m);
+    float off[4] = {0, 0, 0, 0}, cut[4] = {(float)c.x, (float)c.y, (float)c.z, (float)std::cos(thMax)};
+    SetShaderValue(app.shader, app.locTerrA, off, SHADER_UNIFORM_VEC4);
+    SetShaderValue(app.shader, app.locTerrCut, cut, SHADER_UNIFORM_VEC4);
+}
+
 static void LoadEarthTextures(App& app) {
     app.earthColor = LoadEmbeddedTexture(EarthColorJpg(), ".jpg");
-    app.earthData = LoadEmbeddedTexture(EarthDataPng(), ".png");
+    app.earthData = LoadEmbeddedTexture(EarthDataPng(), ".png", B_EARTH, &app);
     app.earthTex = app.earthColor.id && app.earthData.id;
     app.earthMonths = LoadEmbeddedTexture(EarthMonthsJpg(), ".jpg");
     app.earthClouds = LoadEmbeddedTexture(EarthCloudsJpg(), ".jpg");
@@ -374,7 +436,10 @@ static void LoadBodyMaps(App& app) {
         m.mean = mean;
         m.color = LoadEmbeddedTexture(jpg, ".jpg");
         m.mask = LoadEmbeddedTexture(mask, ".png");
-        if (height) m.data = LoadEmbeddedTexture(data, ".png");
+        int tb = -1;
+        for (size_t i = 0; i < app.B.size(); i++)
+            if (m.name == app.B[i].d.en && app.B[i].d.kind == KIND_ROCKY) tb = (int)i;
+        if (height) m.data = LoadEmbeddedTexture(data, ".png", tb, &app);
         m.height = m.data.id != 0;
         if (!m.color.id || !m.mask.id) continue;
         for (Body& b : app.B)
@@ -385,7 +450,7 @@ static void LoadBodyMaps(App& app) {
 
 static void LoadMoonTextures(App& app) {
     app.moonColor = LoadEmbeddedTexture(MoonColorJpg(), ".jpg");
-    app.moonData = LoadEmbeddedTexture(MoonDataPng(), ".png");
+    app.moonData = LoadEmbeddedTexture(MoonDataPng(), ".png", B_MOON, &app);
     app.moonTex = app.moonColor.id && app.moonData.id;
     if (!app.moonTex) TraceLog(LOG_WARNING, "Moon textures unavailable, using procedural surface");
 }
@@ -845,7 +910,16 @@ static void DrawBodies(App& app) {
             app.mat.maps[MATERIAL_MAP_ROUGHNESS].texture = app.ringTex[ri];
             SetRingInfo(app, RingSets()[ri]);
         }
+        // 地表近くは標高の分だけ持ち上げた地形の格子で描く（地図の画像を割り当てた時だけ。遠くでは山の高さは 1 画素に満たない）
+        int texW = 0, texH = 0;
+        if (b.terrain >= 0 && b.shape < 0 && dist < d.radius * 8) {
+            if (style == S_EARTH_TEX) texW = app.earthData.width, texH = app.earthData.height;
+            else if (style == S_MOON_TEX) texW = app.moonData.width, texH = app.moonData.height;
+            else if (style == S_MAPPED && app.maps[b.map].height) texW = app.maps[b.map].data.width, texH = app.maps[b.map].data.height;
+        }
+        if (texW > 0) DrawTerrain(app, b, rel, dist, alt, s, texW, texH);
         DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
+        if (texW > 0) TerrainOff(app);
 
         if (d.style == S_TITAN) {   // 上空のもやの層（地表から 約 500 km 上）
             float hp[4] = {5.0f, 0, 0, 0.7f};
