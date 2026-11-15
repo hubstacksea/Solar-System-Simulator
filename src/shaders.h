@@ -137,8 +137,10 @@ uniform vec3 atmBeta;
 uniform vec3 atmMie;
 uniform vec3 atmOzone;
 uniform vec4 atmHaze;
-uniform vec4 venusAir;   // 金星の雲の下の地表: x 1 で有効, y 描画の 1 単位の長さ km, z カメラの高度 km, w 雲の中の散乱 1/km（カメラが雲の層の中の時）
-uniform vec3 venusSky;   // 金星の雲の下の空の明るさ（色ごと。雲と厚い大気で散らされた日光）
+uniform vec4 hazeAir;    // 金星の雲・タイタンのもやの下の地表: x 1 で有効, y 描画の 1 単位の長さ km, z カメラの高度 km,
+                         // w もやの粒の散乱 1/km（カメラのいる高さの。層の中か下か）
+uniform vec3 hazeSky;    // 層の下の空の明るさ（色ごと。雲と厚い大気で散らされた日光）
+uniform vec4 hazeBeta;   // 空気のレイリー散乱（地表、1/km、色ごと）, w: 空気の濃さが 1/e になる高さ km
 uniform vec3 camUp;
 out vec4 finalColor;
 
@@ -284,6 +286,7 @@ vec4 rocky(vec3 p, int style, vec3 o, out vec3 base) {
     else if (style == 10) { dens = 0.3; }
     else if (style == 12) { dens = 0.12; rough = 0.7; }
     else if (style == 24) { dens = 0.02; rough = 0.8; }  // 金星: 若い溶岩平原でクレーターがほとんど無い
+    else if (style == 25) { dens = 0.02; rough = 0.5; }  // タイタン: 雨と風で削られ、クレーターがほとんど無い
 
     // 冥王星のハート（スプートニク平原）は平らでクレーターが無い
     float heart = 0.0;
@@ -772,8 +775,8 @@ void main() {
     int style = int(detail.x + 0.5);
     vec3 V = normalize(-fragWorld);
 
-    if (kind == 6) {   // 金星の雲の層を下から見た空（一様に明るい曇り空）
-        finalColor = vec4(doppler(venusSky), 1.0);
+    if (kind == 6) {   // 金星の雲・タイタンのもやの層を下から見た空（一様に明るい曇り空）
+        finalColor = vec4(doppler(hazeSky), 1.0);
         return;
     }
 
@@ -899,16 +902,15 @@ void main() {
         col = mix(col, atmColor * max(ndlG, 0.0), 0.12 * (1.0 - mu) * params.w);   // 大気による青み
     }
 
-    if (venusAir.x > 0.5) {
-        // 金星の雲の下: 日光は雲と厚い大気で散らされて空全体から届く（影はできず、上を向いた面ほど少し明るい）
-        col = base * venusSky * (0.75 + 0.25 * dot(N, n0)) * 1.6;
-        // もや: CO2 のレイリー散乱。地表での 1/e の長さ 赤 2.2 km・緑 0.95 km・青 0.43 km（地球の空気の値を、金星の地表の
-        // 密度（地球の約 54 倍）と CO2 の散乱のしやすさ（空気の約 2.6 倍）で換算した見積もり）。空気は高さ 15.9 km ごとに 1/e。
+    if (hazeAir.x > 0.5) {
+        // 金星の雲・タイタンのもやの下: 日光は散らされて空全体から届く（影はできず、上を向いた面ほど少し明るい）
+        col = base * hazeSky * (0.75 + 0.25 * dot(N, n0)) * 1.6;
+        // もや: 空気のレイリー散乱（地表の値 hazeBeta、高さ hazeBeta.w ごとに 1/e。視線の通る高さで平均）と、もやの粒の散乱。
         // 遠いほど地面の色が消え、空と同じ光になる（光が何度も散らされるので、散らされた光は空の明るさとする）
-        float dist = length(fragWorld) * venusAir.y, hc = venusAir.z, hp = fragAlt, dh = hc - hp;
-        float rho = abs(dh) > 0.01 ? (exp(-hp / 15.9) - exp(-hc / 15.9)) * 15.9 / dh : exp(-hc / 15.9);
-        vec3 tr = exp(-(vec3(0.45, 1.05, 2.3) * rho + venusAir.w) * dist);
-        finalColor = vec4(doppler(col * tr + venusSky * (1.0 - tr)), 1.0);
+        float dist = length(fragWorld) * hazeAir.y, hc = hazeAir.z, hp = fragAlt, dh = hc - hp, H = hazeBeta.w;
+        float rho = abs(dh) > 0.01 ? (exp(-hp / H) - exp(-hc / H)) * H / dh : exp(-hc / H);
+        vec3 tr = exp(-(hazeBeta.rgb * rho + hazeAir.w) * dist);
+        finalColor = vec4(doppler(col * tr + hazeSky * (1.0 - tr)), 1.0);
         return;
     }
 

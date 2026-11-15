@@ -219,7 +219,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
     v.push_back(MakeMoon("レア", "Rhea", B_SATURN, 763.8, 2.31e21, 527108, 4.518212, 0.35,
                          KIND_ROCKY, {0.80f, 0.79f, 0.77f}, {0.52f, 0.51f, 0.50f}));
     v.push_back(MakeMoon("タイタン", "Titan", B_SATURN, 2574.7, 1.345e23, 1221870, 15.945, 0.35,
-                         KIND_GAS, {0.86f, 0.66f, 0.32f}, {0.78f, 0.58f, 0.28f}, 2, {0.9f, 0.7f, 0.4f}, 0.8f));
+                         KIND_ROCKY, {0.86f, 0.66f, 0.32f}, {0.78f, 0.58f, 0.28f}, 2, {0.9f, 0.7f, 0.4f}, 0.8f));   // 色・帯・大気はもやの層
     v.push_back(MakeMoon("イアペトゥス", "Iapetus", B_SATURN, 734.5, 1.806e21, 3560820, 79.3215, 15.47,
                          KIND_ROCKY, {0.85f, 0.83f, 0.78f}, {0.20f, 0.16f, 0.12f}));
 

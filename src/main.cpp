@@ -407,8 +407,9 @@ int main(int argc, char** argv) {
     app.locAtmMie = GetShaderLocation(app.shader, "atmMie");
     app.locAtmOzone = GetShaderLocation(app.shader, "atmOzone");
     app.locAtmHaze = GetShaderLocation(app.shader, "atmHaze");
-    app.locVenusAir = GetShaderLocation(app.shader, "venusAir");
-    app.locVenusSky = GetShaderLocation(app.shader, "venusSky");
+    app.locHazeAir = GetShaderLocation(app.shader, "hazeAir");
+    app.locHazeSky = GetShaderLocation(app.shader, "hazeSky");
+    app.locHazeBeta = GetShaderLocation(app.shader, "hazeBeta");
     app.locCamUp = GetShaderLocation(app.shader, "camUp");
     app.locTerrA = GetShaderLocation(app.shader, "terrA");
     app.locTerrB = GetShaderLocation(app.shader, "terrB");

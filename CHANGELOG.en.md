@@ -4,6 +4,16 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.41.0 (2026-11-15)
+
+- Titan surface: Titan is now a rocky body too, and its familiar haze look is drawn as a haze layer 150 km above the ground (it looks the same from outside). Inside the haze (50-150 km) is fog; below it the ground shows through the hazy nitrogen air, and standing on the ground gives an orange sky
+- Titan's elevations are the global topography of Corlies et al. (2017) from Cassini radar (altimetry, SAR topography and stereo; CC0, 4 pixels per degree, −1.5 to +1.1 km). About 9% of the surface was measured; the rest is interpolated. The light and dark of the ground come from Cassini's near-infrared (0.94 µm) global map (PIA19658), not visible-light brightness
+- Estimated: haze top 150 km and base 50 km, the light (9% at the surface, 25% at the haze base, not counting the dimness of sunlight so far from the Sun), the light color (much less blue), Rayleigh scattering of the air (a green 1/e length of about 19 km at the surface, where the air is about 4.4 times as dense as Earth's), and scattering by haze particles (1/e about 7 km inside the haze, about 100 km below it)
+- Venus and Titan now share the same rendering (a table of per-body values)
+- The "On Earth" search tab gained the landing sites of ten Venus landers (Venera 7-14, Vega 1 and 2, with landing dates) and the Huygens landing site on Titan (14 January 2005). Coordinates are from Wikipedia's list of landings and its Huygens article; Venera 8-10 are only known to within about 150 km, and some articles give Vega 1 as 8.05° N, 176.89° E
+- The README gallery gained the surface of Venus below its clouds, Titan below its haze, Vesta's real shape and Occator crater on Ceres
+- The map data the browser version loads later (maps.bin) grew from 22.1 MB to 23.3 MB
+
 ## 2.40.0 (2026-11-15)
 
 - Browser version: when drawing is heavy, the 3D resolution is lowered automatically. When the interval between the browser's screen updates exceeds 28 ms (about 36 fps) it drops by 10% at a time (down to 0.5x and 360 pixels of 3D height); if that does not help (the load is on the CPU) it goes back. It recovers when there is headroom, and the FPS readout shows the resolution while it is lowered. In Chrome on this PC, looking straight down at Earth went from 6.3 to 49 fps and at Mars from 10.5 to 49 fps (60-80% resolution)

@@ -285,8 +285,8 @@ static bool ApplyShareQuery(App& app, std::string q, UiId msgId = UI_SHARE_OPENE
 // 地上から空を見る場所（天体, 緯度・経度 deg, 標準時 UTC+時間（夏時間は考えない。NAN は UTC で表示））。
 // 選ぶと地表に降り、赤道側（北半球なら南）の空を見上げる。月面では地球が出ていれば地球を見る
 struct City { const char* jp; const char* en; double lat, lon; int body; double tz; };
-// 太陽系の外の惑星は番号が決まっていないので、英語名で探す（City::body に負の値で）
-static const int CITY_PROXIMA_B = -2;
+// 番号が決まっていない天体（衛星の一部・太陽系の外の惑星）は、英語名で探す（City::body に負の値で）
+static const int CITY_PROXIMA_B = -2, CITY_TITAN = -3;
 static const City CITIES[] = {
     {"東京", "Tokyo", 35.68, 139.69, B_EARTH, 9},         {"札幌", "Sapporo", 43.06, 141.35, B_EARTH, 9},
     {"那覇", "Naha", 26.21, 127.68, B_EARTH, 9},          {"北京", "Beijing", 39.90, 116.41, B_EARTH, 8},
@@ -309,13 +309,28 @@ static const City CITIES[] = {
     {"ジェゼロ・クレーター（パーシビアランス）", "Jezero crater (Perseverance)", 18.44, 77.45, B_MARS, NAN},
     {"ゲール・クレーター（キュリオシティ）", "Gale crater (Curiosity)", -4.59, 137.44, B_MARS, NAN},
     {"クリュセ平原（バイキング1号）", "Chryse Planitia (Viking 1)", 22.27, -47.95, B_MARS, NAN},
+    // 金星の着陸機の着陸地点（経度は東が正。Wikipedia の List of landings on extraterrestrial bodies による。ベネラ 8〜10 号は
+    // 半径 150 km ほどの範囲。ベガ 1 号は記事によって北緯 8.05°・東経 176.89° とも）
+    {"ベネラ7号の着陸地点（1970年12月15日、初めての金星着陸）", "Venera 7 landing site (15 Dec 1970, first landing on Venus)", -5.0, -9.0, B_VENUS, NAN},
+    {"ベネラ8号の着陸地点（1972年7月22日）", "Venera 8 landing site (22 Jul 1972)", -10.70, -24.75, B_VENUS, NAN},
+    {"ベネラ9号の着陸地点（1975年10月22日、初めて地表を撮影）", "Venera 9 landing site (22 Oct 1975, first images of the surface)", 31.01, -68.36, B_VENUS, NAN},
+    {"ベネラ10号の着陸地点（1975年10月25日）", "Venera 10 landing site (25 Oct 1975)", 15.42, -68.49, B_VENUS, NAN},
+    {"ベネラ11号の着陸地点（1978年12月25日）", "Venera 11 landing site (25 Dec 1978)", -14.0, -61.0, B_VENUS, NAN},
+    {"ベネラ12号の着陸地点（1978年12月21日）", "Venera 12 landing site (21 Dec 1978)", -7.0, -66.0, B_VENUS, NAN},
+    {"ベネラ13号の着陸地点（1982年3月1日、初めてカラーで撮影）", "Venera 13 landing site (1 Mar 1982, first color images)", -7.5, -57.0, B_VENUS, NAN},
+    {"ベネラ14号の着陸地点（1982年3月5日）", "Venera 14 landing site (5 Mar 1982)", -13.25, -50.0, B_VENUS, NAN},
+    {"ベガ1号の着陸地点（1985年6月11日）", "Vega 1 landing site (11 Jun 1985)", 7.2, 177.8, B_VENUS, NAN},
+    {"ベガ2号の着陸地点（1985年6月15日）", "Vega 2 landing site (15 Jun 1985)", -7.14, 177.67, B_VENUS, NAN},
+    // タイタン（経度は東が正。Wikipedia の Huygens (spacecraft) の 10°34′23″S 192°20′06″W）
+    {"ホイヘンスの着陸地点（タイタン、2005年1月14日）", "Huygens landing site (Titan, 14 Jan 2005)", -10.573, 167.665, CITY_TITAN, NAN},
     // プロキシマ・ケンタウリ b（自転が公転と同期していると考え、経度 0° が恒星の真下。経度 70° では恒星が高さ 20° に止まって見える）
     {"プロキシマ・ケンタウリ b（想像図）", "Proxima Centauri b (artist's impression)", 0, 70, CITY_PROXIMA_B, NAN},
 };
 static int CityBody(const App& app, const City& c) {
     if (c.body >= 0) return c.body;
+    const char* en = c.body == CITY_TITAN ? "Titan" : "Proxima Centauri b";
     for (size_t i = 0; i < app.B.size(); i++)
-        if (std::strcmp(app.B[i].d.en, "Proxima Centauri b") == 0) return (int)i;
+        if (std::strcmp(app.B[i].d.en, en) == 0) return (int)i;
     return B_EARTH;
 }
 static const int CITY_COUNT = sizeof CITIES / sizeof CITIES[0];

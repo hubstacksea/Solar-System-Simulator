@@ -33,6 +33,7 @@ import struct
 import sys
 import urllib.parse
 import urllib.request
+import zipfile
 
 import numpy as np
 from PIL import Image, ImageFilter
@@ -66,6 +67,7 @@ MAPS = [
     ("Tethys", "saturn/tethys_simp_cyl.map", "CASSINI", 2048, 1, "Cassini ISS"),
     ("Dione", "saturn/dione_simp_cyl.map", "CASSINI_VOYAGER", 2048, 1, "Cassini ISS / Voyager"),
     ("Rhea", "saturn/rhea_simp_cyl.map", "CASSINI_VOYAGER", 2048, 1, "Cassini ISS / Voyager"),
+    ("Titan", "s3:Titan_ISS_P19658_Mosaic_Global_4km.tif", "", 2048, 1, "Cassini ISS 0.94 um (PIA19658, NASA/JPL-Caltech/SSI)"),
     ("Iapetus", "saturn/iapetus_simp_cyl.map", "CASSINI_VOYAGER", 2048, 2, "Cassini ISS / Voyager"),
     ("Miranda", "jpl:ura5vuu2.jpg", "", 1440, 1, "Voyager 2 (USGS, via JPL Solar System Simulator)"),
     ("Ariel", "jpl:ura1vuu2.jpg", "", 1440, 1, "Voyager 2 (USGS, via JPL Solar System Simulator)"),
@@ -132,6 +134,11 @@ def pds_saturn(work, mapfile, w):
 
 
 def wms(work, mapfile, layer, w):
+    if mapfile.startswith("s3:"):   # USGS の S3 の mosaic/ にある 8 bit の全球図（タイタン: 東経が正で左端が経度 0°。左端を -180° に）
+        name = mapfile[3:]
+        img = Image.open(fetch(work, name, S3_MOSAIC + name)).convert("L")
+        a = np.roll(np.asarray(img), img.width // 2, axis=1)
+        return Image.fromarray(a, "L").convert("RGB").resize((w, w // 2), Image.LANCZOS)
     if mapfile == "none:":   # 地図なし（金星: 地表は雲の下で、目に見える光の全球図がない。撮影されていない扱いにする）
         return Image.new("RGB", (w, w // 2), (0, 0, 0))
     if mapfile.startswith("pds:"):
@@ -162,11 +169,14 @@ def mars_height(work):
 # 値の定義は各ファイルのラベル（.lbl）と説明（FGDC_metadata/）による。金星は Magellan の高度計による 6051.0 km の球からの
 # 高さ m（Ford, Pettengill ほか。測れていない所は -32768）。水星は 2439.4 km の球からの高さ（0.5 m 単位）、ケレスは 470 km の球からの
 # 高さ m、ベスタは半径 m、冥王星・カロンは 1188.3 km・606 km の球からの高さ m。冥王星・カロンは New Horizons が近くで
-# 見た半球だけで、ほかは -32768（データなし）
+# 見た半球だけで、ほかは -32768（データなし）。タイタンは Corlies ほか（2017, doi:10.1002/2017GL075518）の、カッシーニの
+# レーダーの高度計・SAR の地形・立体視から作った 2575 km の球からの高さ m（4 ピクセル/度。観測は表面の約 9%（この
+# 画素の数では約 16%）で、残りは補間。Cornell の配布する zip（CC0）の topo_4PPD_interp.cub）
 S3_MOSAIC = "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/"
 DEMS = {
     "Mercury": ("Mercury_Messenger_USGS_DEM_Global_665m_v2.tif", 2048, lambda v: 2439400 + v * 0.5, 0),
     "Venus": ("Venus_Magellan_Topography_Global_4641m_v02.tif", 2048, lambda v: 6051000 + v, -180),
+    "Titan": ("zip:topo_4PPD_interp.cub", 1440, lambda v: 2575000 + v, -180),
     "Ceres": ("Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif", 1024, lambda v: 470000 + v, 0),
     "Vesta": ("Vesta_Dawn_HAMO_DTM_DLR_Global_48ppd.cub", 1024, lambda v: v, -180),
     "Pluto": ("Pluto_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif", 2048, lambda v: 1188300 + v, 0),
@@ -175,7 +185,8 @@ DEMS = {
 # シミュレータの赤道半径 km と扁平率（src/solar_data.h）。地図は、球面の点 (x, y, z) の緯度 asin(y) で引き、
 # 楕円体の点 (x, y (1 − 扁平率), z) に貼るので、扁平な天体では地図の行の緯度と実際の中心からの緯度がずれる。
 # 標高と画像はこのずれの分だけ行を引き直す（ベスタは最大 7° ほど）
-SHAPE = {"Mercury": (2439.7, 0.0), "Venus": (6051.8, 0.0), "Ceres": (482.1, 0.075), "Vesta": (286.3, 0.22), "Pluto": (1188.3, 0.0), "Charon": (606.0, 0.0)}
+TITAN_ZIP = "https://data.astro.cornell.edu/titan_topo_corlies/titan_topo_corlies.zip"
+SHAPE = {"Mercury": (2439.7, 0.0), "Venus": (6051.8, 0.0), "Titan": (2574.7, 0.0), "Ceres": (482.1, 0.075), "Vesta": (286.3, 0.22), "Pluto": (1188.3, 0.0), "Charon": (606.0, 0.0)}
 
 
 def read_tiff(path):
@@ -242,7 +253,14 @@ def dem_height(work, name):
     """標高の PNG（シミュレータの楕円体からの高さ。グレー + アルファ = 16 bit、0.5 m 単位で -10,000 m を 0。
     それに収まらない天体（ベスタ・カロン）は 1 m 単位で -32,768 m を 0）と、その形式（1 か 2）"""
     fn, w, radius, lon0 = DEMS[name]
-    path = fetch(work, fn, S3_MOSAIC + fn)
+    if fn.startswith("zip:"):   # タイタン: Cornell の zip の中の 1 ファイル
+        fn = fn[4:]
+        path = os.path.join(work, fn)
+        if not os.path.exists(path):
+            with zipfile.ZipFile(fetch(work, os.path.basename(TITAN_ZIP), TITAN_ZIP)) as z, open(path, "wb") as f:
+                f.write(z.read(fn))
+    else:
+        path = fetch(work, fn, S3_MOSAIC + fn)
     raw, nodata = read_cub(path) if fn.endswith(".cub") else read_tiff(path)
     H, W = raw.shape
     # 出力の 2 倍の細かさまで、データのある画素の平均で縮める（行のまとまりごとに）

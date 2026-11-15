@@ -73,8 +73,34 @@ struct Terrain {
     }
 };
 static std::vector<Terrain> g_terrain;
-// 金星の雲の層の上端と下端（地表から km。目安）。地表は雲の下からしか見えない
-static const double VENUS_CLOUD_TOP = 70, VENUS_CLOUD_BASE = 48;
+// 厚い雲・もやに覆われた天体（金星・タイタン）: 外からは雲（もや）の層を描き、その上端より下に降りると地表と一様な空を
+// 描く。値はどれも推定（目安）を含む:
+//  - 層の上端・下端: 金星は雲の層 70 km・48 km。タイタンは外から不透明に見えるもやの上端 150 km、地表が見え始める 50 km
+//  - 明るさ: 層の上の日光に対する、地表と層の下端での割合。金星 3.5%・15%（着陸機・探査機の観測からの目安）。
+//    タイタン 9%・25%（ホイヘンスの観測からの目安。太陽から遠い分の暗さは含めない）
+//  - 地表に届く光の色: どちらも青が大きく減る
+//  - 空気のレイリー散乱（地表、1/km）: 地球の空気の値を、地表の密度（金星 約 54 倍の CO2、タイタン 約 4.4 倍の N2）と
+//    散乱のしやすさ（CO2 は空気の約 2.6 倍）で換算。赤・青は波長の 4 乗で変える。空気は高さ H ごとに 1/e
+//  - もやの粒の散乱: 層の中（金星の雲の中は 1/e 約 0.7 km、タイタンは約 7 km）と、層の下（タイタン 1/e 約 100 km）
+struct HazeWorld {
+    const char* en;
+    double top, base, eSurf, eBase;
+    float tint[3], beta[3];
+    double H;
+    float layerBeta, lowBeta;
+    Col3 g1, g2;   // 地表の色
+};
+static const HazeWorld HAZE_WORLDS[] = {
+    {"Venus", 70, 48, 0.035, 0.15, {1.0f, 0.72f, 0.42f}, {0.45f, 1.05f, 2.3f}, 15.9, 1.5f, 0.0f,
+     {0.30f, 0.28f, 0.26f}, {0.20f, 0.19f, 0.18f}},   // 玄武岩（暗い灰色）
+    {"Titan", 150, 50, 0.09, 0.25, {1.0f, 0.60f, 0.28f}, {0.023f, 0.052f, 0.117f}, 20.7, 0.15f, 0.01f,
+     {0.40f, 0.34f, 0.27f}, {0.26f, 0.22f, 0.17f}},   // 氷と有機物（明暗はカッシーニの近赤外の地図）
+};
+static const HazeWorld* HazeWorldOf(const BodyDef& d) {
+    for (const HazeWorld& h : HAZE_WORLDS)
+        if (std::strcmp(d.en, h.en) == 0) return &h;
+    return nullptr;
+}
 
 // 本体の座標系（X, 自転軸, Z）の向き o の地表の高さ km。楕円体の上の点は、向きを (x, y / (1 − 扁平率), z) にした
 // 球面の点で地図を引く（球のメッシュと同じ）
@@ -974,7 +1000,7 @@ static std::vector<Body> InitBodies() {
             b.primeOffset = std::atan2(-Dot(Q, b.ez), Dot(Q, b.ex));
         }
         b.outer = RingOf((int)i) ? RingOf((int)i)->outer : d.radius;   // 環のある惑星は環の外側まで
-        if (i == B_VENUS) b.outer = d.radius + VENUS_CLOUD_TOP;          // 金星は雲の層の上まで
+        if (const HazeWorld* hw = HazeWorldOf(d)) b.outer = d.radius + hw->top;   // 雲（もや）の層の上まで
         if (d.apolloTrack) {
             b.soi = 20;      // 近くにいる自機は宇宙船と一緒に移動する（月を回る間に月面の近くを飛ぶ自機を連れて行かないよう狭く）
             b.outer = 0.03;
