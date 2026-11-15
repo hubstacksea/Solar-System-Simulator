@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.38.2 (2026-11-15)
+
+- Distant relief no longer ripples as much when flying fast just above the surface. The thinning of the far terrain mesh in 2.38.1 made the ring spacing coarser than the elevation data (about 34 km at 1 km altitude on the Moon, where a LOLA pixel is about 5.3 km), so the mesh vertices, which move with the camera, kept catching and missing the peaks in between
+- The ring spacing is now never wider than half an elevation pixel, and the mesh has 240 rings instead of 120. Heights are read from data smoothed to the actual vertex spacing. At 1 km altitude on the Moon, the frame-to-frame wobble of the distant ridge line per 0.5 km of travel, measured against a reference drawn with a fine mesh, went from 1.07 to 0.57 pixels (some remains). The browser version runs as fast as 2.38.1
+
 ## 2.38.1 (2026-11-15)
 
 - The browser version is much faster near the surfaces of Earth and Mars (Chrome on this PC, looking at the horizon: Earth 8 → 60 fps, Mars 5.5 → 60 fps; looking straight down: Earth 2.8 → 6.4 fps, Mars 2.9 → 10.5 fps)

@@ -41,7 +41,7 @@ static Mesh GenUVSphere(int rings, int slices) {
 
 // 地表近くの地形の格子: 頂点は (u, φ, 0)。u は中心からの輪の番号 / 輪の数、φ は 1 周の角度。並びと三角形の向きは
 // GenUVSphere と同じ（中心が北極、φ が経度にあたる）
-static const int TERRAIN_RINGS = 120, TERRAIN_SLICES = 128;
+static const int TERRAIN_RINGS = 240, TERRAIN_SLICES = 128;
 static Mesh GenTerrainGrid(int rings, int slices) {
     Mesh m = {0};
     m.vertexCount = (rings + 1) * (slices + 1);

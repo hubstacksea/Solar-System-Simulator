@@ -357,10 +357,12 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     double lnK = std::log(thMax / thA + 1);
     // 輪の θ: 基本は θa (exp(u lnK) − 1)（u に一様。近いほど細かい）。ただし地平線の近くでは輪が画面の縦に詰まり、細い
     // 三角形の縁の画素を何度も塗るのが重い（地球・火星の地表のシェーダは重い）ので、画面で TERRAIN_PX 画素に 1 本までに
-    // 間引く（間隔は基本の 4 倍まで）。使わなかった輪は外の端に重ねる（面積 0 で塗らない）。画面の縦の間隔はカメラから
-    // 見た角度 α（半径 a の球の上の点）の変化で見る。真下の近くで 1 周の頂点が画面で詰まる輪も、同じ間隔まで間引く
-    const double TERRAIN_PX = 32;
-    static float ring[4 * 31], step[4 * 31];
+    // 間引く（間隔は基本の 4 倍まで、かつ標高の半画素まで。それより粗くすると、カメラが動いて輪が地表の上を滑る時に
+    // 間の山を拾ったり外したりして遠くの起伏が波打つ）。使わなかった輪は外の端に重ねる（面積 0 で塗らない）。画面の縦の
+    // 間隔はカメラから見た角度 α（半径 a の球の上の点）の変化で見る。真下の近くで 1 周の頂点が画面で詰まる輪も、同じ
+    // 間隔まで間引く
+    const double TERRAIN_PX = 32, texel = PI / texH * 0.5;
+    static float ring[4 * 61], step[4 * 61];
     {
         const int NS = 2048;
         static double cum[NS + 1];
@@ -368,8 +370,8 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
             double u = (double)k / NS, th = thA * (std::exp(u * lnK) - 1);
             double x = a * std::sin(th), y = dist - a * std::cos(th);
             double dAlpha = std::fabs(a * (a - dist * std::cos(th))) / std::max(x * x + y * y, 1e-12);   // dα/dθ
-            double screen = app.cam.focal / TERRAIN_PX * dAlpha * thA * lnK * std::exp(u * lnK);
-            return std::min(1.0, std::max(screen / TERRAIN_RINGS, 0.25)) * TERRAIN_RINGS;
+            double dth = thA * lnK * std::exp(u * lnK), screen = app.cam.focal / TERRAIN_PX * dAlpha * dth;
+            return std::min(1.0, std::max({screen / TERRAIN_RINGS, 0.25, dth / texel / TERRAIN_RINGS})) * TERRAIN_RINGS;
         };
         cum[0] = 0;
         double prev = dens(0);
@@ -389,7 +391,7 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
             double th = ring[i], x = a * std::sin(th), y = dist - a * std::cos(th);
             double px = 2 * PI * x / TERRAIN_SLICES / std::max(std::sqrt(x * x + y * y), 1e-12) * app.cam.focal;   // 頂点 1 つ分の画素
             int st = 1;
-            while (st < TERRAIN_SLICES / 8 && px * st * 2 <= TERRAIN_PX) st *= 2;
+            while (st < TERRAIN_SLICES / 8 && px * st * 2 <= TERRAIN_PX && 2 * PI * std::sin(th) / TERRAIN_SLICES * st * 2 <= texel) st *= 2;
             step[i] = (float)st;
         }
     }
@@ -401,8 +403,8 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     SetShaderValue(app.shader, app.locTerrB, tb, SHADER_UNIFORM_VEC4);
     SetShaderValue(app.shader, app.locTerrC, tc, SHADER_UNIFORM_VEC4);
     SetShaderValue(app.shader, app.locTerrD, td, SHADER_UNIFORM_VEC4);
-    SetShaderValueV(app.shader, app.locTerrRing, ring, SHADER_UNIFORM_VEC4, 31);
-    SetShaderValueV(app.shader, app.locTerrStep, step, SHADER_UNIFORM_VEC4, 31);
+    SetShaderValueV(app.shader, app.locTerrRing, ring, SHADER_UNIFORM_VEC4, 61);
+    SetShaderValueV(app.shader, app.locTerrStep, step, SHADER_UNIFORM_VEC4, 61);
     // 原点は真下の楕円体の上の点（カメラからの位置を倍精度で求める）、軸は本体の座標系、長さは赤道半径を 1 とする
     V3 o = rel + (X * c.x + b.pole * (c.y * e) + Z * c.z) * a;
     Matrix m = BodyMatrix(b, o * s, a * s, a * s, b.spin);

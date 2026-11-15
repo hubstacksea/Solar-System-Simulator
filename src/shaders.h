@@ -20,10 +20,10 @@ uniform vec3 relDir;     // 進む向き（カメラからの相対座標）
 // 地表近くの地形の格子（terrA.x > 0 の時）: 頂点は (u, φ)。カメラの真下の向き c を中心に、c からの角度 θ の輪
 // （輪ごとの θ は terrRing。CPU で決める）を φ の向きに並べ、標高の分だけ持ち上げる。座標は赤道半径を 1 とし、原点は真下の
 // 楕円体の上の点（カメラの近くでも桁落ちしないよう、そこからの差を求める）
-uniform vec4 terrA;      // x: 1 で格子, y: θa, z: lnK（標高の画像の縮小の度合いは θa (exp(u lnK) − 1) の間隔で決める）,
+uniform vec4 terrA;      // x: 1 で格子, y: θa, z: lnK（輪の θ の基本の並び θa (exp(u lnK) − 1)。シェーダでは使わない）,
                          // w: 高さの形式（1 地球の高さコード, 2 上位・下位バイト）
-uniform vec4 terrRing[31];   // 輪 i の θ（4 つずつ詰める）
-uniform vec4 terrStep[31];   // 輪 i の 1 周の頂点の間引き（2 の累乗。その数ずつの頂点を同じ位置に重ねる）
+uniform vec4 terrRing[61];   // 輪 i の θ（4 つずつ詰める）
+uniform vec4 terrStep[61];   // 輪 i の 1 周の頂点の間引き（2 の累乗。その数ずつの頂点を同じ位置に重ねる）
 uniform vec4 terrB;      // xyz: 真下の向き c（本体の座標系の球面の点）, w: 極半径 / 赤道半径
 uniform vec4 terrC;      // xyz: c に垂直な向き, w: 1 m あたりの長さ（1 / 赤道半径 m）
 uniform vec4 terrD;      // x, y: 標高の画像の幅と高さ, z: 輪の数, w: 1 周の頂点の数
@@ -64,9 +64,11 @@ void main() {
         vec3 t = cos(ph) * e1 + sin(ph) * e2;
         float st = sin(th), s2 = sin(0.5 * th), cm1 = -2.0 * s2 * s2;   // cos θ − 1
         vec3 d = c * (1.0 + cm1) + t * st;
-        // 頂点の間隔（輪の間と 1 周の向きの大きい方）が標高の 1 画素の何倍か。輪の間は指数の並びの間隔で見る
-        // （地平線の近くで輪を間引いても、同じ細かさの画像から高さを引いて山を低く丸めない）
-        float sp = max((th + terrA.y) * terrA.z / terrD.z, st * 6.2831853 / terrD.w);
+        // 頂点の間隔（間引いた後の、隣の輪との間と 1 周の向きの大きい方）が標高の 1 画素の何倍か。間隔より細かい起伏まで
+        // 引くと、カメラが動いて頂点が地表の上を滑る時に遠くの起伏が波打つので、間隔に合わせて縮小した画像から引く
+        int rp = max(ri - 1, 0), rn = min(ri + 1, int(terrD.z + 0.5));
+        float dth = max(terrRing[rn >> 2][rn & 3] - th, th - terrRing[rp >> 2][rp & 3]);
+        float sp = max(dth, st * 6.2831853 * float(stp) / terrD.w);
         float lod = log2(max(sp * terrD.y / 3.1415927, 1.0));
         vec3 E = vec3(1.0, terrB.w, 1.0);
         float h = terrHeight(d, lod) * terrC.w;
