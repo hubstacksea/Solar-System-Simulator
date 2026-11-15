@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.38.1 (2026-11-15)
+
+- The browser version is much faster near the surfaces of Earth and Mars (Chrome on this PC, looking at the horizon: Earth 8 → 60 fps, Mars 5.5 → 60 fps; looking straight down: Earth 2.8 → 6.4 fps, Mars 2.9 → 10.5 fps)
+- Terrain mesh: the ring spacing is recomputed every frame and thinned so rings are never closer than 32 pixels on screen. Rings near the point below the camera whose vertices crowd together around the circle are thinned too. The mesh went from 240 × 256 to 120 × 128. While the terrain is drawn, the sphere beyond it is not drawn (it is always behind the horizon)
+- Earth surface color: the sea ice, city lights, cloud wisps and land patterns are skipped where they have no effect. Mars: the procedural surface is no longer computed where the map covers it. The look is unchanged
+- Looking straight down at the Moon is still slower in Chrome than without terrain (in the desktop version the difference is about 10%)
+
 ## 2.38.0 (2026-11-15)
 
 - Surface heights on Earth, the Moon and Mars: within 8 body radii the elevation data is drawn as real 3D terrain at its true height (1x). Mountains and valleys that were only shading before now rise above the horizon. A mesh centered below the camera reaches past the horizon; beyond it the old sphere is drawn

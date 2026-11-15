@@ -397,7 +397,8 @@ int main(int argc, char** argv) {
     app.locTerrB = GetShaderLocation(app.shader, "terrB");
     app.locTerrC = GetShaderLocation(app.shader, "terrC");
     app.locTerrD = GetShaderLocation(app.shader, "terrD");
-    app.locTerrCut = GetShaderLocation(app.shader, "terrCut");
+    app.locTerrRing = GetShaderLocation(app.shader, "terrRing");
+    app.locTerrStep = GetShaderLocation(app.shader, "terrStep");
     TerrainOff(app);
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);

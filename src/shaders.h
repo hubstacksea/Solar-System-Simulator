@@ -17,10 +17,13 @@ uniform mat4 matView;
 uniform mat4 matProjection;
 uniform float relBeta;   // 光速に近い時の見え方の β（0 なら何もしない）
 uniform vec3 relDir;     // 進む向き（カメラからの相対座標）
-// 地表近くの地形の格子（terrA.x > 0 の時）: 頂点は (u, φ)。カメラの真下の向き c を中心に、c からの角度
-// θ = θa (exp(u lnK) − 1) の輪を φ の向きに並べ、標高の分だけ持ち上げる。座標は赤道半径を 1 とし、原点は真下の
+// 地表近くの地形の格子（terrA.x > 0 の時）: 頂点は (u, φ)。カメラの真下の向き c を中心に、c からの角度 θ の輪
+// （輪ごとの θ は terrRing。CPU で決める）を φ の向きに並べ、標高の分だけ持ち上げる。座標は赤道半径を 1 とし、原点は真下の
 // 楕円体の上の点（カメラの近くでも桁落ちしないよう、そこからの差を求める）
-uniform vec4 terrA;      // x: 1 で格子, y: θa, z: lnK, w: 高さの形式（1 地球の高さコード, 2 上位・下位バイト）
+uniform vec4 terrA;      // x: 1 で格子, y: θa, z: lnK（標高の画像の縮小の度合いは θa (exp(u lnK) − 1) の間隔で決める）,
+                         // w: 高さの形式（1 地球の高さコード, 2 上位・下位バイト）
+uniform vec4 terrRing[31];   // 輪 i の θ（4 つずつ詰める）
+uniform vec4 terrStep[31];   // 輪 i の 1 周の頂点の間引き（2 の累乗。その数ずつの頂点を同じ位置に重ねる）
 uniform vec4 terrB;      // xyz: 真下の向き c（本体の座標系の球面の点）, w: 極半径 / 赤道半径
 uniform vec4 terrC;      // xyz: c に垂直な向き, w: 1 m あたりの長さ（1 / 赤道半径 m）
 uniform vec4 terrD;      // x, y: 標高の画像の幅と高さ, z: 輪の数, w: 1 周の頂点の数
@@ -54,12 +57,15 @@ void main() {
     vec3 pos = vertexPosition, nrm = vertexNormal;
     fragObj = vertexPosition;
     if (terrA.x > 0.5) {
-        float th = terrA.y * (exp(vertexPosition.x * terrA.z) - 1.0), ph = vertexPosition.y;
+        int ri = int(vertexPosition.x * terrD.z + 0.5);
+        int si = int(vertexPosition.y / 6.2831853 * terrD.w + 0.5), stp = int(terrStep[ri >> 2][ri & 3] + 0.5);
+        float th = terrRing[ri >> 2][ri & 3], ph = float(si / stp * stp) * 6.2831853 / terrD.w;
         vec3 c = terrB.xyz, e1 = terrC.xyz, e2 = cross(e1, c);
         vec3 t = cos(ph) * e1 + sin(ph) * e2;
         float st = sin(th), s2 = sin(0.5 * th), cm1 = -2.0 * s2 * s2;   // cos θ − 1
         vec3 d = c * (1.0 + cm1) + t * st;
-        // 頂点の間隔（輪の間と 1 周の向きの大きい方）が標高の 1 画素の何倍か
+        // 頂点の間隔（輪の間と 1 周の向きの大きい方）が標高の 1 画素の何倍か。輪の間は指数の並びの間隔で見る
+        // （地平線の近くで輪を間引いても、同じ細かさの画像から高さを引いて山を低く丸めない）
         float sp = max((th + terrA.y) * terrA.z / terrD.z, st * 6.2831853 / terrD.w);
         float lod = log2(max(sp * terrD.y / 3.1415927, 1.0));
         vec3 E = vec3(1.0, terrB.w, 1.0);
@@ -104,7 +110,6 @@ uniform int occN;
 uniform float sunAng;      // 太陽の視半径 rad
 uniform vec3 color1;
 uniform vec3 color2;
-uniform vec4 terrCut;      // 地形の格子が覆う範囲: xyz 中心の向き, w その角度の cos（この内側の球は描かない。1 以上なら無効）
 uniform vec3 atmColor;
 uniform vec4 params;       // x: 種別（4 環, 5 上空のもや）, y: 縞の数 / 環の基準半径km, z: シード, w: 大気の強さ
 uniform vec4 ringInfo;     // 環: x 不透明度の表の内側 km, y 表の幅 km, z 海王星のアダムズ環の弧の位置 rad（無ければ -1）,
@@ -452,28 +457,29 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
 
-    // 海岸線: ぼかしたマスクの 0.5 を境にし、テクセルより細かい所はノイズで入り組ませる
-    float coastNoise = fbmL(p, 700.0, 16, 0.55, o + 41.0);
+    // 海岸線: ぼかしたマスクの 0.5 を境にし、テクセルより細かい所はノイズで入り組ませる（マスクが 0 か 1 の所、
+    // つまり海岸から離れた所はノイズで境を越えないので求めない）。以下の模様も、掛ける重みが 0 の所では求めない
+    float coastNoise = td.b > 0.0 && td.b < 1.0 ? fbmL(p, 700.0, 16, 0.55, o + 41.0) : 0.0;
     float m = td.b + coastNoise * 0.22;
     float aa = max(fwidth(m), 0.002);
     float land = smoothstep(0.5 - aa, 0.5 + aa, m);
 
     // 陸の色: テクスチャ（海の部分は周囲の陸の色で埋めてあるので、海岸でも青が混ざらない）
-    vec3 lc = tc * (0.88 + 0.24 * (fbmL(p, 700.0, 20, 0.5, o + 5.0) * 0.5 + 0.5));
+    vec3 lc = land > 0.0 ? tc * (0.88 + 0.24 * (fbmL(p, 700.0, 20, 0.5, o + 5.0) * 0.5 + 0.5)) : tc;
     // 海の色: 水深で浅瀬を明るく。海氷はデータの A
     float depth = clamp(-hm / 3000.0, 0.0, 1.0);
     vec3 oc = mix(vec3(0.08, 0.24, 0.34), vec3(0.03, 0.07, 0.20), smoothstep(0.0, 0.4, depth));
-    float ice = td.a * (0.85 + 0.3 * fbmL(p, 900.0, 10, 0.5, o + 47.0));
+    float ice = td.a > 0.0 ? td.a * (0.85 + 0.3 * fbmL(p, 900.0, 10, 0.5, o + 47.0)) : 0.0;
     oc = mix(oc, vec3(0.88, 0.91, 0.95), clamp(ice, 0.0, 1.0));
     base = mix(oc, lc, land);
     specMask = (1.0 - land) * (1.0 - ice);
 
     // 夜景: 実データ。近づくと街の明かりの粒に分かれる
-    lights = td.g * land * clamp(1.0 + 1.2 * fbmL(p, 900.0, 12, 0.6, o + 13.0), 0.0, 2.0);
+    lights = td.g * land > 0.0 ? td.g * land * clamp(1.0 + 1.2 * fbmL(p, 900.0, 12, 0.6, o + 13.0), 0.0, 2.0) : 0.0;
     if (mapInfo2.w > 0.5) {
         // 雲: NASA Blue Marble の雲の分布（texture2）に、画像より細かい筋を手続きで足す
         float cv = textureGrad(texture2, uv, dx, dy).r;
-        float wisp = fbmL(p, 300.0, 12, 0.55, o + 29.0);
+        float wisp = cv > 0.0 && detail.w > 0.0 ? fbmL(p, 300.0, 12, 0.55, o + 29.0) : 0.0;
         cloud = smoothstep(0.12, 0.8, cv + wisp * 0.1 * cv) * detail.w;
     } else {
         cloud = earthClouds(p, o, 0.12);   // 実データの地表が見えるよう少なめ
@@ -481,7 +487,8 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
 
     // 起伏: データの勾配 + テクセルより細かい山肌（標高が高いほど険しい）
     float rough = (0.03 + 0.3 * clamp(hm / 4000.0, 0.0, 1.0)) / 1400.0;
-    vec4 h = vec4(hm / R * EXAG, grad) * land + fbmD(p, 700.0, 18, 0.5, o) * (rough * land);
+    vec4 h = vec4(hm / R * EXAG, grad) * land;
+    if (land > 0.0) h += fbmD(p, 700.0, 18, 0.5, o) * (rough * land);
     if (land < 1.0) h += fbmD(p, 20000.0, 14, 0.55, o + 31.0) * (1.5e-6 * (1.0 - land));
     return h;
 }
@@ -566,8 +573,6 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
 // 細かい起伏は手続き的に足す（撮影された範囲では大きなクレーターを作らず、地図の模様と食い違わないようにする）
 vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     g_ray = 0.0;
-    vec3 pb;
-    vec4 ph = rocky(p, int(mapInfo2.x + 0.5), o, pb);
     float lat = asin(clamp(p.y, -1.0, 1.0));
     float lon = atan(-p.z, p.x);
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
@@ -575,12 +580,18 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
     vec3 tc = textureGrad(texture0, uv, dx, dy).rgb;
     float cov = textureGrad(texture2, uv, dx, dy).r;
+    // 手続き的な表面は撮影されていない所（cov < 1）か、明暗を手続き的に塗り分ける天体だけ、地図の細かい起伏は撮影
+    // された所（cov > 0）だけ求める（混ぜる重みが 0 の側は結果に効かない。火星などほぼ全体が撮影された天体で重い rocky を省く）
+    vec3 pb = vec3(0.0);
+    vec4 ph = vec4(0.0);
+    if (cov < 1.0 || mapInfo.y > 1.5) ph = rocky(p, int(mapInfo2.x + 0.5), o, pb);
     float L1 = dot(color1, vec3(0.333));
     vec3 mb;
     if (mapInfo.y > 1.5) mb = pb * tc.r * mapInfo.x;          // 模様だけ（明暗は手続き的な塗り分け）
     else if (mapInfo.y > 0.5) mb = color1 * tc.r * mapInfo.x;  // 白黒: 天体の色で着色
     else mb = tc * L1 * mapInfo.x;                             // カラー: 明るさだけ天体に合わせる
-    vec4 fine = craters(p, 0.35, 260.0, o * 0.37) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0);
+    vec4 fine = vec4(0.0);
+    if (cov > 0.0) fine = craters(p, 0.35, 260.0, o * 0.37) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0);
     vec4 h = mix(ph, fine, cov);
     if (mapInfo.z > 0.5) {
         vec2 texel = vec2(1.0 / 1440.0, 1.0 / 720.0);
@@ -798,7 +809,6 @@ void main() {
 
     vec3 Ng = normalize(fragNormal);
     vec3 p = normalize(fragObj);
-    if (dot(p, terrCut.xyz) > terrCut.w) discard;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     float mu = max(dot(Ng, V), 0.0);
     fw = max(length(fragWorld) * detail.y / max(mu, 0.25), 1e-8);

@@ -100,7 +100,7 @@ Try it in your browser without installing anything: **https://hubstacksea.github
 - Music is not included (sound effects are). Japanese text uses the bundled Noto Sans JP font
 - Click the view to steer with the mouse (Esc to release). Settings and bookmarks are kept in the browser
 - On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Map / Settings / Help / Share at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down
-- If it runs slowly, lower the quality with F9
+- If it runs slowly, lower the quality with F9. Looking straight down from just above a surface is the heaviest view
 - High-resolution screens (phones, Retina) are drawn at the device pixel ratio (up to 1440 pixels high). At Low quality the 3D view keeps its pixel count and only text and the HUD are drawn sharper
 - **F2 (or "Share" on touch screens) copies a link to the current scene** (date, place, view, target and time scale; the address bar shows the same link). Opening the link starts from that scene. F2 in the PC version copies a link to the browser version
 - **The display language can be set in the URL with `lang=ja` or `lang=en`** (for example `https://hubstacksea.github.io/Solar-System-Simulator/?lang=en`, or `&lang=en` added to a share link). Without it, the language chosen with J or in the settings is used (Japanese on the first visit). The language given in the URL is not saved

@@ -332,14 +332,14 @@ static void SetRingInfo(const App& app, const RingSet& rs) {
 
 // 地形の格子を使わない状態に戻す（同じシェーダで描くほかの天体・環のため）
 static void TerrainOff(App& app) {
-    float a[4] = {0, 0, 0, 0}, cut[4] = {0, 0, 0, 2};
+    float a[4] = {0, 0, 0, 0};
     SetShaderValue(app.shader, app.locTerrA, a, SHADER_UNIFORM_VEC4);
-    SetShaderValue(app.shader, app.locTerrCut, cut, SHADER_UNIFORM_VEC4);
 }
 
 // 標高データのある天体（地球・月・火星）の地表近く: カメラの真下を中心に、近くほど細かい格子を地平線の先まで敷き、
-// 標高の分だけ持ち上げて描く（等倍）。その範囲の球は描かない。範囲は、どこの地表も最低の高さより低くはないので、
-// 最高の地表がカメラから見て最低の高さの球の陰に入るまで（それより先の球との境目は見えない）
+// 標高の分だけ持ち上げて描く（等倍）。範囲は、どこの地表も最低の高さより低くはないので、最高の地表がカメラから見て
+// 最低の高さの球の陰に入るまで。その先の球はいつも地平線の向こうで見えないので、地形を描く間は球を描かない
+// （球の見えない部分のシェーダを走らせないように）
 static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt, double s, int texW, int texH) {
     const Terrain& T = g_terrain[b.terrain];
     const BodyDef& d = b.d;
@@ -354,7 +354,46 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     double thA = std::max(1e-9, std::min(0.5 * std::max(alt, 0.001) / a, thMax * 0.02));
     V3 ref = std::fabs(c.y) < 0.9999 ? V3(0, 1, 0) : V3(1, 0, 0);   // 格子の φ = 0 は東（極のすぐ近くだけ別の向き）
     V3 e1 = Norm(Cross(ref, c));
-    float ta[4] = {1, (float)thA, (float)std::log(thMax / thA + 1), T.earth ? 1.0f : 2.0f};
+    double lnK = std::log(thMax / thA + 1);
+    // 輪の θ: 基本は θa (exp(u lnK) − 1)（u に一様。近いほど細かい）。ただし地平線の近くでは輪が画面の縦に詰まり、細い
+    // 三角形の縁の画素を何度も塗るのが重い（地球・火星の地表のシェーダは重い）ので、画面で TERRAIN_PX 画素に 1 本までに
+    // 間引く（間隔は基本の 4 倍まで）。使わなかった輪は外の端に重ねる（面積 0 で塗らない）。画面の縦の間隔はカメラから
+    // 見た角度 α（半径 a の球の上の点）の変化で見る。真下の近くで 1 周の頂点が画面で詰まる輪も、同じ間隔まで間引く
+    const double TERRAIN_PX = 32;
+    static float ring[4 * 31], step[4 * 31];
+    {
+        const int NS = 2048;
+        static double cum[NS + 1];
+        auto dens = [&](int k) {   // u あたりの輪の本数（基本は輪の数）
+            double u = (double)k / NS, th = thA * (std::exp(u * lnK) - 1);
+            double x = a * std::sin(th), y = dist - a * std::cos(th);
+            double dAlpha = std::fabs(a * (a - dist * std::cos(th))) / std::max(x * x + y * y, 1e-12);   // dα/dθ
+            double screen = app.cam.focal / TERRAIN_PX * dAlpha * thA * lnK * std::exp(u * lnK);
+            return std::min(1.0, std::max(screen / TERRAIN_RINGS, 0.25)) * TERRAIN_RINGS;
+        };
+        cum[0] = 0;
+        double prev = dens(0);
+        for (int k = 1; k <= NS; k++) {
+            double cur = dens(k);
+            cum[k] = cum[k - 1] + 0.5 * (prev + cur) / NS;
+            prev = cur;
+        }
+        int k = 0;
+        for (int i = 0; i <= TERRAIN_RINGS; i++) {
+            if (i >= cum[NS]) { ring[i] = (float)thMax; continue; }
+            while (k < NS && cum[k + 1] < i) k++;
+            double u = (k + (i - cum[k]) / std::max(cum[k + 1] - cum[k], 1e-30)) / NS;
+            ring[i] = (float)(thA * (std::exp(u * lnK) - 1));
+        }
+        for (int i = 0; i <= TERRAIN_RINGS; i++) {
+            double th = ring[i], x = a * std::sin(th), y = dist - a * std::cos(th);
+            double px = 2 * PI * x / TERRAIN_SLICES / std::max(std::sqrt(x * x + y * y), 1e-12) * app.cam.focal;   // 頂点 1 つ分の画素
+            int st = 1;
+            while (st < TERRAIN_SLICES / 8 && px * st * 2 <= TERRAIN_PX) st *= 2;
+            step[i] = (float)st;
+        }
+    }
+    float ta[4] = {1, (float)thA, (float)lnK, T.earth ? 1.0f : 2.0f};
     float tb[4] = {(float)c.x, (float)c.y, (float)c.z, (float)e};
     float tc[4] = {(float)e1.x, (float)e1.y, (float)e1.z, (float)(1.0 / (a * 1000))};
     float td[4] = {(float)texW, (float)texH, (float)TERRAIN_RINGS, (float)TERRAIN_SLICES};
@@ -362,13 +401,13 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     SetShaderValue(app.shader, app.locTerrB, tb, SHADER_UNIFORM_VEC4);
     SetShaderValue(app.shader, app.locTerrC, tc, SHADER_UNIFORM_VEC4);
     SetShaderValue(app.shader, app.locTerrD, td, SHADER_UNIFORM_VEC4);
+    SetShaderValueV(app.shader, app.locTerrRing, ring, SHADER_UNIFORM_VEC4, 31);
+    SetShaderValueV(app.shader, app.locTerrStep, step, SHADER_UNIFORM_VEC4, 31);
     // 原点は真下の楕円体の上の点（カメラからの位置を倍精度で求める）、軸は本体の座標系、長さは赤道半径を 1 とする
     V3 o = rel + (X * c.x + b.pole * (c.y * e) + Z * c.z) * a;
     Matrix m = BodyMatrix(b, o * s, a * s, a * s, b.spin);
     DrawMesh(app.terrainMesh, app.mat, m);
-    float off[4] = {0, 0, 0, 0}, cut[4] = {(float)c.x, (float)c.y, (float)c.z, (float)std::cos(thMax)};
-    SetShaderValue(app.shader, app.locTerrA, off, SHADER_UNIFORM_VEC4);
-    SetShaderValue(app.shader, app.locTerrCut, cut, SHADER_UNIFORM_VEC4);
+    TerrainOff(app);
 }
 
 static void LoadEarthTextures(App& app) {
@@ -918,8 +957,7 @@ static void DrawBodies(App& app) {
             else if (style == S_MAPPED && app.maps[b.map].height) texW = app.maps[b.map].data.width, texH = app.maps[b.map].data.height;
         }
         if (texW > 0) DrawTerrain(app, b, rel, dist, alt, s, texW, texH);
-        DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
-        if (texW > 0) TerrainOff(app);
+        else DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
 
         if (d.style == S_TITAN) {   // 上空のもやの層（地表から 約 500 km 上）
             float hp[4] = {5.0f, 0, 0, 0.7f};

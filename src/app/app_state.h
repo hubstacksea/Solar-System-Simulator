@@ -196,7 +196,7 @@ struct App {
     int locOcc = -1, locOccN = -1, locSunAng = -1;
     int locAtmBeta = -1, locAtmMie = -1, locAtmOzone = -1, locAtmHaze = -1, locCamUp = -1;
     Mesh terrainMesh{};                   // 地表近くの地形の格子（頂点は (u, φ)。形はシェーダで作る）
-    int locTerrA = -1, locTerrB = -1, locTerrC = -1, locTerrD = -1, locTerrCut = -1;
+    int locTerrA = -1, locTerrB = -1, locTerrC = -1, locTerrD = -1, locTerrRing = -1, locTerrStep = -1;
     std::vector<Vector3> dust;
     double glow = 0;
     double camYaw = NAN, camPitch = 0, camDist = 60;
