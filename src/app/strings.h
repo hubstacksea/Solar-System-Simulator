@@ -169,6 +169,8 @@
     X(EV_ARRIVE_SMALL, "%sが%sに到着", "%s arrives at %s") \
     X(EV_END_LAND, "%sの運用終了（%sに降下）", "%s: end of mission (descends to %s)") \
     X(EV_IMPACT, "%sが%sに衝突", "%s impacts %s") \
+    X(EV_LANDING, "%sが%sに着陸", "%s lands on %s") \
+    X(EV_LANDING_D, "パラシュートで 2 時間 28 分かけて降下（着地の 10 分前から）", "A 2 h 28 min parachute descent (from 10 minutes before landing)") \
     X(EV_GROUND, "%s（地上から）", "%s (from the ground)") \
     X(EV_IMPACT_D, "公転周期 11.92 → 11.37 時間", "orbital period 11.92 → 11.37 h") \
     X(EV_ALT, "高度 %s", "altitude %s") \

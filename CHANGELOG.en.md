@@ -4,6 +4,17 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.42.0 (2026-11-16)
+
+- Titan's lakes and seas: the seas and lakes filled with liquid (methane and ethane) in the north and south polar regions are now drawn. Their extent is the "seas" and "liquid-filled lakes" of the polar geomorphologic maps of Birch et al. (2017) (Birch and Hayes, CC BY 4.0), 1.08% of Titan's surface (matching the published value of about 1.1%). The liquid is flat and dark and reflects more of the sky the more obliquely it is seen (Fresnel reflection with liquid methane's refractive index of about 1.29)
+- Estimated: the orientation of the lake maps' projection (the data does not describe it, so it was fitted to the dark seas in Cassini's near-infrared map) and the liquid levels (each connected body is set to the median of the coarsely interpolated elevations)
+- Huygens descent: the Huygens probe is now a spacecraft. From entering the atmosphere at 09:05:53 UTC on 14 January 2005 to landing at 11:38:11 it descends over Titan along the trajectory reconstructed by the Huygens DTWG (Kazeminejad, Atkinson et al., NASA PDS), and stays on the ground after landing. Its shape changes with time (with its front shield, under the main parachute from 09:10:23, under the stabilizer parachute from 09:25:21, and landed; times from Lebreton et al. 2005)
+- The "spacecraft events" page of the event list gained "Huygens lands on Titan". It shows the descending probe up close from the side, 10 minutes before landing (the camera descends with it)
+- Estimated or left out: the parachute diameters (main 8.3 m, stabilizer 3.0 m) and line lengths, and the 30 seconds before the front shield is released (not drawn separately). The three weeks from release from Cassini to entry are not drawn. The entry and descent reconstructions differ by about 4 km where they meet and are blended over 60 seconds. The trajectory's landing point (10.251° S) is about 14 km from the one in the places list (10.573° S)
+- Below Venus's clouds and Titan's haze, your ship and spacecraft are no longer lit by direct sunlight but by the same diffuse sky light as the ground (they used to get the same white light as above the clouds)
+- Warping to a spacecraft on the ground now puts you obliquely above it
+- The map data the browser version loads later (maps.bin) stays at 23.3 MB (with the extent of Titan's lakes added)
+
 ## 2.41.0 (2026-11-15)
 
 - Titan surface: Titan is now a rocky body too, and its familiar haze look is drawn as a haze layer 150 km above the ground (it looks the same from outside). Inside the haze (50-150 km) is fog; below it the ground shows through the hazy nitrogen air, and standing on the ground gives an orange sky

@@ -132,6 +132,44 @@ static V3 TerrainLift(const Body& b, V3 f) {
     return f + u * (TerrainKm(b, V3(u.x, u.z, -u.y)) * x * x * (3 - 2 * x));
 }
 
+// ホイヘンスの位置: タイタンの本体の座標系で、表の点を時刻で補間する（大気に入る前は表示しない。着地した後はそこに
+// 止まる）。高度は 2,575 km の球からなので、15 km より下では描いた地表との差の分だけなめらかに寄せて、着地点を地表に乗せる
+#include "huygens_track.h"
+static const double HUYGENS_T0 = 1839.875;   // 表の時刻の基準 2005-01-14 09:00:00 UTC（J2000 からの日数）
+static const double HUYGENS_LAND = 9491;     // 着地 11:38:11 UTC（基準からの秒。Lebreton ほか 2005）
+static int HuygensTitan(const std::vector<Body>& B) {
+    static int k = -2;
+    if (k == -2) {
+        k = -1;
+        for (size_t i = 0; i < B.size(); i++)
+            if (std::strcmp(B[i].d.en, "Titan") == 0) k = (int)i;
+    }
+    return k;
+}
+static V3 HuygensPos(const std::vector<Body>& B, double t, V3 titanPos, double titanSpin, bool* active) {
+    const int N = sizeof HUYGENS_TRACK / sizeof HUYGENS_TRACK[0];
+    int k = HuygensTitan(B);
+    double s = (t - HUYGENS_T0) * 86400;
+    *active = k >= 0 && s >= HUYGENS_TRACK[0][0];
+    if (k < 0) return V3();
+    s = std::max((double)HUYGENS_TRACK[0][0], std::min((double)HUYGENS_TRACK[N - 1][0], s));
+    int i = 0;
+    while (i < N - 2 && HUYGENS_TRACK[i + 1][0] < s) i++;
+    double f = (s - HUYGENS_TRACK[i][0]) / (HUYGENS_TRACK[i + 1][0] - HUYGENS_TRACK[i][0]);
+    auto at = [&](int c) { return HUYGENS_TRACK[i][c] + (HUYGENS_TRACK[i + 1][c] - HUYGENS_TRACK[i][c]) * f; };
+    double alt = at(1), lon = at(2) * DEG, lat = at(3) * DEG;
+    const Body& ti = B[k];
+    double cw = std::cos(titanSpin), sw = std::sin(titanSpin);
+    V3 X = ti.ex * cw - ti.ez * sw, Z = ti.ex * sw + ti.ez * cw;
+    V3 o(std::cos(lat) * std::cos(lon), std::sin(lat), -std::cos(lat) * std::sin(lon));   // 本体の座標系
+    double r = 2575 + alt;
+    if (ti.terrain >= 0) {
+        double x = std::max(0.0, std::min(1.0, 1.0 - alt / 15.0));
+        r += (ti.d.radius + TerrainKm(ti, o) - 2575) * x * x * (3 - 2 * x);
+    }
+    return titanPos + (X * o.x + ti.pole * o.y + Z * o.z) * r;
+}
+
 static void LoadShapes() {
     EmbeddedFile f = ShapesBin();
     const unsigned char* p = f.data;
@@ -1004,6 +1042,9 @@ static std::vector<Body> InitBodies() {
         if (d.apolloTrack) {
             b.soi = 20;      // 近くにいる自機は宇宙船と一緒に移動する（月を回る間に月面の近くを飛ぶ自機を連れて行かないよう狭く）
             b.outer = 0.03;
+        } else if (d.huygens) {
+            b.soi = 2;       // 近くにいる自機はホイヘンスと一緒に降りる（タイタンの地表近くを飛ぶ自機を連れて行かないよう狭く）
+            b.outer = 0.02;  // 主パラシュートの上まで約 15 m
         } else if (d.probe >= 0 || d.tleN > 0) {
             b.soi = 2000;    // 近くにいる自機は探査機と一緒に移動する
             b.outer = d.tleN > 0 ? 0.06 : 0.03;  // 機体の大きさ（ISS は端から端まで 109 m。ワープの到着距離に使う）
@@ -1152,6 +1193,9 @@ static void UpdateBodies(std::vector<Body>& B, double t) {
         } else if (d.probe >= 0) {
             // 惑星は先に更新済み（探査機は配列の最後）
             b.pos = ProbePosAt(d, t, [&](int i) { return B[i].pos; }, &b.active);
+        } else if (d.huygens) {
+            int k = HuygensTitan(B);   // タイタンは先に更新済み（ホイヘンスは配列の最後）
+            b.pos = HuygensPos(B, t, k >= 0 ? B[k].pos : V3(), k >= 0 ? B[k].spin : 0, &b.active);
         } else if (d.exo >= 0) {
             b.pos = B[d.parent].pos + ExoRelative(d, B[d.parent].d, t);   // 恒星は先に更新済み（惑星は配列の最後）
         } else if (d.parent == 0) {
@@ -1242,6 +1286,11 @@ static V3 PosAt(const std::vector<Body>& B, int i, double t) {
     if (d.probe >= 0) {
         bool act;
         return ProbePosAt(d, t, [&](int k) { return PosAt(B, k, t); }, &act);
+    }
+    if (d.huygens) {
+        bool act;
+        int k = HuygensTitan(B);
+        return k < 0 ? V3() : HuygensPos(B, t, PosAt(B, k, t), SpinAt(B, k, t), &act);
     }
     if (d.exo >= 0) return PosAt(B, d.parent, t) + ExoRelative(d, B[d.parent].d, t);
     if (d.parent == 0)

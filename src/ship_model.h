@@ -248,7 +248,9 @@ enum ProbeModel {
     PM_SIM_BAY, PM_SIM_DOOR,
     // 15〜17 号の地球へ戻る途中の船外活動: 宇宙服の司令船操縦士、ハッチに立つ乗員（上半身）、司令船の開いたハッチの口（司令・
     // 機械船と同じ座標で重ねて描く）とハッチの扉
-    PM_EVA_SUIT, PM_EVA_HATCH_CREW, PM_CM_HATCHWAY, PM_CM_HATCH, PM_COUNT
+    PM_EVA_SUIT, PM_EVA_HATCH_CREW, PM_CM_HATCHWAY, PM_CM_HATCH,
+    // ホイヘンス（-Z が上）: 大気に入る時の形（前面シールドと後部カバー）、主パラシュート、安定用パラシュート、着地した本体
+    PM_HUYGENS_ENTRY, PM_HUYGENS_MAIN, PM_HUYGENS_STAB, PM_HUYGENS, PM_COUNT
 };
 // 科学機器室の扉: 幅 5 ft・長さ 9.5 ft（1.5 × 2.9 m）、170 lb（15 号の Flight Journal の管制センターの説明）。機械船の側面の
 // 向き SIM_ANG（高利得アンテナの反対側とする）を中心に幅の分の角度 ±SIM_HALF、機械船の真ん中（z 0）から SIM_ZC を中心に長さ
@@ -905,6 +907,33 @@ inline Mesh GenProbeMesh(int model) {
     }
     case PM_APOLLO_CM:
     case PM_CM_DROGUE:
+    case PM_HUYGENS_ENTRY:
+    case PM_HUYGENS_MAIN:
+    case PM_HUYGENS_STAB:
+    case PM_HUYGENS: {
+        // ホイヘンス: 直径 1.3 m の降下モジュール（底に計器、上にパラシュートの取り付け部）。大気に入る時は直径 2.7 m の
+        // 前面シールドと後部カバーで包む（ESA の値）。パラシュートの直径（主 8.3 m、安定用 3.0 m）と吊りひもの長さは目安
+        const Color foil = {200, 186, 160, 255}, shield = {120, 84, 50, 255}, cover = {210, 210, 205, 255};
+        const Color canopy = {236, 236, 232, 255}, band = {232, 112, 48, 255}, line = {200, 200, 196, 255};
+        mb.Revolve(0, 0, {{0.35f, 0.0f}, {0.35f, 0.55f}, {0.15f, 0.65f}, {-0.4f, 0.6f}, {-0.5f, 0.3f}, {-0.55f, 0.0f}}, 24, foil, SM_METAL);
+        if (model == PM_HUYGENS_ENTRY) {
+            mb.Revolve(0, 0, {{0.95f, 0.0f}, {0.85f, 0.35f}, {0.42f, 1.3f}, {0.36f, 1.35f}, {0.32f, 0.6f}}, 32, shield, SM_METAL);
+            mb.Revolve(0, 0, {{0.32f, 1.32f}, {-0.2f, 1.0f}, {-0.55f, 0.45f}, {-0.62f, 0.0f}}, 32, cover, SM_PAINT);
+        } else if (model != PM_HUYGENS) {
+            float R = model == PM_HUYGENS_MAIN ? 4.15f : 1.5f, L = model == PM_HUYGENS_MAIN ? 12.5f : 6.0f, cz = -0.55f - L;
+            std::vector<Vector2> dome;
+            for (int k = 0; k <= 6; k++) {
+                float u = PI / 2 * k / 6;
+                dome.push_back({cz - sinf(u) * R * 0.45f, cosf(u) * R + 0.001f});
+            }
+            mb.Revolve(0, 0, dome, 24, model == PM_HUYGENS_MAIN ? canopy : band, SM_PAINT);
+            for (int k = 0; k < 8; k++) {   // 吊りひも
+                float b = 2 * PI * k / 8;
+                mb.Tube({0, 0, -0.55f}, {cosf(b) * R, sinf(b) * R, cz}, 0.02f, 3, line, SM_PAINT);
+            }
+        }
+        break;
+    }
     case PM_CM_MAIN: {
         float tip = ApolloCM(mb, 1.5f);
         const Color canopy = {232, 112, 48, 255}, white2 = {236, 236, 232, 255}, line = {200, 200, 196, 255};

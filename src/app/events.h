@@ -583,6 +583,15 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
             out.push_back(ev);
         }
     }
+    for (size_t i = 0; i < app.B.size(); i++)   // ホイヘンスのタイタンへの着地（着地の 10 分前から見る）
+        if (app.B[i].d.huygens && HuygensTitan(app.B) >= 0) {
+            AstroEvent ev;
+            ev.kind = EV_LANDING;
+            ev.t = HUYGENS_T0 + (HUYGENS_LAND - 600) / 86400;
+            ev.probe = (int)i;
+            ev.body = HuygensTitan(app.B);
+            out.push_back(ev);
+        }
     std::sort(out.begin(), out.end(), [](const AstroEvent& a, const AstroEvent& b) { return a.t < b.t; });
     return out;
 }
@@ -617,6 +626,7 @@ static std::string EventTitle(const App& app, const AstroEvent& ev) {
             snprintf(b, sizeof b, T(ev.body > B_PLUTO ? UI_EV_ARRIVE_SMALL : UI_EV_ARRIVE), name(ev.probe), name(ev.body));
             break;
         case EV_IMPACT: snprintf(b, sizeof b, T(UI_EV_IMPACT), name(ev.probe), name(ev.body)); break;
+        case EV_LANDING: snprintf(b, sizeof b, T(UI_EV_LANDING), name(ev.probe), name(ev.body)); break;
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR), T(SHOWERS[ev.moon].name)); break;
         case EV_PERIASTRON: {   // 主星の名前の末尾の「 A」を除いて連星の名前に
             std::string n = name(ev.body);
@@ -653,6 +663,7 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_FROM_EARTH), FmtDist(ev.dist).c_str()); return b;
         case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_FROM_SUN), FmtDist(ev.dist).c_str()); return b;
         case EV_IMPACT: return T(UI_EV_IMPACT_D);
+        case EV_LANDING: return T(UI_EV_LANDING_D);
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
         case EV_PERIASTRON: snprintf(b, sizeof b, T(UI_EV_SEPARATION), FmtDist(ev.dist).c_str()); return b;
         case EV_HISTORY: {   // 食の種類と史実の場所（ハレー彗星は近日点の距離と記録の名前）
@@ -781,6 +792,22 @@ static void ApplyEvent(App& app, const AstroEvent& ev) {
         app.ship.q = QuatFromBasis(sun.pos - sw, Norm(sw - earth.pos));
         app.target = B_MOON;
         app.eventZoom = true;
+    } else if (ev.kind == EV_LANDING) {
+        // 降りる機体を横の少し上から見る（視野 20° にズームし、パラシュートと本体が画面に入る約 95 m 先から。カメラは機体と
+        // 一緒に降りる）。探査機へのワープと同じく、カメラは自機の少し上・後ろにあるので、その分だけ自機を下げる。自機は
+        // 機体から 40 m（天体に近づける下限の 30 m より外）
+        const Body& pr = app.B[ev.probe];
+        const Body& ti = app.B[ev.body];
+        V3 up = Norm(pr.pos - ti.pos), side = Cross(up, ti.pole);
+        side = Len(side) > 1e-9 ? Norm(side) : V3(1, 0, 0);
+        V3 dir = Norm(side + up * 0.15);
+        app.ship.ref = ev.probe;
+        app.ship.speed = 0;
+        app.ship.q = QuatFromBasis(dir * -1.0, up);
+        app.ship.local = dir * (app.cockpit ? 0.095 : 0.04) - ShipUp(app.ship) * (app.cockpit ? 0.0025 : 0.013);
+        app.target = ev.probe;
+        app.eventZoom = true;
+        app.eventZoomFov = 20;
     } else if (ev.kind == EV_IMPACT) {
         // 衝突の 1 分前: 衛星のすぐ横（探査機が来る向きから 70° ずらした 1.5 km 先）から衛星と母天体を見る
         const Body& m = app.B[ev.body];

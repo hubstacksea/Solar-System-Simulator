@@ -16,9 +16,11 @@ NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）、水星・金星・ケレ�
   uint32 地図の数
   地図ごとに: char[32] 英語名（シミュレータの天体名と同じ）,
              uint8 種類（0: カラー, 1: 白黒（天体の色で着色）, 2: 白黒の模様だけ（明暗はシミュレータの塗り分けを使う）),
-             uint8 標高（0: なし, 1: 0.5 m 単位で -10,000 m が 0, 2: 1 m 単位で -32,768 m が 0）, uint16 予備, float32 平均の明るさ（0〜1。天体の色に合わせる時に使う）,
+             uint8 標高（0: なし, 1: 0.5 m 単位で -10,000 m が 0, 2: 1 m 単位で -32,768 m が 0）,
+             uint16 1 なら撮影範囲の画像のアルファが液体の割合（タイタン）, float32 平均の明るさ（0〜1。天体の色に合わせる時に使う）,
              uint32 長さ + JPEG（地図。撮影されていない所は平均の明るさで埋める）,
-             uint32 長さ + PNG（512x256 のグレー。撮影された範囲 = 255、境目はぼかす）,
+             uint32 長さ + PNG（512x256 のグレー。撮影された範囲 = 255、境目はぼかす。タイタンは 2048x1024 のグレー +
+             アルファで、アルファは液体の湖と海の割合）,
              [標高ありなら uint32 長さ + PNG（グレー + アルファ = 16 bit の上位 / 下位バイト。単位と 0 の高さは
              標高の欄の値による。1 は月と同じ）]
 
@@ -249,6 +251,84 @@ def remap_rows(a, flat):
     return a[y0] * (1 - f) + a[y1] * f
 
 
+# タイタンの液体の湖と海: Birch ほか（2017）の北極・南極の地形区分（Birch, Hayes の Cassini SAR Mosaics & Mapping
+# Shapefiles、Zenodo doi:10.5281/zenodo.21685404、CC BY 4.0）のうち、海（Fm）と液体で満たされた湖（Fl）。座標は極を中心にした
+# ステレオ投影（m、半径 2575 km）。投影の説明は付いていないので、向きはカッシーニの近赤外の地図（海は暗い）と重ねて
+# 決めた: 北は経度 0° が下・東経が反時計回り、南は経度 0° が上・東経が時計回り
+LAKES_ZIP = "https://zenodo.org/api/records/21685404/files/shapefiles.zip/content"
+LAKES = {"Titan": [("NORTH", "Fm"), ("NORTH", "Fl"), ("SOUTH", "Fl")]}
+
+
+def read_polys(data):
+    """shapefile（多角形、type 5）の記録ごとの輪の点の列"""
+    p, out = 100, []
+    while p + 8 <= len(data):
+        clen = struct.unpack(">i", data[p + 4:p + 8])[0]
+        rec = data[p + 8:p + 8 + clen * 2]
+        p += 8 + clen * 2
+        if struct.unpack("<i", rec[:4])[0] != 5:
+            continue
+        npart, npt = struct.unpack("<ii", rec[36:44])
+        parts = list(struct.unpack("<%di" % npart, rec[44:44 + 4 * npart])) + [npt]
+        pts = np.frombuffer(rec[44 + 4 * npart:44 + 4 * npart + 16 * npt], "<f8").reshape(npt, 2)
+        out += [pts[parts[k]:parts[k + 1]] for k in range(npart)]
+    return out
+
+
+def liquid_mask(work, name, w):
+    """液体の割合（0〜1）の正距円筒図（w x w/2、左端が経度 -180°）。輪は偶奇の規則で塗る（島は抜ける）"""
+    from PIL import ImageChops, ImageDraw
+    z = zipfile.ZipFile(fetch(work, "titan_shapefiles.zip", LAKES_ZIP))
+    R, E, px = 2575e3, 1.8e6, 1000.0
+    n = int(2 * E / px)
+    h = w // 2
+    lat = np.radians(90 - (np.arange(h) + 0.5) * 180 / h)
+    lon = np.radians(-180 + (np.arange(w) + 0.5) * 360 / w)
+    LA, LO = np.meshgrid(lat, lon, indexing="ij")
+    out = np.zeros((h, w))
+    for pole in ("NORTH", "SOUTH"):
+        m = Image.new("1", (n, n), 0)
+        for hemi, unit in LAKES[name]:
+            if hemi != pole:
+                continue
+            fn = [x for x in z.namelist() if x.endswith("/%s/%s_%s.shp" % (pole, unit, pole)) and "__MACOSX" not in x][0]
+            for ring in read_polys(z.read(fn)):
+                r = Image.new("1", (n, n), 0)
+                ImageDraw.Draw(r).polygon([((x + E) / px, (E - y) / px) for x, y in ring], fill=1)
+                m = ImageChops.logical_xor(m, r)
+        m = np.asarray(m)
+        north = pole == "NORTH"
+        r = 2 * R * np.tan((np.pi / 2 - (LA if north else -LA)) / 2)
+        x, y = r * np.sin(LO), (-1 if north else 1) * r * np.cos(LO)
+        i, j = ((E - y) / px).astype(int), ((x + E) / px).astype(int)
+        ok = (i >= 0) & (i < n) & (j >= 0) & (j < n) & ((LA > 0) == north)
+        out[ok] = np.maximum(out[ok], m[i[ok], j[ok]])
+    return out
+
+
+def flatten_liquid(hgt, liquid):
+    """液体の面を平らにする: つながった水域ごとに、その中の標高の中央値にそろえる（標高は補間で粗いので、水面の高さは目安）"""
+    wet = liquid > 0.5
+    seen = np.zeros_like(wet)
+    h, w = wet.shape
+    for y0, x0 in zip(*np.nonzero(wet)):
+        if seen[y0, x0]:
+            continue
+        stack, comp = [(y0, x0)], []
+        seen[y0, x0] = True
+        while stack:
+            y, x = stack.pop()
+            comp.append((y, x))
+            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                yy, xx = y + dy, (x + dx) % w
+                if 0 <= yy < h and wet[yy, xx] and not seen[yy, xx]:
+                    seen[yy, xx] = True
+                    stack.append((yy, xx))
+        ys, xs = np.array(comp).T
+        hgt[ys, xs] = np.median(hgt[ys, xs])
+    return hgt
+
+
 def dem_height(work, name):
     """標高の PNG（シミュレータの楕円体からの高さ。グレー + アルファ = 16 bit、0.5 m 単位で -10,000 m を 0。
     それに収まらない天体（ベスタ・カロン）は 1 m 単位で -32,768 m を 0）と、その形式（1 か 2）"""
@@ -287,6 +367,9 @@ def dem_height(work, name):
     lat = np.radians(90 - (np.arange(w // 2) + 0.5) * 180 / (w // 2))
     rell = a * 1000 * np.sqrt(np.cos(lat) ** 2 + ((1 - flat) * np.sin(lat)) ** 2)   # 楕円体の点の中心からの距離 m
     hgt = r - rell[:, None]
+    if name in LAKES:
+        liq = np.asarray(Image.fromarray(liquid_mask(work, name, w * 2).astype(np.float32), "F").resize((w, w // 2), Image.BOX))
+        hgt = flatten_liquid(hgt, liq)
     covered = np.asarray(Image.fromarray((ok * 255).astype(np.uint8), "L").resize((w, w // 2), Image.BOX)).mean() / 255
     fmt = 1 if hgt.min() >= -10000 and hgt.max() <= 22767 else 2
     v = np.round((hgt + 10000) * 2) if fmt == 1 else np.round(hgt + 32768)
@@ -332,11 +415,16 @@ def main():
         jpg = buf.getvalue()
         m = Image.fromarray((valid * 255).astype(np.uint8), "L").resize((512, 256), Image.BILINEAR)
         m = m.filter(ImageFilter.GaussianBlur(1.5))
+        if name in LAKES:   # 撮影範囲（グレー）と液体の割合（アルファ）。液体は 4 倍の細かさで塗って縮める
+            liq = Image.fromarray((liquid_mask(work, name, 8192) * 255).astype(np.uint8), "L").resize((2048, 1024), Image.BOX)
+            m = Image.merge("LA", (m.resize((2048, 1024), Image.BILINEAR), liq))
+            cw = np.cos(np.radians(90 - (np.arange(1024) + 0.5) * 180 / 1024))[:, None]
+            print("  %s liquid: %.2f%% of the surface" % (name, (np.asarray(liq) / 255.0 * cw).sum() / (cw.sum() * 2048) * 100))
         mbuf = io.BytesIO()
         m.save(mbuf, "PNG", optimize=True)
         mask = mbuf.getvalue()
         height, fmt = (mars_height(work), 1) if name == "Mars" else dem_height(work, name) if name in DEMS else (b"", 0)
-        blob += struct.pack("<32sBBHfI", name.encode(), kind, fmt, 0, mean, len(jpg)) + jpg
+        blob += struct.pack("<32sBBHfI", name.encode(), kind, fmt, 1 if name in LAKES else 0, mean, len(jpg)) + jpg
         blob += struct.pack("<I", len(mask)) + mask
         if height:
             blob += struct.pack("<I", len(height)) + height

@@ -128,7 +128,8 @@ uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マ
 uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（1: あり）
 uniform sampler2D texture3;  // 土星と環: 環の不透明度（半径 72,000〜142,500 km） / 地球: 12 か月の地表の色
 uniform vec4 mapInfo;        // 地図: x 1 / 平均の明るさ, y 種類（0 カラー, 1 白黒, 2 模様だけ）, z 標高（0 なし, 1 0.5 m 単位, 2 1 m 単位）, w 半径 km
-uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う表面模様の種類, y 地図を東へずらす角度 rad（木星の大赤斑）
+uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う表面模様の種類, y 地図を東へずらす角度 rad（木星の大赤斑）,
+                             // z 1 なら撮影範囲の画像のアルファが液体の湖・海の割合（タイタン）
                              // 地球: z 今の月（0 = 1 月中旬、12 で一周）, w 季節の色と雲の画像あり
 // 大気（地球・火星）: atmBeta は天頂方向の空気 1 つ分で散乱する割合（0 なら大気なし）。日光は太陽が低いほど赤くなる
 // atmHaze: x カメラの位置の空気の濃さ（0 ならかすみなし）, y 描画座標 1 あたりの km, z スケールハイト km,
@@ -147,6 +148,7 @@ out vec4 finalColor;
 const float PI = 3.14159265;
 float fw;      // 1 画素の大きさ（単位球の長さ）
 float g_ray;   // 新しいクレーターの明るさ（光条）
+float g_liquid = 0.0;   // 液体の湖・海の割合（タイタン）
 
 // ---- 整数ハッシュ（座標が大きくても劣化しないので、地表付近の細かいオクターブでも使える）
 uint hashu(ivec3 c) {
@@ -624,6 +626,11 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         h += vec4(hm / R, east * dhdLon / max(cos(lat), 0.05) + north * dhdLat);
     }
     base = mix(pb, mb, cov) * (0.94 + 0.12 * (fbmL(p, 900.0, 16, 0.5, o + 5.0) * 0.5 + 0.5));
+    if (mapInfo2.z > 0.5) {   // 液体の湖・海: 平らで暗い（光の映り込みは照明のところで）
+        g_liquid = textureGrad(texture2, uv, dx, dy).a;
+        h = mix(h, vec4(h.x, 0.0, 0.0, 0.0), g_liquid);
+        base = mix(base, vec3(0.02), g_liquid);
+    }
     return h;
 }
 
@@ -905,6 +912,11 @@ void main() {
     if (hazeAir.x > 0.5) {
         // 金星の雲・タイタンのもやの下: 日光は散らされて空全体から届く（影はできず、上を向いた面ほど少し明るい）
         col = base * hazeSky * (0.75 + 0.25 * dot(N, n0)) * 1.6;
+        // 液体の湖・海: 平らな液面に空の光が映る（液体メタンの屈折率 約 1.29 のフレネル反射。斜めに見るほど明るい）
+        if (g_liquid > 0.0) {
+            float fr = 0.016 + 0.984 * pow(1.0 - max(dot(n0, V), 0.0), 5.0);
+            col = mix(col, hazeSky * fr, g_liquid);
+        }
         // もや: 空気のレイリー散乱（地表の値 hazeBeta、高さ hazeBeta.w ごとに 1/e。視線の通る高さで平均）と、もやの粒の散乱。
         // 遠いほど地面の色が消え、空と同じ光になる（光が何度も散らされるので、散らされた光は空の明るさとする）
         float dist = length(fragWorld) * hazeAir.y, hc = hazeAir.z, hp = fragAlt, dh = hc - hp, H = hazeBeta.w;

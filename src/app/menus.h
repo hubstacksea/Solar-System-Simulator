@@ -351,7 +351,7 @@ static void GoToCity(App& app, int k, double elDeg) {
 // 今は飛んでいない探査機（運用終了・打ち上げ前）を選んだ時に移る日時: 到着 → 衝突・運用終了 → 最初のフライバイ → データの中ほど
 static double ProbeVisitTime(const App& app, int i) {
     const BodyDef& d = app.B[i].d;
-    for (int kind : {EV_ARRIVE, EV_IMPACT, EV_END, EV_FLYBY})
+    for (int kind : {EV_LANDING, EV_ARRIVE, EV_IMPACT, EV_END, EV_FLYBY})
         for (const AstroEvent& ev : app.probeEvents)
             if (ev.probe == i && ev.kind == kind) return ev.t;
     if (d.tleN > 0) return d.launch + 30;

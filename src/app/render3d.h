@@ -488,6 +488,7 @@ static void LoadBodyMaps(App& app) {
         if (height) m.data = LoadEmbeddedTexture(data, ".png", tb, &app, height == 2);
         m.height = m.data.id != 0;
         m.wide = height == 2;
+        m.liquid = pad == 1;   // 撮影範囲の画像のアルファが液体の湖・海（タイタン）
         if (!m.color.id || !m.mask.id) continue;
         for (Body& b : app.B)
             if (m.name == b.d.en && (b.d.kind == KIND_ROCKY || b.d.kind == KIND_GAS)) b.map = (int)app.maps.size();
@@ -834,6 +835,19 @@ static void SetOccluders(App& app, int i, double s) {
     SetShaderValue(app.shader, app.locOccN, &n, SHADER_UNIFORM_INT);
 }
 
+// 雲（もや）の層の下の空の明るさ（色ごと）。高さ h km、太陽の高さ sinEl（sin）。地表と層の下端の間・層の中は対数で
+// 補間する。表示は目が慣れた明るさとして比を平方根で縮め、2 倍にする。太陽の高さで昼と夜が変わる（光は空全体から
+// 来るので、太陽が低くても明るさの落ち方はゆるやか）
+static Vector3 HazeSkyColor(const HazeWorld& hw, double h, double sinEl) {
+    double lnE = h < hw.base ? std::log(hw.eSurf) + std::log(hw.eBase / hw.eSurf) * h / hw.base
+                             : std::log(hw.eBase) * (1 - std::min(1.0, (h - hw.base) / (hw.top - hw.base)));
+    double t = std::max(0.0, std::min(1.0, (sinEl + 0.05) / 0.25));
+    double D = std::min(1.0, 2.0 * std::sqrt(std::exp(lnE))) * t * t * (3 - 2 * t) * (0.35 + 0.65 * std::max(0.0, sinEl));
+    double k = std::min(1.0, h / hw.top);
+    return {(float)(D * (hw.tint[0] + (1 - hw.tint[0]) * k)), (float)(D * (hw.tint[1] + (1 - hw.tint[1]) * k)),
+            (float)(D * (hw.tint[2] + (1 - hw.tint[2]) * k))};
+}
+
 static void DrawBodies(App& app) {
     const Cam& c = app.cam;
     // 光速に近い時は、天体の頂点ごとに光行差を掛ける（シェーダ）。天体全体を動かさないので、近くの大きな天体も正しく歪む
@@ -963,7 +977,7 @@ static void DrawBodies(App& app) {
             float info[4] = {1.0f / std::max(0.05f, m.mean), (float)m.kind, m.height ? (m.wide ? 2.0f : 1.0f) : 0.0f, (float)d.radius};
             // 木星の地図は大赤斑が経度 0° にあるので、大赤斑の今の西経（体系 II）だけ回す
             float shift = it.i == B_JUPITER ? (float)(GreatRedSpotLon(app.tDays) * DEG) : 0.0f;
-            float info2[4] = {(float)d.style, shift, 0, 0};
+            float info2[4] = {(float)d.style, shift, m.liquid ? 1.0f : 0.0f, 0};
             SetShaderValue(app.shader, app.locMapInfo, info, SHADER_UNIFORM_VEC4);
             SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         }
@@ -1009,17 +1023,8 @@ static void DrawBodies(App& app) {
         }
         // 金星・タイタン: 地表は雲（もや）の層の上端より下にいる時だけ描き、層を重ねる（HazeWorld）
         if (under) {
-            // 明るさ: 地表と層の下端の間・層の中は対数で補間する。表示は目が慣れた明るさとして比を平方根で縮め、2 倍にする。
-            // 太陽の高さで昼と夜が変わる（光は空全体から来るので、太陽が低くても明るさの落ち方はゆるやか）
             double h = std::max(0.0, dist - d.radius);
-            double lnE = h < hw->base ? std::log(hw->eSurf) + std::log(hw->eBase / hw->eSurf) * h / hw->base
-                                      : std::log(hw->eBase) * (1 - (h - hw->base) / (hw->top - hw->base));
-            double sinEl = Dot(rel * (-1.0 / dist), L);
-            double t = std::max(0.0, std::min(1.0, (sinEl + 0.05) / 0.25));
-            double D = std::min(1.0, 2.0 * std::sqrt(std::exp(lnE))) * t * t * (3 - 2 * t) * (0.35 + 0.65 * std::max(0.0, sinEl));
-            double k = h / hw->top;
-            Vector3 sky = {(float)(D * (hw->tint[0] + (1 - hw->tint[0]) * k)), (float)(D * (hw->tint[1] + (1 - hw->tint[1]) * k)),
-                           (float)(D * (hw->tint[2] + (1 - hw->tint[2]) * k))};
+            Vector3 sky = HazeSkyColor(*hw, h, Dot(rel * (-1.0 / dist), L));
             float ha[4] = {1, (float)(1.0 / s), (float)h, h > hw->base ? hw->layerBeta : hw->lowBeta};
             float hb[4] = {hw->beta[0], hw->beta[1], hw->beta[2], (float)hw->H};
             Vector3 g1 = {hw->g1.r, hw->g1.g, hw->g1.b}, g2 = {hw->g2.r, hw->g2.g, hw->g2.b};
@@ -1090,6 +1095,14 @@ static int BrightestStar(const App& app, V3 from, double* mag) {
     return best;
 }
 
+// 金星の雲・タイタンのもやの層の下か
+static bool UnderHaze(const App& app, V3 p) {
+    for (const Body& b : app.B)
+        if (const HazeWorld* hw = HazeWorldOf(b.d))
+            if (Len(p - b.pos) < b.d.radius + hw->top) return true;
+    return false;
+}
+
 // 自機の照明: 一番明るい恒星（天体の影に入ると消える。恒星の間では暗く）と、近くの天体からの照り返し
 static void SetShipLighting(App& app, V3 shipWorld) {
     double mag;
@@ -1120,6 +1133,18 @@ static void SetShipLighting(App& app, V3 shipWorld) {
         fillDir = ToF(toBody);
         fillColor = {(float)(b.d.c1.r * k), (float)(b.d.c1.g * k), (float)(b.d.c1.b * k)};
     }
+    // 金星の雲・タイタンのもやの層の下: 日光は直接届かず、地表と同じ空の光が上から当たる
+    for (const Body& b : app.B)
+        if (const HazeWorld* hw = HazeWorldOf(b.d)) {
+            V3 r = shipWorld - b.pos;
+            double h = Len(r) - b.d.radius;
+            if (h >= hw->top) continue;
+            V3 up = Norm(r);
+            Vector3 sky = HazeSkyColor(*hw, std::max(0.0, h), Dot(up, Norm(app.B[HostStar(app.B, (int)(&b - &app.B[0]))].pos - shipWorld)));
+            sunColor = {0, 0, 0};
+            fillDir = ToF(up);
+            fillColor = {sky.x * 1.2f, sky.y * 1.2f, sky.z * 1.2f};
+        }
     SetShaderValue(app.shipShader, app.locSunDir, &sunDir, SHADER_UNIFORM_VEC3);
     SetShaderValue(app.shipShader, app.locSunColor, &sunColor, SHADER_UNIFORM_VEC3);
     SetShaderValue(app.shipShader, app.locFillDir, &fillDir, SHADER_UNIFORM_VEC3);
@@ -1373,7 +1398,7 @@ static void DrawProbes(App& app) {
     }
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        if ((b.d.probe < 0 && b.d.apollo < 0) || !b.active) continue;
+        if ((b.d.probe < 0 && b.d.apollo < 0 && !b.d.huygens) || !b.active) continue;
         // アポロ: 時刻に応じた機体の形（つながっている間の月着陸船は司令船の側で描く）
         int apModel = -1, mission = -1;
         if (b.d.apollo >= 0) {
@@ -1396,10 +1421,12 @@ static void DrawProbes(App& app) {
         SetPassProjection(c, std::max(1e-5, (dist - size) * 0.5), dist + size);
         ClearDepth();
         SetShipLighting(app, b.pos);
-        // 太陽の反対側から見ると真っ黒な影絵になるので、視点側から弱い補助光を当てる
-        Vector3 fillDir = ToF(Norm(c.pos - b.pos)), fillColor = {0.3f, 0.3f, 0.32f};
-        SetShaderValue(app.shipShader, app.locFillDir, &fillDir, SHADER_UNIFORM_VEC3);
-        SetShaderValue(app.shipShader, app.locFillColor, &fillColor, SHADER_UNIFORM_VEC3);
+        // 太陽の反対側から見ると真っ黒な影絵になるので、視点側から弱い補助光を当てる（雲・もやの下は空の光だけ）
+        if (!UnderHaze(app, b.pos)) {
+            Vector3 fillDir = ToF(Norm(c.pos - b.pos)), fillColor = {0.3f, 0.3f, 0.32f};
+            SetShaderValue(app.shipShader, app.locFillDir, &fillDir, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shipShader, app.locFillColor, &fillColor, SHADER_UNIFORM_VEC3);
+        }
         Vector3 zero = {0, 0, 0};
         float off = 0;
         SetShaderValue(app.shipShader, app.locEngColor, &zero, SHADER_UNIFORM_VEC3);
@@ -1415,6 +1442,17 @@ static void DrawProbes(App& app) {
         }
         if (pm == PM_GALILEO && app.tDays < GALILEO_PROBE_RELEASE) pm = PM_GALILEO_PROBE;
         if (pm == PM_CASSINI && app.tDays < HUYGENS_RELEASE) pm = PM_CASSINI_HUYGENS;
+        if (b.d.huygens) {
+            // ホイヘンス: パラシュートを上に。主パラシュートを開く 09:10:23 まで大気に入る時の形（前面シールドを切り離す
+            // 09:10:53 までの 30 秒は描き分けない）、安定用パラシュートに替える 09:25:21、着地 11:38:11（Lebreton ほか 2005）
+            double sec = (app.tDays - HUYGENS_T0) * 86400;
+            pm = sec < 623 ? PM_HUYGENS_ENTRY : sec < 1521 ? PM_HUYGENS_MAIN : sec < HUYGENS_LAND ? PM_HUYGENS_STAB : PM_HUYGENS;
+            int k = HuygensTitan(app.B);
+            if (k >= 0) {
+                aim = b.pos - app.B[k].pos;
+                upHint = app.B[k].pole;
+            }
+        }
         Quaternion q = QuatFromBasis(Len(aim) > 1e-6 ? aim : V3(1, 0, 0), upHint);
         if (apModel >= 0) {
             pm = apModel;

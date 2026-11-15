@@ -10,7 +10,8 @@ enum EventKind { EV_SOLAR_TOTAL, EV_SOLAR_ANNULAR, EV_SOLAR_PARTIAL, EV_LUNAR_TO
                  EV_PERIASTRON, EV_VIEW,   // 連星の近星点通過（body: 主星, body2: 伴星）、ツアーの眺め（body の近くから body2 の方を見る）
                  EV_HISTORY,               // 歴史上の日食・月食（moon: HISTORY の番号、body2: 食の種類、lat・lon: 史実の場所）
                  EV_FLYBY, EV_ARRIVE, EV_END, EV_IMPACT, EV_VOYAGE,
-                 EV_APOLLO };              // アポロ計画の飛行（moon: APOLLO_MISSIONS の番号）
+                 EV_APOLLO,                // アポロ計画の飛行（moon: APOLLO_MISSIONS の番号）
+                 EV_LANDING };             // 着陸機の着地（ホイヘンス。probe: 着陸機, body: 降りる天体）
 static const int EV_PAGES = 6;   // イベント一覧のページの数
 struct AstroEvent {
     int kind = 0;
@@ -184,7 +185,7 @@ struct App {
     Shader beltShader{};                  // 小惑星などの粒を GPU で計算して描く
     unsigned int beltVao = 0, beltVbo = 0;
     int beltCount = 0;
-    struct BodyMap { std::string name; int kind = 0; bool height = false, wide = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
+    struct BodyMap { std::string name; int kind = 0; bool height = false, wide = false, liquid = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
     std::vector<BodyMap> maps;            // 探査機の画像による地図（assets/maps.bin）
     int locMapInfo = -1, locMapInfo2 = -1;
     Shader skyShader{};                   // 大気の中から見た空
@@ -249,6 +250,12 @@ static void WarpTo(App& app, int ti, bool land) {
     app.ship.ref = ti;
     app.ship.speed = 0;
     app.autopilot = false;
+    if (!land && b.d.kind == KIND_PROBE)   // 地表にある機体（着地したホイヘンス）: 地面にもぐらないよう、斜め上から見下ろす
+        for (const Body& g : app.B)
+            if (&g != &b && g.d.kind == KIND_ROCKY && SurfaceDist(g, b.pos) < 1) {
+                V3 up = Norm(b.pos - g.pos), h = dir - up * Dot(dir, up);
+                dir = Norm((Len(h) > 1e-9 ? Norm(h) : Cross(up, Y_UP)) * 0.6 + up * 0.8);
+            }
     if (!land && b.d.kind == KIND_PROBE) {
         // 探査機・人工衛星: 小さいので、ズームした視野（8°）で機体が視野の 6 割ほどに映る距離から見る（右クリック・加速で
         // 元の視野へ）。カメラは自機の少し上・後ろ（後ろから見る視点は上 13 m・後ろ 55 m、操縦席は上 2.5 m）にあるので、
