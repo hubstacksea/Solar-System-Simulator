@@ -31,6 +31,7 @@ uniform sampler2D texture1;
 out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
+out float fragAlt;   // 地形の高さ km（金星のもやの計算に使う。地形でなければ 0）
 
 float terrDecode(vec4 t) {
     if (terrA.w < 1.5) {   // 陸 128..255 = 0..8900 m（平方根で詰めてある）。海は海面（0）
@@ -57,6 +58,7 @@ float terrHeight(vec3 d, float lod) {
 void main() {
     vec3 pos = vertexPosition, nrm = vertexNormal;
     fragObj = vertexPosition;
+    fragAlt = 0.0;
     if (terrA.x > 0.5) {
         int ri = int(vertexPosition.x * terrD.z + 0.5);
         int si = int(vertexPosition.y / 6.2831853 * terrD.w + 0.5), stp = int(terrStep[ri >> 2][ri & 3] + 0.5);
@@ -72,7 +74,8 @@ void main() {
         float sp = max(dth, st * 6.2831853 * float(stp) / terrD.w);
         float lod = log2(max(sp * terrD.y / 3.1415927, 1.0));
         vec3 E = vec3(1.0, terrB.w, 1.0);
-        float h = terrHeight(d, lod) * terrC.w;
+        float hm = terrHeight(d, lod), h = hm * terrC.w;
+        fragAlt = hm * 0.001;
         pos = E * (c * cm1 + t * st) + normalize(E * d) * h;
         nrm = vec3(d.x, d.y / terrB.w, d.z);
         fragObj = d;
@@ -101,6 +104,7 @@ static const char* PLANET_FS = R"(
 in vec3 fragObj;
 in vec3 fragNormal;
 in vec3 fragWorld;
+in float fragAlt;
 uniform vec3 lightDir;     // ワールド空間（カメラ相対）での太陽方向
 uniform vec3 lightDirObj;  // 本体（自転込み）/ 環の座標系での太陽方向
 uniform float relBeta;     // 光速に近い時の見え方の β と進む向き（頂点シェーダと同じ。色のドップラー効果に使う）
@@ -133,6 +137,8 @@ uniform vec3 atmBeta;
 uniform vec3 atmMie;
 uniform vec3 atmOzone;
 uniform vec4 atmHaze;
+uniform vec4 venusAir;   // 金星の雲の下の地表: x 1 で有効, y 描画の 1 単位の長さ km, z カメラの高度 km, w 雲の中の散乱 1/km（カメラが雲の層の中の時）
+uniform vec3 venusSky;   // 金星の雲の下の空の明るさ（色ごと。雲と厚い大気で散らされた日光）
 uniform vec3 camUp;
 out vec4 finalColor;
 
@@ -277,6 +283,7 @@ vec4 rocky(vec3 p, int style, vec3 o, out vec3 base) {
     else if (style == 7) { dens = 0.85; }                // カリスト: クレーターだらけ
     else if (style == 10) { dens = 0.3; }
     else if (style == 12) { dens = 0.12; rough = 0.7; }
+    else if (style == 24) { dens = 0.02; rough = 0.8; }  // 金星: 若い溶岩平原でクレーターがほとんど無い
 
     // 冥王星のハート（スプートニク平原）は平らでクレーターが無い
     float heart = 0.0;
@@ -765,6 +772,11 @@ void main() {
     int style = int(detail.x + 0.5);
     vec3 V = normalize(-fragWorld);
 
+    if (kind == 6) {   // 金星の雲の層を下から見た空（一様に明るい曇り空）
+        finalColor = vec4(doppler(venusSky), 1.0);
+        return;
+    }
+
     if (kind == 5) {   // タイタンの上空のもや（本体より一回り大きな殻。縁でだけ見える青い層）
         vec3 Nh = normalize(fragNormal);
         float muH = abs(dot(Nh, V));
@@ -885,6 +897,19 @@ void main() {
         vec3 cl = max(ndlG, 0.0) * sh * sunTint + 0.01;
         col = mix(col, cl, cloud * 0.92);
         col = mix(col, atmColor * max(ndlG, 0.0), 0.12 * (1.0 - mu) * params.w);   // 大気による青み
+    }
+
+    if (venusAir.x > 0.5) {
+        // 金星の雲の下: 日光は雲と厚い大気で散らされて空全体から届く（影はできず、上を向いた面ほど少し明るい）
+        col = base * venusSky * (0.75 + 0.25 * dot(N, n0)) * 1.6;
+        // もや: CO2 のレイリー散乱。地表での 1/e の長さ 赤 2.2 km・緑 0.95 km・青 0.43 km（地球の空気の値を、金星の地表の
+        // 密度（地球の約 54 倍）と CO2 の散乱のしやすさ（空気の約 2.6 倍）で換算した見積もり）。空気は高さ 15.9 km ごとに 1/e。
+        // 遠いほど地面の色が消え、空と同じ光になる（光が何度も散らされるので、散らされた光は空の明るさとする）
+        float dist = length(fragWorld) * venusAir.y, hc = venusAir.z, hp = fragAlt, dh = hc - hp;
+        float rho = abs(dh) > 0.01 ? (exp(-hp / 15.9) - exp(-hc / 15.9)) * 15.9 / dh : exp(-hc / 15.9);
+        vec3 tr = exp(-(vec3(0.45, 1.05, 2.3) * rho + venusAir.w) * dist);
+        finalColor = vec4(doppler(col * tr + venusSky * (1.0 - tr)), 1.0);
+        return;
     }
 
     // 月食: 地球の大気で曲げられた赤い光がわずかに届く

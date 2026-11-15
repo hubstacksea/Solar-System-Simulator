@@ -75,6 +75,21 @@ EM_JS(int, WebViewW, (), {
     var h = window.innerHeight, base = Math.max(1, 720 / h);
     return Math.round(window.innerWidth * Math.max(base, Math.min(window.devicePixelRatio || 1, 1440 / h)));
 });
+// ブラウザが画面を描き替えた間隔（requestAnimationFrame の間隔の 0.5 秒ごとの平均、秒）。GPU が追いつかない時は、
+// アプリの 1 フレームの時間には出ず（GPU の処理は後回しになる）、この間隔だけが延びる
+EM_JS(double, WebPresentSec, (), {
+    if (!window.__svRaf) {
+        var r = window.__svRaf = {n: 0, t0: performance.now(), iv: 1 / 60};
+        var f = function() {
+            var now = performance.now();
+            r.n++;
+            if (now - r.t0 >= 500) { r.iv = (now - r.t0) / r.n / 1000; r.n = 0; r.t0 = now; }
+            requestAnimationFrame(f);
+        };
+        requestAnimationFrame(f);
+    }
+    return window.__svRaf.iv;
+});
 EM_JS(int, WebViewH, (), {
     var h = window.innerHeight, base = Math.max(1, 720 / h);
     return Math.round(h * Math.max(base, Math.min(window.devicePixelRatio || 1, 1440 / h)));
@@ -392,6 +407,8 @@ int main(int argc, char** argv) {
     app.locAtmMie = GetShaderLocation(app.shader, "atmMie");
     app.locAtmOzone = GetShaderLocation(app.shader, "atmOzone");
     app.locAtmHaze = GetShaderLocation(app.shader, "atmHaze");
+    app.locVenusAir = GetShaderLocation(app.shader, "venusAir");
+    app.locVenusSky = GetShaderLocation(app.shader, "venusSky");
     app.locCamUp = GetShaderLocation(app.shader, "camUp");
     app.locTerrA = GetShaderLocation(app.shader, "terrA");
     app.locTerrB = GetShaderLocation(app.shader, "terrB");
@@ -726,10 +743,13 @@ int main(int argc, char** argv) {
 #endif
         BeginDrawing();
         // 画質「低」: 星空と 3D を縮小バッファに描いて拡大する（HUD は等倍）
-        bool lowRes = QUALITY_SCALE[app.quality] < 1.0f;
-        float rk = QUALITY_SCALE[app.quality] * GetRenderWidth() / std::max(1, GetScreenWidth());
 #if defined(__EMSCRIPTEN__)
-        if (lowRes) rk /= g_dpiScale;   // ブラウザ版の画質「低」: 3D は画面の倍率を掛けない画素数で（2D の表示だけ細かく）
+        UpdateAutoRes(app, GetFrameTime(), WebPresentSec());
+#endif
+        bool lowRes = QUALITY_SCALE[app.quality] * app.autoRes < 1.0f;
+        float rk = QUALITY_SCALE[app.quality] * app.autoRes * GetRenderWidth() / std::max(1, GetScreenWidth());
+#if defined(__EMSCRIPTEN__)
+        if (QUALITY_SCALE[app.quality] < 1.0f) rk /= g_dpiScale;   // ブラウザ版の画質「低」: 3D は画面の倍率を掛けない画素数で（2D の表示だけ細かく）
 #endif
         if (lowRes) {
             int w = std::max(1, (int)(GetScreenWidth() * rk)), h = std::max(1, (int)(GetScreenHeight() * rk));

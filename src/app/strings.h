@@ -72,6 +72,7 @@
     X(AP_OFF, "自動操縦 OFF", "Autopilot OFF") \
     X(AP_ARRIVED, "到着", "Arrived") \
     X(AP_AUTO_ENGINE, "エンジン自動", "auto engine") \
+    X(FPS_AUTORES, "%d FPS（重いので 3D を %d%% の解像度で描画中）", "%d FPS (heavy: drawing 3D at %d%% resolution)") \
     X(AP_TURN, "旋回中", "turning") \
     X(AP_ACCEL, "加速中", "accelerating") \
     X(AP_CRUISE, "巡航中", "cruising") \

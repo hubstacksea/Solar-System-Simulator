@@ -665,6 +665,8 @@ static const SkyAtmosphere* CameraAtmosphere(const App& app, double* density, V3
 static double SkyDaylight(const App& app) {
     double density, sunEl;
     V3 up;
+    const Body& v = app.B[B_VENUS];   // 金星の雲の層の下: 空は雲で覆われ、昼も夜も星は見えない
+    if (Len(app.cam.pos - v.pos) < v.d.radius + VENUS_CLOUD_TOP) return 1;
     if (!CameraAtmosphere(app, &density, &up, &sunEl)) return 0;
     double light = std::max(0.0, std::min(1.0, (sunEl + 0.17) / 0.2));
     return std::min(1.0, density * 2.0) * light;
@@ -756,6 +758,42 @@ static void ChooseMusic(const App& app, int* track, float* vol) {
 static const float QUALITY_SCALE[3] = {0.6f, 1.0f, 1.0f};
 static const float QUALITY_DETAIL[3] = {2.5f, 1.8f, 1.0f};
 
+// ブラウザ版: 描くのに時間がかかる時は 3D の解像度を自動で下げる。ブラウザが画面を描き替える間隔 present（秒。GPU が
+// 追いつかない時はこれが延びる）が 28 ms（約 36 fps）を超えたら 1 割ずつ下げる（0.5 倍、3D の縦 360 画素まで）。
+// 下げて 1.2 秒たっても速くならなければ（GPU ではなく CPU で時間がかかっている）元に戻し、その重さのうちは下げない。
+// 余裕のある状態（20 ms 未満）が続いたら 1 割ずつ戻す。戻した直後にまた下げた時は、次に戻すまでの待ちを倍にする
+// （行ったり来たりしないように）。地図の読み込みなどの一時的な引っかかり（0.25 秒を超える間隔）は除く
+static void UpdateAutoRes(App& app, double dt, double present) {
+    static double since = 0, wait = 3, raised = -1, before = 0, cpuAvg = 0;
+    static float trialFrom = -1;
+    if (dt <= 0 || dt > 0.25 || present <= 0 || present > 0.25) return;
+    since += dt;
+    if (raised >= 0) raised += dt;
+    if (cpuAvg > 0 && present < cpuAvg * 0.8) cpuAvg = 0;   // 軽くなった（場面が変わった）
+    float lo = std::max(0.5f, std::min(1.0f, 360.0f / (std::max(1, GetScreenHeight()) * QUALITY_SCALE[app.quality])));
+    if (trialFrom > 0) {   // 下げた効き目を見る
+        if (since < 1.2) return;
+        if (present > before * 0.97) {
+            app.autoRes = trialFrom;
+            cpuAvg = before;
+        }
+        trialFrom = -1;
+        since = 0;
+    } else if (present > 0.028 && since > 0.6 && app.autoRes > lo && !(cpuAvg > 0 && present < cpuAvg * 1.2)) {
+        before = present;
+        trialFrom = app.autoRes;
+        app.autoRes = std::max(lo, app.autoRes * 0.9f);
+        if (raised >= 0 && raised < 5) wait = std::min(wait * 2, 60.0);
+        raised = -1;
+        since = 0;
+    } else if (present < 0.020 && since > wait && app.autoRes < 1) {
+        app.autoRes = std::min(1.0f, app.autoRes / 0.9f);
+        if (app.autoRes > 0.99f) app.autoRes = 1;
+        raised = 0;
+        since = 0;
+    }
+}
+
 // 天体 i に影を落としうる天体（母天体・兄弟の衛星・自分の衛星）を最大 4 つシェーダへ渡す
 static void SetOccluders(App& app, int i, double s) {
     const Body& b = app.B[i];
@@ -827,6 +865,8 @@ static void DrawBodies(App& app) {
         double alt = dist - SurfaceRadius(b, rel * (-1.0 / dist));
         double nearK = 0.9 * c.focal / std::sqrt(c.focal * c.focal + 0.25 * (c.W * c.W + c.H * c.H));
         double nearKm = (dist > b.outer && b.outer > d.radius) ? std::min(alt, dist - b.outer) * nearK : alt * std::min(0.5, nearK);
+        if (it.i == B_VENUS && dist < d.radius + VENUS_CLOUD_TOP)   // 雲の層の下からは、すぐ上の雲の層の殻も切り取らない
+            nearKm = std::min(nearKm, std::max(0.05, (std::max(d.radius + VENUS_CLOUD_TOP, dist + 1) * 0.9998 - dist) * nearK));
         nearKm = std::max(nearKm, dist * 1e-7);
         SetPassProjection(c, nearKm * s, (dist + b.outer) * s * 1.01);
         ClearDepth();
@@ -964,8 +1004,49 @@ static void DrawBodies(App& app) {
             else if (style == S_MOON_TEX) texW = app.moonData.width, texH = app.moonData.height;
             else if (style == S_MAPPED && app.maps[b.map].height) texW = app.maps[b.map].data.width, texH = app.maps[b.map].data.height;
         }
-        if (texW > 0) DrawTerrain(app, b, rel, dist, alt, s, texW, texH);
+        // 金星: 地表は雲の層（上端 VENUS_CLOUD_TOP）より下にいる時だけ描き、雲の層を重ねる
+        bool venus = it.i == B_VENUS, venusUnder = venus && dist - d.radius < VENUS_CLOUD_TOP;
+        if (venusUnder) {
+            // 雲の下の明るさ（推定）: 雲の上の日光に対して地表で 3.5%、雲の底（48 km）で 15%（金星の着陸機・探査機の観測からの目安）。
+            // その間は対数で補間する。表示は目が慣れた明るさとして比を平方根で縮め、2 倍にする。色は地表で青が大きく減る。
+            // 太陽の高さで昼と夜が変わる（光は空全体から来るので、太陽が低くても明るさの落ち方はゆるやか）
+            double h = std::max(0.0, dist - d.radius);
+            double lnE = h < VENUS_CLOUD_BASE ? std::log(0.035) + std::log(0.15 / 0.035) * h / VENUS_CLOUD_BASE
+                                              : std::log(0.15) * (1 - (h - VENUS_CLOUD_BASE) / (VENUS_CLOUD_TOP - VENUS_CLOUD_BASE));
+            double sinEl = Dot(rel * (-1.0 / dist), L);
+            double t = std::max(0.0, std::min(1.0, (sinEl + 0.05) / 0.25));
+            double D = std::min(1.0, 2.0 * std::sqrt(std::exp(lnE))) * t * t * (3 - 2 * t) * (0.35 + 0.65 * std::max(0.0, sinEl));
+            double k = h / VENUS_CLOUD_TOP;
+            Vector3 sky = {(float)D, (float)(D * (0.72 + 0.28 * k)), (float)(D * (0.42 + 0.58 * k))};
+            float va[4] = {1, (float)(1.0 / s), (float)h, h > VENUS_CLOUD_BASE ? 1.5f : 0.0f};   // 雲の中は 1/e が約 0.7 km（目安）
+            Vector3 g1 = {0.30f, 0.28f, 0.26f}, g2 = {0.20f, 0.19f, 0.18f};   // 地表の玄武岩（暗い灰色）
+            float pv[4] = {params[0], params[1], params[2], 0};
+            SetShaderValue(app.shader, app.locVenusSky, &sky, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locVenusAir, va, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locC1, &g1, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locC2, &g2, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locParams, pv, SHADER_UNIFORM_VEC4);
+        }
+        if (venus && !venusUnder) {
+        } else if (texW > 0) DrawTerrain(app, b, rel, dist, alt, s, texW, texH);
         else DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
+        if (venus) {   // 雲の層: 外からは雲の模様（ガス惑星と同じ描き方）、下からは一様な曇り空
+            float va0[4] = {0, 0, 0, 0};
+            SetShaderValue(app.shader, app.locVenusAir, va0, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locC1, &c1, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
+            double top = dist - d.radius - VENUS_CLOUD_TOP;
+            float pc[4] = {venusUnder ? 6.0f : (float)KIND_GAS, d.bands, params[2],
+                           d.atmStrength * (float)std::min(1.0, std::max(0.0, top / (d.radius * 0.05)))};
+            float dc[4] = {(float)S_VENUS, detail[1], detail[2], detail[3]};
+            SetShaderValue(app.shader, app.locParams, pc, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locDetail, dc, SHADER_UNIFORM_VEC4);
+            // 下から見る時は、球の面の中ほどが半径より内側に入る分（約 0.015%）を見込んで、カメラより確実に上に置く
+            double rc = (venusUnder ? std::max(d.radius + VENUS_CLOUD_TOP, dist + 1) / (1 - 2e-4) : d.radius + VENUS_CLOUD_TOP) * s;
+            if (venusUnder) rlDisableBackfaceCulling();
+            DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, rc, rc, b.spin));
+            if (venusUnder) rlEnableBackfaceCulling();
+        }
 
         if (d.style == S_TITAN) {   // 上空のもやの層（地表から 約 500 km 上）
             float hp[4] = {5.0f, 0, 0, 0.7f};

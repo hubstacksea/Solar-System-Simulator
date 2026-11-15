@@ -4,6 +4,15 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.40.0 (2026-11-15)
+
+- Browser version: when drawing is heavy, the 3D resolution is lowered automatically. When the interval between the browser's screen updates exceeds 28 ms (about 36 fps) it drops by 10% at a time (down to 0.5x and 360 pixels of 3D height); if that does not help (the load is on the CPU) it goes back. It recovers when there is headroom, and the FPS readout shows the resolution while it is lowered. In Chrome on this PC, looking straight down at Earth went from 6.3 to 49 fps and at Mars from 10.5 to 49 fps (60-80% resolution)
+- Venus surface: Venus is now a rocky body, and its familiar cloud look is drawn as a cloud layer 70 km above the ground. Below the cloud tops you come down onto terrain from the Magellan altimeter elevations (Ford, Pettengill et al.; −3.7 to +10.6 km, shrunk to about 18.6 km spacing). The roughly 8% that was not measured is an estimated height joined smoothly from the surroundings
+- The view aims to be realistic: inside the cloud layer (48-70 km) is white fog; below the clouds the sky is a uniform overcast with no stars. The ground fades into orange-brown haze in the thick CO2 air within a few km, and the surface cannot be seen from high up. The ground is basalt gray (the radar images are not visible colors, so they are not used) with almost no craters
+- Estimated: the light relative to sunlight above the clouds (3.5% at the surface, 15% at the cloud base), the displayed brightness (as for eyes adapted to the dark: the ratio is square-rooted and doubled; the real view is darker), the light color (much less blue at the surface), the haze 1/e lengths (at the surface red 2.2 km, green 0.95 km, blue 0.43 km, scaled from Earth's air by density and the stronger scattering of CO2), a 1/e length of about 0.7 km inside the clouds, and cloud tops at 70 km and base at 48 km
+- Venus now uses the IAU prime meridian (W0 = 160.20°), so the elevations sit at the right longitudes (the cloud pattern turns too). Constellation names and similar labels are hidden below the clouds, and standing on the ground shows the compass directions
+- The map data the browser version loads later (maps.bin) grew from 19.4 MB to 22.1 MB
+
 ## 2.39.0 (2026-11-15)
 
 - Mercury, Ceres, Vesta, Pluto and Charon now also draw their elevation data as true-height (1x) 3D terrain within 8 body radii, like Earth, the Moon and Mars. Altitude and surface collisions are measured from the terrain. Vesta gets its lumpy shape with the Rheasilvia basin. The maps and elevations agree in longitude (offset 0°, checked by correlating elevation slopes with the map patterns)

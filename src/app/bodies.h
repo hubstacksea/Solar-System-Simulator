@@ -73,6 +73,8 @@ struct Terrain {
     }
 };
 static std::vector<Terrain> g_terrain;
+// 金星の雲の層の上端と下端（地表から km。目安）。地表は雲の下からしか見えない
+static const double VENUS_CLOUD_TOP = 70, VENUS_CLOUD_BASE = 48;
 
 // 本体の座標系（X, 自転軸, Z）の向き o の地表の高さ km。楕円体の上の点は、向きを (x, y / (1 − 扁平率), z) にした
 // 球面の点で地図を引く（球のメッシュと同じ）
@@ -972,6 +974,7 @@ static std::vector<Body> InitBodies() {
             b.primeOffset = std::atan2(-Dot(Q, b.ez), Dot(Q, b.ex));
         }
         b.outer = RingOf((int)i) ? RingOf((int)i)->outer : d.radius;   // 環のある惑星は環の外側まで
+        if (i == B_VENUS) b.outer = d.radius + VENUS_CLOUD_TOP;          // 金星は雲の層の上まで
         if (d.apolloTrack) {
             b.soi = 20;      // 近くにいる自機は宇宙船と一緒に移動する（月を回る間に月面の近くを飛ぶ自機を連れて行かないよう狭く）
             b.outer = 0.03;

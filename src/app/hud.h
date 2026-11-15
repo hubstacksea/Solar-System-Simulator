@@ -1443,7 +1443,8 @@ static void DrawHUD(App& app) {
         Txt(b, 12, hy - 40, 14, {255, 210, 120, 230});
     }
 #endif
-    snprintf(b, sizeof b, "%d FPS", GetFPS());
+    if (app.autoRes < 1) snprintf(b, sizeof b, T(UI_FPS_AUTORES), GetFPS(), (int)(app.autoRes * 100 + 0.5f));
+    else snprintf(b, sizeof b, "%d FPS", GetFPS());
     Txt(b, 12, hy - 20, 13, {110, 130, 160, 200});
 
     DrawToast(app);

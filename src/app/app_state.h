@@ -190,11 +190,13 @@ struct App {
     Shader skyShader{};                   // 大気の中から見た空
     int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1, locSkySunVis = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
+    float autoRes = 1;                    // ブラウザ版: 描くのが重い時に 3D の解像度に掛ける倍率（UpdateAutoRes）
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locRelBeta = -1, locRelDir = -1, locSunInfo = -1;
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;
     int locOcc = -1, locOccN = -1, locSunAng = -1;
     int locAtmBeta = -1, locAtmMie = -1, locAtmOzone = -1, locAtmHaze = -1, locCamUp = -1;
+    int locVenusAir = -1, locVenusSky = -1;
     Mesh terrainMesh{};                   // 地表近くの地形の格子（頂点は (u, φ)。形はシェーダで作る）
     int locTerrA = -1, locTerrB = -1, locTerrC = -1, locTerrD = -1, locTerrRing = -1, locTerrStep = -1;
     std::vector<Vector3> dust;
