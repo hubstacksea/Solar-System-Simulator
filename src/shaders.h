@@ -21,7 +21,7 @@ uniform vec3 relDir;     // 進む向き（カメラからの相対座標）
 // （輪ごとの θ は terrRing。CPU で決める）を φ の向きに並べ、標高の分だけ持ち上げる。座標は赤道半径を 1 とし、原点は真下の
 // 楕円体の上の点（カメラの近くでも桁落ちしないよう、そこからの差を求める）
 uniform vec4 terrA;      // x: 1 で格子, y: θa, z: lnK（輪の θ の基本の並び θa (exp(u lnK) − 1)。シェーダでは使わない）,
-                         // w: 高さの形式（1 地球の高さコード, 2 上位・下位バイト）
+                         // w: 高さの形式（1 地球の高さコード, 2 上位・下位バイト 0.5 m 単位, 3 上位・下位バイト 1 m 単位）
 uniform vec4 terrRing[61];   // 輪 i の θ（4 つずつ詰める）
 uniform vec4 terrStep[61];   // 輪 i の 1 周の頂点の間引き（2 の累乗。その数ずつの頂点を同じ位置に重ねる）
 uniform vec4 terrB;      // xyz: 真下の向き c（本体の座標系の球面の点）, w: 極半径 / 赤道半径
@@ -37,7 +37,8 @@ float terrDecode(vec4 t) {
         float v = t.r * 255.0, s = (v - 128.0) / 127.0;
         return v >= 127.5 ? s * s * 8900.0 : 0.0;
     }
-    return (t.r * 255.0 * 256.0 + t.a * 255.0) * 0.5 - 10000.0;
+    float v = t.r * 255.0 * 256.0 + t.a * 255.0;
+    return terrA.w > 2.5 ? v - 32768.0 : v * 0.5 - 10000.0;
 }
 // 標高 m。頂点の間隔が画素より細かい所は CPU 側と同じく 4 画素の値から双線形に補間し、粗い所は縮小した画像を使う
 float terrHeight(vec3 d, float lod) {
@@ -122,7 +123,7 @@ uniform sampler2D texture0;  // 地球・月: 地表の色 (Blue Marble / LROC)
 uniform sampler2D texture1;  // 地球: R 標高・水深, G 夜景, B 海陸マスク, A 海氷 / 月・火星: R 標高上位, A 下位
 uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（1: あり）
 uniform sampler2D texture3;  // 土星と環: 環の不透明度（半径 72,000〜142,500 km） / 地球: 12 か月の地表の色
-uniform vec4 mapInfo;        // 地図: x 1 / 平均の明るさ, y 種類（0 カラー, 1 白黒, 2 模様だけ）, z 標高あり, w 半径 km
+uniform vec4 mapInfo;        // 地図: x 1 / 平均の明るさ, y 種類（0 カラー, 1 白黒, 2 模様だけ）, z 標高（0 なし, 1 0.5 m 単位, 2 1 m 単位）, w 半径 km
 uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う表面模様の種類, y 地図を東へずらす角度 rad（木星の大赤斑）
                              // 地球: z 今の月（0 = 1 月中旬、12 で一周）, w 季節の色と雲の画像あり
 // 大気（地球・火星）: atmBeta は天頂方向の空気 1 つ分で散乱する割合（0 なら大気なし）。日光は太陽が低いほど赤くなる
@@ -537,6 +538,8 @@ float occShadow(vec3 P, vec3 L, out float red) {
 
 // 実データの月。色は LROC、標高は LOLA。テクスチャより細かいクレーターは手続きで補う
 float moonHeightM(vec4 t) { return (t.r * 255.0 * 256.0 + t.a * 255.0) * 0.5 - 10000.0; }
+// 地図の標高 m（mapInfo.z が 2 なら 1 m 単位で -32768 m から。凹凸の大きいベスタ・カロン）
+float mapHeightM(vec4 t) { return mapInfo.z > 1.5 ? (t.r * 255.0 * 256.0 + t.a * 255.0) - 32768.0 : moonHeightM(t); }
 
 vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     g_ray = 0.0;
@@ -596,13 +599,13 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     if (cov > 0.0) fine = craters(p, 0.35, 260.0, o * 0.37) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0);
     vec4 h = mix(ph, fine, cov);
     if (mapInfo.z > 0.5) {
-        vec2 texel = vec2(1.0 / 1440.0, 1.0 / 720.0);
+        vec2 texel = 1.0 / vec2(textureSize(texture1, 0));
         vec2 st = max(texel, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
-        float hE = moonHeightM(textureGrad(texture1, uv + vec2(st.x, 0.0), dx, dy));
-        float hW = moonHeightM(textureGrad(texture1, uv - vec2(st.x, 0.0), dx, dy));
-        float hN = moonHeightM(textureGrad(texture1, uv - vec2(0.0, st.y), dx, dy));
-        float hS = moonHeightM(textureGrad(texture1, uv + vec2(0.0, st.y), dx, dy));
-        float hm = moonHeightM(textureGrad(texture1, uv, dx, dy));
+        float hE = mapHeightM(textureGrad(texture1, uv + vec2(st.x, 0.0), dx, dy));
+        float hW = mapHeightM(textureGrad(texture1, uv - vec2(st.x, 0.0), dx, dy));
+        float hN = mapHeightM(textureGrad(texture1, uv - vec2(0.0, st.y), dx, dy));
+        float hS = mapHeightM(textureGrad(texture1, uv + vec2(0.0, st.y), dx, dy));
+        float hm = mapHeightM(textureGrad(texture1, uv, dx, dy));
         float R = mapInfo.w * 1000.0;
         float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R;
         float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R;

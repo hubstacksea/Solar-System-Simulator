@@ -62,11 +62,12 @@ static std::vector<Shape> g_shapes;
 struct Terrain {
     int w = 0, h = 0;
     bool earth = false;              // 地球の高さコード（R）。他は上位・下位バイト（0.5 m 単位、-10000 m から）
+    bool wide = false;               // 上位・下位バイトが 1 m 単位で -32768 m から（凹凸の大きいベスタ・カロン）
     std::vector<unsigned short> v;   // 画像の値
     double lo = 0, hi = 0;           // 最低・最高 km
     double Km(int i) const {
         double c = v[i];
-        if (!earth) return (c * 0.5 - 10000.0) / 1000.0;
+        if (!earth) return wide ? (c - 32768.0) / 1000.0 : (c * 0.5 - 10000.0) / 1000.0;
         double t = (c - 128.0) / 127.0;
         return c >= 128 ? t * t * 8.9 : 0.0;
     }

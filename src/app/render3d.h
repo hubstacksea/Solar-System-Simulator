@@ -248,7 +248,8 @@ static void DrawCometTails(const App& app) {
 }
 
 // 埋め込みの地球データをテクスチャにする（経度方向は繰り返し、緯度方向は端で止める）
-static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext, int terrainBody = -1, App* app = nullptr) {
+// wide: 標高が 1 m 単位で -32768 m から（地図の標高の形式 2）
+static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext, int terrainBody = -1, App* app = nullptr, bool wide = false) {
     Image img = LoadImageFromMemory(ext, f.data, (int)f.size);
     if (!img.data) return Texture2D{};
     if (app && terrainBody >= 0 && app->B[terrainBody].terrain < 0) {   // 標高の画像: 同じ値を CPU 側にも持つ（地球は R、月・火星は上位バイト R と下位バイト A）
@@ -256,6 +257,7 @@ static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext, int terrai
         T.w = img.width;
         T.h = img.height;
         T.earth = terrainBody == B_EARTH;
+        T.wide = wide;
         Color* px = LoadImageColors(img);
         T.v.resize((size_t)T.w * T.h);
         for (size_t k = 0; k < T.v.size(); k++) T.v[k] = T.earth ? px[k].r : (unsigned short)(px[k].r * 256 + px[k].a);
@@ -395,9 +397,12 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
             step[i] = (float)st;
         }
     }
-    float ta[4] = {1, (float)thA, (float)lnK, T.earth ? 1.0f : 2.0f};
+    float ta[4] = {1, (float)thA, (float)lnK, T.earth ? 1.0f : T.wide ? 3.0f : 2.0f};
     float tb[4] = {(float)c.x, (float)c.y, (float)c.z, (float)e};
-    float tc[4] = {(float)e1.x, (float)e1.y, (float)e1.z, (float)(1.0 / (a * 1000))};
+    // 高さは半径の 6〜8 倍の間で 0 から等倍へなめらかに増やす（その先は球で描くので、切り替わる時に形が跳ばない。
+    // 凹凸の大きいベスタでは 8 倍の所でも山の高さが数画素ある）
+    double grow = std::max(0.0, std::min(1.0, (8.0 - dist / a) / 2.0));
+    float tc[4] = {(float)e1.x, (float)e1.y, (float)e1.z, (float)(grow * grow * (3 - 2 * grow) / (a * 1000))};
     float td[4] = {(float)texW, (float)texH, (float)TERRAIN_RINGS, (float)TERRAIN_SLICES};
     SetShaderValue(app.shader, app.locTerrA, ta, SHADER_UNIFORM_VEC4);
     SetShaderValue(app.shader, app.locTerrB, tb, SHADER_UNIFORM_VEC4);
@@ -480,8 +485,9 @@ static void LoadBodyMaps(App& app) {
         int tb = -1;
         for (size_t i = 0; i < app.B.size(); i++)
             if (m.name == app.B[i].d.en && app.B[i].d.kind == KIND_ROCKY) tb = (int)i;
-        if (height) m.data = LoadEmbeddedTexture(data, ".png", tb, &app);
+        if (height) m.data = LoadEmbeddedTexture(data, ".png", tb, &app, height == 2);
         m.height = m.data.id != 0;
+        m.wide = height == 2;
         if (!m.color.id || !m.mask.id) continue;
         for (Body& b : app.B)
             if (m.name == b.d.en && (b.d.kind == KIND_ROCKY || b.d.kind == KIND_GAS)) b.map = (int)app.maps.size();
@@ -911,7 +917,7 @@ static void DrawBodies(App& app) {
             app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = m.color;
             app.mat.maps[MATERIAL_MAP_SPECULAR].texture = m.height ? m.data : m.color;
             app.mat.maps[MATERIAL_MAP_NORMAL].texture = m.mask;
-            float info[4] = {1.0f / std::max(0.05f, m.mean), (float)m.kind, m.height ? 1.0f : 0.0f, (float)d.radius};
+            float info[4] = {1.0f / std::max(0.05f, m.mean), (float)m.kind, m.height ? (m.wide ? 2.0f : 1.0f) : 0.0f, (float)d.radius};
             // 木星の地図は大赤斑が経度 0° にあるので、大赤斑の今の西経（体系 II）だけ回す
             float shift = it.i == B_JUPITER ? (float)(GreatRedSpotLon(app.tDays) * DEG) : 0.0f;
             float info2[4] = {(float)d.style, shift, 0, 0};

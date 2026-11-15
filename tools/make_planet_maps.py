@@ -5,7 +5,8 @@
 
 データ: USGS Astrogeology の天体地図サービス（WMS, https://planetarymaps.usgs.gov/）で配信している全球モザイク
 （NASA の探査機の画像から USGS などが作成。米国政府の著作物でパブリックドメイン）と、火星の標高は
-NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）。土星は NASA PDS 大気ノードの Cassini ISS の全球図
+NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）、水星・ケレス・ベスタ・冥王星・カロンの標高は USGS Astrogeology の
+全球の標高データ（下の DEMS。利用条件は作成者の明記）。土星は NASA PDS 大気ノードの Cassini ISS の全球図
 （Li, West, Jiang, Knowles 2023, doi:10.17189/rkkb-6y30）。天王星の衛星は JPL の Solar System Simulator
 （https://space.jpl.nasa.gov/tmaps/uranus.html。Caltech/JPL/USGS、JPL の画像利用規定により許可なく利用可、
 クレジット Courtesy NASA/JPL-Caltech）が配っている USGS の全球図。
@@ -15,17 +16,19 @@ NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）。土星は NASA PDS 大気�
   uint32 地図の数
   地図ごとに: char[32] 英語名（シミュレータの天体名と同じ）,
              uint8 種類（0: カラー, 1: 白黒（天体の色で着色）, 2: 白黒の模様だけ（明暗はシミュレータの塗り分けを使う）),
-             uint8 標高あり, uint16 予備, float32 平均の明るさ（0〜1。天体の色に合わせる時に使う）,
+             uint8 標高（0: なし, 1: 0.5 m 単位で -10,000 m が 0, 2: 1 m 単位で -32,768 m が 0）, uint16 予備, float32 平均の明るさ（0〜1。天体の色に合わせる時に使う）,
              uint32 長さ + JPEG（地図。撮影されていない所は平均の明るさで埋める）,
              uint32 長さ + PNG（512x256 のグレー。撮影された範囲 = 255、境目はぼかす）,
-             [標高ありなら uint32 長さ + PNG（グレー + アルファ = 16 bit の上位 / 下位バイト、0.5 m 単位、
-             -10,000 m を 0 とする。月と同じ）]
+             [標高ありなら uint32 長さ + PNG（グレー + アルファ = 16 bit の上位 / 下位バイト。単位と 0 の高さは
+             標高の欄の値による。1 は月と同じ）]
 
 使い方: python3 tools/make_planet_maps.py <作業ディレクトリ> [出力先=assets]
-必要なもの: Pillow, NumPy（ダウンロード 約 105 MB）
+必要なもの: Pillow, NumPy（ダウンロード 約 2.5 GB。うち標高データが約 2.4 GB）
 """
 import io
 import os
+import re
+import shutil
 import struct
 import sys
 import urllib.parse
@@ -81,7 +84,7 @@ def fetch(work, name, url):
         print("download", url[:150])
         req = urllib.request.Request(url, headers={"User-Agent": UA})
         with urllib.request.urlopen(req, timeout=600) as r, open(path + ".part", "wb") as f:
-            f.write(r.read())
+            shutil.copyfileobj(r, f, 1 << 20)
         os.rename(path + ".part", path)
     return path
 
@@ -151,6 +154,130 @@ def mars_height(work):
     return buf.getvalue()
 
 
+# 標高: USGS Astrogeology の全球の標高データ（NASA の探査機の画像から作成。USGS の S3 にある mosaic/ から取得）。
+# 英語名: ファイル, 出力の幅, 値 → 中心からの半径 m, 左端の経度（0 か -180）
+# 値の定義は各ファイルのラベル（.lbl）による。水星は 2439.4 km の球からの高さ（0.5 m 単位）、ケレスは 470 km の球からの
+# 高さ m、ベスタは半径 m、冥王星・カロンは 1188.3 km・606 km の球からの高さ m。冥王星・カロンは New Horizons が近くで
+# 見た半球だけで、ほかは -32768（データなし）
+S3_MOSAIC = "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/"
+DEMS = {
+    "Mercury": ("Mercury_Messenger_USGS_DEM_Global_665m_v2.tif", 2048, lambda v: 2439400 + v * 0.5, 0),
+    "Ceres": ("Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif", 1024, lambda v: 470000 + v, 0),
+    "Vesta": ("Vesta_Dawn_HAMO_DTM_DLR_Global_48ppd.cub", 1024, lambda v: v, -180),
+    "Pluto": ("Pluto_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif", 2048, lambda v: 1188300 + v, 0),
+    "Charon": ("Charon_NewHorizons_Global_DEM_300m_Jul2017_16bit.tif", 1024, lambda v: 606000 + v, -180),
+}
+# シミュレータの赤道半径 km と扁平率（src/solar_data.h）。地図は、球面の点 (x, y, z) の緯度 asin(y) で引き、
+# 楕円体の点 (x, y (1 − 扁平率), z) に貼るので、扁平な天体では地図の行の緯度と実際の中心からの緯度がずれる。
+# 標高と画像はこのずれの分だけ行を引き直す（ベスタは最大 7° ほど）
+SHAPE = {"Mercury": (2439.7, 0.0), "Ceres": (482.1, 0.075), "Vesta": (286.3, 0.22), "Pluto": (1188.3, 0.0), "Charon": (606.0, 0.0)}
+
+
+def read_tiff(path):
+    """無圧縮・1 行 1 ストリップの int16 の GeoTIFF（行が隙間なく並んでいることを確かめる）"""
+    with open(path, "rb") as f:
+        h = f.read(8)
+        assert h[:2] == b"II" and struct.unpack("<H", h[2:4])[0] == 42, path
+        f.seek(struct.unpack("<I", h[4:8])[0])
+        tags = {}
+        for _ in range(struct.unpack("<H", f.read(2))[0]):
+            tag, typ, cnt, val = struct.unpack("<HHII", f.read(12))
+            tags[tag] = (typ, cnt, val)
+        w, h = tags[256][2] & 0xFFFF, tags[257][2] & 0xFFFF
+        assert tags[259][2] & 0xFFFF == 1 and tags[258][2] & 0xFFFF == 16 and tags[339][2] & 0xFFFF == 2, path
+        typ, cnt, off = tags[273]
+        f.seek(off)
+        offs = np.frombuffer(f.read(4 * cnt), "<u4").astype(np.int64)
+    assert cnt == h and np.all(np.diff(offs) == w * 2), path
+    return np.memmap(path, "<i2", "r", int(offs[0]), (h, w)), -32768
+
+
+def read_cub(path):
+    """ISIS のキューブ（float32、タイル並び）。データなしの値は ISIS の NULL（-3.4028226550889045e+38）"""
+    head = open(path, "rb").read(65536).decode("latin1")
+    g = lambda k: int(re.search(r"\n\s*" + k + r"\s*=\s*(\d+)", head).group(1))
+    sb, w, h, tw, th = g("StartByte"), g("Samples"), g("Lines"), g("TileSamples"), g("TileLines")
+    assert "Format      = Tile" in head and "Type       = Real" in head and w % tw == 0 and h % th == 0, path
+    m = np.memmap(path, "<f4", "r", sb - 1, (h // th, w // tw, th, tw))
+    return np.asarray(m).transpose(0, 2, 1, 3).reshape(h, w), -3e38
+
+
+def fill_holes(v, ok):
+    """データのない所を、まわりの値からなめらかにつなぐ（縮小しながら平均で埋め、拡大して戻す）"""
+    if ok.all():
+        return v
+    h, w = v.shape
+    if h < 2 or w < 2:
+        return np.where(ok, v, v[ok].mean() if ok.any() else 0.0)
+    pv = np.pad(np.where(ok, v, 0.0), ((0, h % 2), (0, w % 2)), mode="edge")   # 奇数なら端を複製して偶数に
+    pk = np.pad(ok, ((0, h % 2), (0, w % 2)), mode="edge")
+    H2, W2 = pv.shape[0] // 2, pv.shape[1] // 2
+    s = pv.reshape(H2, 2, W2, 2).sum((1, 3))
+    n = pk.reshape(H2, 2, W2, 2).sum((1, 3))
+    sv = fill_holes(s / np.maximum(n, 1), n > 0)
+    up = np.asarray(Image.fromarray(sv.astype(np.float32), "F").resize((W2 * 2, H2 * 2), Image.BILINEAR))[:h, :w]
+    return np.where(ok, v, up)
+
+
+def remap_rows(a, flat):
+    """地図の行の緯度 → 中心からの緯度の行を引き直す（扁平な天体。行の方向に線形補間）"""
+    if flat == 0:
+        return a
+    h = a.shape[0]
+    lat = np.radians(90 - (np.arange(h) + 0.5) * 180 / h)
+    latc = np.arctan((1 - flat) * np.tan(lat))
+    y = np.clip((np.pi / 2 - latc) / np.pi * h - 0.5, 0, h - 1)
+    y0 = np.floor(y).astype(int)
+    y1 = np.minimum(y0 + 1, h - 1)
+    f = (y - y0).reshape((h,) + (1,) * (a.ndim - 1))
+    return a[y0] * (1 - f) + a[y1] * f
+
+
+def dem_height(work, name):
+    """標高の PNG（シミュレータの楕円体からの高さ。グレー + アルファ = 16 bit、0.5 m 単位で -10,000 m を 0。
+    それに収まらない天体（ベスタ・カロン）は 1 m 単位で -32,768 m を 0）と、その形式（1 か 2）"""
+    fn, w, radius, lon0 = DEMS[name]
+    path = fetch(work, fn, S3_MOSAIC + fn)
+    raw, nodata = read_cub(path) if fn.endswith(".cub") else read_tiff(path)
+    H, W = raw.shape
+    # 出力の 2 倍の細かさまで、データのある画素の平均で縮める（行のまとまりごとに）
+    k = max(1, H // w)
+    h2, w2 = H // k, W // k
+    acc = np.zeros((h2, w2))
+    cnt = np.zeros((h2, w2))
+    for y in range(h2):
+        blk = np.asarray(raw[y * k:(y + 1) * k, :w2 * k]).astype(np.float64)
+        ok = blk > nodata + 1 if nodata < 0 else blk != nodata
+        r = np.where(ok, radius(blk), 0.0)
+        acc[y] = r.reshape(k, w2, k).sum((0, 2))
+        cnt[y] = ok.reshape(k, w2, k).sum((0, 2))
+    ok = cnt > 0
+    r = acc / np.maximum(cnt, 1)
+    if lon0 == 0:
+        r, ok = np.roll(r, w2 // 2, axis=1), np.roll(ok, w2 // 2, axis=1)   # 左端を経度 -180° に
+    r = fill_holes(np.tile(r, 3), np.tile(ok, 3))[:, w2:2 * w2]   # 東西は一周つながるように 3 つ並べて埋める
+    # 行の数が k で割り切れない分（最大 k − 1 行）は下の端を捨てている。その分の緯度のずれは 1 画素未満
+    a, flat = SHAPE[name]
+    r = remap_rows(r, flat)
+    img = Image.fromarray(r.astype(np.float32), "F").resize((w, w // 2), Image.BOX)
+    r = np.asarray(img).astype(np.float64)
+    lat = np.radians(90 - (np.arange(w // 2) + 0.5) * 180 / (w // 2))
+    rell = a * 1000 * np.sqrt(np.cos(lat) ** 2 + ((1 - flat) * np.sin(lat)) ** 2)   # 楕円体の点の中心からの距離 m
+    hgt = r - rell[:, None]
+    covered = np.asarray(Image.fromarray((ok * 255).astype(np.uint8), "L").resize((w, w // 2), Image.BOX)).mean() / 255
+    fmt = 1 if hgt.min() >= -10000 and hgt.max() <= 22767 else 2
+    v = np.round((hgt + 10000) * 2) if fmt == 1 else np.round(hgt + 32768)
+    clipped = ((v < 0) | (v > 65535)).mean()
+    v = np.clip(v, 0, 65535).astype(np.uint16)
+    hi, lo = Image.fromarray((v >> 8).astype(np.uint8), "L"), Image.fromarray((v & 255).astype(np.uint8), "L")
+    buf = io.BytesIO()
+    Image.merge("LA", (hi, lo)).save(buf, "PNG", optimize=True)
+    print("  %s height %dx%d from %dx%d: %.1f .. %.1f km above the ellipsoid, %s m steps, data covers %.0f%%%s"
+          % (name, w, w // 2, W, H, hgt.min() / 1000, hgt.max() / 1000, "0.5" if fmt == 1 else "1", covered * 100,
+             ", CLIPPED %.3f%%" % (clipped * 100) if clipped else ""))
+    return buf.getvalue(), fmt
+
+
 def main():
     work = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else "assets"
@@ -159,6 +286,8 @@ def main():
     for name, mapfile, layer, w, kind, src in MAPS:
         img = wms(work, mapfile, layer, w)
         a = np.asarray(img).astype(np.float32) / 255
+        if name in SHAPE:
+            a = remap_rows(a, SHAPE[name][1])
         if name == "Jupiter":
             # 大赤斑: 南緯 17〜27° の帯で一番赤い所（赤 − 青 を経度方向にならして最大の所）
             h, wd = a.shape[:2]
@@ -183,8 +312,8 @@ def main():
         mbuf = io.BytesIO()
         m.save(mbuf, "PNG", optimize=True)
         mask = mbuf.getvalue()
-        height = mars_height(work) if name == "Mars" else b""
-        blob += struct.pack("<32sBBHfI", name.encode(), kind, 1 if height else 0, 0, mean, len(jpg)) + jpg
+        height, fmt = (mars_height(work), 1) if name == "Mars" else dem_height(work, name) if name in DEMS else (b"", 0)
+        blob += struct.pack("<32sBBHfI", name.encode(), kind, fmt, 0, mean, len(jpg)) + jpg
         blob += struct.pack("<I", len(mask)) + mask
         if height:
             blob += struct.pack("<I", len(height)) + height

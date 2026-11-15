@@ -184,7 +184,7 @@ struct App {
     Shader beltShader{};                  // 小惑星などの粒を GPU で計算して描く
     unsigned int beltVao = 0, beltVbo = 0;
     int beltCount = 0;
-    struct BodyMap { std::string name; int kind = 0; bool height = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
+    struct BodyMap { std::string name; int kind = 0; bool height = false, wide = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
     std::vector<BodyMap> maps;            // 探査機の画像による地図（assets/maps.bin）
     int locMapInfo = -1, locMapInfo2 = -1;
     Shader skyShader{};                   // 大気の中から見た空

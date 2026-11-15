@@ -4,6 +4,17 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.39.0 (2026-11-15)
+
+- Mercury, Ceres, Vesta, Pluto and Charon now also draw their elevation data as true-height (1x) 3D terrain within 8 body radii, like Earth, the Moon and Mars. Altitude and surface collisions are measured from the terrain. Vesta gets its lumpy shape with the Rheasilvia basin. The maps and elevations agree in longitude (offset 0°, checked by correlating elevation slopes with the map patterns)
+- The data are USGS Astrogeology global elevation models: Mercury MESSENGER (665 m spacing, Becker et al.), Ceres Dawn (137 m, Preusker et al., DLR), Vesta Dawn (93 m, DLR), Pluto and Charon New Horizons (300 m). The simulator shrinks them to 2048 × 1024 for Mercury and Pluto and 1024 × 512 for Ceres, Vesta and Charon (about 2 to 7.5 km spacing). Relief finer than that is flat
+- Pluto and Charon only have data for the hemisphere New Horizons saw up close (about 46%); the rest is an estimated height joined smoothly from the surrounding values
+- Vesta and Charon have large relief (−23 to +21 km and −14 to +7 km from the ellipsoid), so a format storing heights in 1 m steps was added
+- The map images of Vesta and Ceres are corrected for the latitude shift when they are wrapped onto the flattened ellipsoid (up to about 7° on Vesta). Bright areas such as Occator crater on Ceres change shape slightly
+- Terrain heights grow smoothly from zero to full size between 6 and 8 radii, so the shape does not jump when the sphere is replaced
+- Relief shading from map elevations assumed Mars's 1440 × 720 elevation image size; it now uses the actual size
+- The map data the browser version loads later (maps.bin) grew from 12.6 MB to 19.4 MB
+
 ## 2.38.2 (2026-11-15)
 
 - Distant relief no longer ripples as much when flying fast just above the surface. The thinning of the far terrain mesh in 2.38.1 made the ring spacing coarser than the elevation data (about 34 km at 1 km altitude on the Moon, where a LOLA pixel is about 5.3 km), so the mesh vertices, which move with the camera, kept catching and missing the peaks in between
