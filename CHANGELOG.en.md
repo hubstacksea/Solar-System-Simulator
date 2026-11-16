@@ -4,6 +4,15 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.44.0 (2026-11-16)
+
+- Four more Mars landers: Spirit (4 January 2004) and Opportunity (25 January 2004) on airbags, and Phoenix (25 May 2008) and InSight (26 November 2018) on legs and engines, come down from atmospheric entry along NAIF's reconstructed descent trajectories. The landing points match the official coordinates. The "spacecraft events" page of the event list gained their four landings
+- Their shape changes with time: for Spirit and Opportunity the capsule, the parachute, the lander hanging 20 m below on its bridle, the airbags and the rover; for Phoenix and InSight the capsule, the parachute, the lander under engine power and the lander with its solar arrays open. Parachute and separation times come from where the acceleration along the trajectory changes; heat shield separation is put 15-20 seconds after the parachute (approximate)
+- Estimated or left out: the simplified shapes, the parachute sizes and the airbag bounces (the airbags move from the first impact to where they stopped over 10 minutes). After stopping only the rover is drawn (not the lander platform). Spirit's and Opportunity's trajectories use an altitude reference about 2 km off from the map, so they are brought to the ground from 10 km up
+- Rover drives: Curiosity, Perseverance, Spirit and Opportunity now move along NAIF's records of their positions (Curiosity about 35.5 km up to 15 November 2026, Perseverance about 41.6 km up to 28 October, Spirit up to March 2010 and Opportunity up to June 2018). The rovers face the way they last drove and stay at their last position after the records end
+- The rotation periods of Mercury, Venus, Jupiter, Ceres, Vesta and Pluto are now the IAU values. The rounded values had let their orientations drift (by now Vesta 94°, Ceres 10°, Jupiter 5.7°, Pluto 2°, Venus 0.4°, Mercury 0.15°)
+- The eight README images from the first version (Earth by day and night, the Moon, constellation lines, Halley's Comet, the solar and lunar eclipses and Saturn) were retaken with the current version; the lunar eclipse is now the next total one (31 December 2028)
+
 ## 2.43.0 (2026-11-16)
 
 - Mars landers' descents: Curiosity (6 August 2012) and Perseverance (18 February 2021) are now spacecraft. From about 9 minutes before entering the atmosphere they come down over Mars along the descent trajectories reconstructed by NASA's EDL teams (NAIF SPKs), and after landing they stay put until the day they first drove (22 August 2012, 4 March 2021; later traverses are not included). The landing points match the official coordinates

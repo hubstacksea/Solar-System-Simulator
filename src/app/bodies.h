@@ -136,29 +136,54 @@ static V3 TerrainLift(const Body& b, V3 f) {
 // 高度は基準の球からなので、着地点の blendKm 上より下では描いた地表との差の分だけなめらかに寄せて、着地点を地表に乗せる。
 // ホイヘンスはカッシーニから切り離されてから大気に入るまでの惰性飛行の表も持つ
 #include "lander_tracks.h"
+// 降り方: ホイヘンス、スカイクレーン（キュリオシティ・パーシビアランス）、エアバッグ（スピリット・オポチュニティ）、
+// 脚とエンジン（フェニックス・インサイト）
+enum LanderKind { LK_HUYGENS, LK_SKYCRANE, LK_AIRBAG, LK_LEGS };
 struct LanderDef {
     const char* world;           // 降りる天体（英語名）
     double t0;                   // 表の時刻の基準（J2000 からの日数、UTC）
     double land;                 // 着地（基準からの秒）
-    double gone;                 // この時刻（J2000 からの日数）からは描かない（ローバーが走り出した日。それより後の走行は持たない）
     const float (*track)[4];
     int n;
+    const double (*drive)[3];    // 着地した後の走行（着地からの秒, 東経, 緯度）。無ければ着地点に止まる
+    int nDrive;
     double refR, blendKm;        // 高度の基準の球の半径 km、地表に寄せ始める着地点からの高さ km
     double eventS;               // イベントで見始める時刻（基準からの秒）
+    int kind;                    // LanderKind
+    // 形の切り替え（着地からの秒）。スカイクレーン: パラシュート、前面シールド・背面カバーの切り離し、吊り下げの始まり・終わり。
+    // エアバッグ: パラシュート、前面シールドの切り離し、着陸機を吊る、エアバッグをふくらませる、跳ねて止まる。
+    // 脚: パラシュート、前面シールドの切り離し、背面カバーから離れる
+    double ev[5];
+    double lower;                // スカイクレーンで吊り下げた長さ m
 };
 static const LanderDef LANDERS[] = {
     // ホイヘンス: 基準 2005-01-14 09:00:00 UTC、着地 11:38:11 UTC（Lebreton ほか 2005）。着地点の 10 分前から見る
-    {"Titan", 1839.875, 9491, 1e30, HUYGENS_TRACK, sizeof HUYGENS_TRACK / sizeof HUYGENS_TRACK[0], 2575, 15, 9491 - 600},
-    // キュリオシティ: 着地 2012-08-06 05:17:57.292 UTC（NAIF の SPK の公式の着地の時刻）。最初の走行 2012-08-22。
-    // 大気に入る（半径 3,522.2 km）431.6 秒前の 1 分前から見る
-    {"Mars", 4600.72080199, 0, 4616.5, CURIOSITY_TRACK, sizeof CURIOSITY_TRACK / sizeof CURIOSITY_TRACK[0], 3390, 5, -491.6},
-    // パーシビアランス: 着地 2021-02-18 20:43:48.818 UTC。最初の走行 2021-03-04。大気に入る 418.7 秒前の 1 分前から見る
-    {"Mars", 7719.36375947, 0, 7732.5, PERSEVERANCE_TRACK, sizeof PERSEVERANCE_TRACK / sizeof PERSEVERANCE_TRACK[0], 3390, 5, -478.7},
+    {"Titan", 1839.875, 9491, HUYGENS_TRACK, sizeof HUYGENS_TRACK / sizeof HUYGENS_TRACK[0], nullptr, 0, 2575, 15, 9491 - 600, LK_HUYGENS, {}, 0},
+    // キュリオシティ: 着地 2012-08-06 05:17:57.292 UTC（NAIF の SPK の公式の着地の時刻）。大気に入る（半径 3,522.2 km）431.6 秒前の
+    // 1 分前から見る
+    {"Mars", 4600.72080199, 0, CURIOSITY_TRACK, sizeof CURIOSITY_TRACK / sizeof CURIOSITY_TRACK[0],
+     CURIOSITY_DRIVE, sizeof CURIOSITY_DRIVE / sizeof CURIOSITY_DRIVE[0], 3390, 5, -491.6,
+     LK_SKYCRANE, {-172.2, -148.2, -55.7, -18.58, -13.88}, 7.10},
+    // パーシビアランス: 着地 2021-02-18 20:43:48.818 UTC。大気に入る 418.7 秒前の 1 分前から見る
+    {"Mars", 7719.36375947, 0, PERSEVERANCE_TRACK, sizeof PERSEVERANCE_TRACK / sizeof PERSEVERANCE_TRACK[0],
+     PERSEVERANCE_DRIVE, sizeof PERSEVERANCE_DRIVE / sizeof PERSEVERANCE_DRIVE[0], 3390, 5, -478.7,
+     LK_SKYCRANE, {-178.12, -155.50, -61.20, -16.36, -10.86}, 7.17},
+    // スピリット: 最初に地面に当たった 2004-01-04 04:25:31.922 UTC（再構成の軌道の終わり）、オポチュニティ: 2004-01-25 04:54:20.321 UTC。
+    // 再構成の軌道は大気に入る所から（大気に入る所から見る）。高度の基準が地図と 2 km ほど違うので、10 km 上から地表に寄せる
+    {"Mars", 1463.68439725, 0, SPIRIT_TRACK, sizeof SPIRIT_TRACK / sizeof SPIRIT_TRACK[0],
+     SPIRIT_DRIVE, sizeof SPIRIT_DRIVE / sizeof SPIRIT_DRIVE[0], 3390, 10, -338, LK_AIRBAG, {-88.0, -68.0, -58.0, -8.0, 600}, 0},
+    {"Mars", 1484.70440186, 0, OPPORTUNITY_TRACK, sizeof OPPORTUNITY_TRACK / sizeof OPPORTUNITY_TRACK[0],
+     OPPORTUNITY_DRIVE, sizeof OPPORTUNITY_DRIVE / sizeof OPPORTUNITY_DRIVE[0], 3390, 10, -337, LK_AIRBAG, {-88.0, -68.0, -58.0, -8.0, 600}, 0},
+    // フェニックス: 着地 2008-05-25 23:38:24.080 UTC（再構成の軌道で止まった時）、インサイト: 2018-11-26 19:44:53.000 UTC。大気に入る所から見る
+    {"Mars", 3067.48500093, 0, PHOENIX_TRACK, sizeof PHOENIX_TRACK / sizeof PHOENIX_TRACK[0], nullptr, 0, 3390, 5, -444,
+     LK_LEGS, {-217.8, -202.8, -41.3}, 0},
+    {"Mars", 6904.32283565, 0, INSIGHT_TRACK, sizeof INSIGHT_TRACK / sizeof INSIGHT_TRACK[0], nullptr, 0, 3390, 5, -348,
+     LK_LEGS, {-140.0, -125.0, -44.8}, 0},
 };
 static const int LANDER_COUNT = sizeof LANDERS / sizeof LANDERS[0];
 static const double HUYGENS_RELEASE = LANDERS[0].t0 + HUYGENS_COAST[0][0] / 86400;   // カッシーニがホイヘンスを切り離す
 static int LanderWorld(const std::vector<Body>& B, int li) {
-    static int k[LANDER_COUNT] = {-2, -2, -2};
+    static int k[LANDER_COUNT] = {-2, -2, -2, -2, -2, -2, -2};
     if (k[li] == -2) {
         k[li] = -1;
         for (size_t i = 0; i < B.size(); i++)
@@ -168,23 +193,31 @@ static int LanderWorld(const std::vector<Body>& B, int li) {
 }
 // 表の時刻 s（基準からの秒）の、降りる天体の中心からの位置（自転角 spin の時）
 static V3 LanderOnTrack(const Body& w, const LanderDef& L, double s, double spin) {
+    double cw = std::cos(spin), sw = std::sin(spin);
+    V3 X = w.ex * cw - w.ez * sw, Z = w.ex * sw + w.ez * cw;
+    auto surfR = [&](V3 o) {
+        double a = w.d.radius, c = a * (1 - w.d.flattening);
+        double r = 1.0 / std::sqrt((1 - o.y * o.y) / (a * a) + o.y * o.y / (c * c));
+        return w.terrain >= 0 ? r + TerrainKm(w, o) : r;
+    };
+    if (L.drive && s >= L.drive[0][0]) {   // 着地した後の走行: 描いた地表の上
+        int i = 0;
+        while (i < L.nDrive - 2 && L.drive[i + 1][0] < s) i++;
+        double f = std::max(0.0, std::min(1.0, (s - L.drive[i][0]) / (L.drive[i + 1][0] - L.drive[i][0])));
+        double lon = (L.drive[i][1] + (L.drive[i + 1][1] - L.drive[i][1]) * f) * DEG, lat = (L.drive[i][2] + (L.drive[i + 1][2] - L.drive[i][2]) * f) * DEG;
+        V3 o(std::cos(lat) * std::cos(lon), std::sin(lat), -std::cos(lat) * std::sin(lon));
+        return (X * o.x + w.pole * o.y + Z * o.z) * surfR(o);
+    }
     s = std::max((double)L.track[0][0], std::min((double)L.track[L.n - 1][0], s));
     int i = 0;
     while (i < L.n - 2 && L.track[i + 1][0] < s) i++;
     double f = (s - L.track[i][0]) / (L.track[i + 1][0] - L.track[i][0]);
     auto at = [&](int c) { return L.track[i][c] + (L.track[i + 1][c] - L.track[i][c]) * f; };
     double alt = at(1), lon = at(2) * DEG, lat = at(3) * DEG, altLand = L.track[L.n - 1][1];
-    double cw = std::cos(spin), sw = std::sin(spin);
-    V3 X = w.ex * cw - w.ez * sw, Z = w.ex * sw + w.ez * cw;
     V3 o(std::cos(lat) * std::cos(lon), std::sin(lat), -std::cos(lat) * std::sin(lon));   // 本体の座標系
     double r = L.refR + alt;
     double x = std::max(0.0, std::min(1.0, 1.0 - (alt - altLand) / L.blendKm));
-    if (x > 0) {
-        double a = w.d.radius, c = a * (1 - w.d.flattening);
-        double surf = 1.0 / std::sqrt((1 - o.y * o.y) / (a * a) + o.y * o.y / (c * c));
-        if (w.terrain >= 0) surf += TerrainKm(w, o);
-        r += (surf - (L.refR + altLand)) * x * x * (3 - 2 * x);
-    }
+    if (x > 0) r += (surfR(o) - (L.refR + altLand)) * x * x * (3 - 2 * x);
     return (X * o.x + w.pole * o.y + Z * o.z) * r;
 }
 // ホイヘンスの惰性飛行: 表の時刻 s のタイタンからの位置と、土星から見たタイタンの位置（3 次エルミート補間）
@@ -211,7 +244,7 @@ static V3 LanderPosAt(const std::vector<Body>& B, int li, double t, F bodyAt, G 
     int k = LanderWorld(B, li);
     double s = (t - L.t0) * 86400;
     bool coast = li == 0 && s >= HUYGENS_COAST[0][0] && s < L.track[0][0];
-    *active = k >= 0 && (coast || s >= L.track[0][0]) && t < L.gone;
+    *active = k >= 0 && (coast || s >= L.track[0][0]);
     if (k < 0) return V3();
     const Body& w = B[k];
     if (!coast) return bodyAt(k) + LanderOnTrack(w, L, s, spinAt(k));
@@ -231,6 +264,22 @@ static V3 LanderPosAt(const std::vector<Body>& B, int li, double t, F bodyAt, G 
         p = p + (LanderOnTrack(w, L, e, spinAt(k) + 2 * PI * (e - s) / 86400 / rp) - fe) * (wj * wj * (3 - 2 * wj));
     }
     return p;
+}
+// 着地した後のローバーの向き: 最後に走ってきた向き（ワールド座標。まだ走っていなければ 0）
+static V3 LanderDriveDir(const std::vector<Body>& B, int li, double t) {
+    const LanderDef& L = LANDERS[li];
+    int k = LanderWorld(B, li);
+    double s = (t - L.t0) * 86400;
+    if (k < 0 || !L.drive || s < L.drive[0][0]) return V3();
+    int i = 0;
+    while (i < L.nDrive - 2 && L.drive[i + 1][0] < s) i++;
+    const Body& w = B[k];
+    V3 p = LanderOnTrack(w, L, s, w.spin);
+    for (int j = i; j >= 0; j--) {   // 0.5 m より離れた所まで戻る
+        V3 q = LanderOnTrack(w, L, L.drive[j][0], w.spin);
+        if (Len(p - q) > 0.0005) return Norm(p - q);
+    }
+    return V3();
 }
 // 着陸機 li の時刻 t の、降りる天体の表面に対する速度 km/s（天体の位置と自転角は今の値のまま）
 static V3 LanderVelocity(const std::vector<Body>& B, int li, double t) {

@@ -15,13 +15,20 @@
   Solution 07/10/21。https://naif.jpl.nasa.gov/pub/naif/）の慣性計測装置 DIMU-A の位置を、IAU の火星の自転（pck00010.tpc）で
   火星に固定した座標にする。ローバーの位置は、SPK の説明にある DIMU-A からローバーまでの距離（スカイクレーンで吊り下げる前は
   約 1.8 m、吊り下げた後は約 7.1 m 下）を真下へずらして求める。
+  着地した後の走行: NAIF の走行の位置の SPK（msl_surf_rover_loc.bsp・m2020_surf_rover_loc.bsp。MSL・M2020 の運用チームの
+  位置の推定。NAIF が毎日更新）を 10 分ごとに見て、位置の誤差 3 m に収まるところまで間引く。
+スピリット・オポチュニティ（MER-2・MER-1）: NAIF の EDL の SPK（mer2_edl_rcb_v1.bsp・mer1_edl_rcb_v1.bsp。R. C. Blanchard の
+  再構成。大気に入ってから最初に地面に当たるまで）と、位置を調整した走行の SPK（mer2_surf_roverrl_all_v01.bsp・mer1_surf_roverrl.bsp）。
+  エアバッグで跳ねて止まるまでの道は無いので、最初に地面に当たった所から止まった所へ 10 分（目安）で動かす。
+フェニックス・インサイト: NAIF の EDL の SPK（phx_edl_rec_traj.bsp: PHX GNC チーム、insight_edl_rec_v1.bsp: InSight EDL チーム）。
 
 出力: 時刻の基準からの秒, 高度 km（基準の球から）, 東経 deg, 緯度 deg（惑星中心）の表（高度で 30 m（火星は 3 m）、緯度・経度で
-0.001°（火星は 0.00005°）の誤差に収まるところまで点を間引く）と、ホイヘンスの惰性飛行の表（秒, タイタンからの位置 km・速度 km/s,
-土星から見たタイタンの位置 km・速度 km/s）
+0.001°（火星は 0.00005°）の誤差に収まるところまで点を間引く）、ホイヘンスの惰性飛行の表（秒, タイタンからの位置 km・速度 km/s,
+土星から見たタイタンの位置 km・速度 km/s）、ローバーの走行の表（着地からの秒, 東経 deg, 緯度 deg）
 
-使い方: python3 tools/make_lander_tracks.py <作業ディレクトリ> [出力先=src/app/lander_tracks.h]
-（火星の 2 機には SpiceyPy（pip install spiceypy）が要る）
+使い方: python3 tools/make_lander_tracks.py <作業ディレクトリ> [出力先=src/app/lander_tracks.h] [--refresh]
+（--refresh: ローバーの走行の SPK を取り直す）
+（火星の着陸機には SpiceyPy（pip install spiceypy）が要る）
 """
 import datetime
 import math
@@ -37,12 +44,25 @@ HORIZONS = "https://ssd.jpl.nasa.gov/api/horizons.api"
 EPOCH = datetime.datetime(2005, 1, 14, 9, 0, 0)
 MARS_REF = 3390.0   # 火星の高度の基準の球 km
 
-# 火星の着陸機: 名前, SPK, DIMU-A の ID, 公式の着地の時刻（TDB）, DIMU-A からローバーまでの距離（ET, 真下へ m）
+# 火星の着陸機: name: 表の名前, edl: 降下の SPK, id: SPK の物体, td: 着地の時刻（TDB。"end" は SPK の終わり、"stop" は止まった時）,
+# offset: 慣性計測装置からローバーまでの距離（ET, 真下へ m）, kernels: 座標系の定義, drive: 走行の SPK と物体, bounce: エアバッグで
+# 跳ねて止まるまでの秒（推定。最初に地面に当たった所から止まった所へ、この間に動かす）
 MARS = [
-    ("CURIOSITY", "MSL/kernels/spk/msl_edl_v01.bsp", -76031, "2012-08-06 05:19:04.475 TDB",
-     [(397502325.8968500, 1.730), (397502330.5968900, 8.829)]),
-    ("PERSEVERANCE", "MARS2020/kernels/spk/m2020_edl_v01.bsp", -168031, "2021-02-18 20:44:58.003 TDB",
-     [(666953081.6396100, 1.826), (666953087.1396100, 8.998)]),
+    dict(name="CURIOSITY", edl="MSL/kernels/spk/msl_edl_v01.bsp", id=-76031, td="2012-08-06 05:19:04.475 TDB",
+         offset=[(397502325.8968500, 1.730), (397502330.5968900, 8.829)], drive=("MSL/kernels/spk/msl_surf_rover_loc.bsp", -76)),
+    dict(name="PERSEVERANCE", edl="MARS2020/kernels/spk/m2020_edl_v01.bsp", id=-168031, td="2021-02-18 20:44:58.003 TDB",
+         offset=[(666953081.6396100, 1.826), (666953087.1396100, 8.998)], drive=("MARS2020/kernels/spk/m2020_surf_rover_loc.bsp", -168)),
+    # スピリット（MER-2）・オポチュニティ（MER-1）: R. C. Blanchard の再構成（大気に入ってから最初に地面に当たるまで）。走行は
+    # 位置を調整した SPK（roverrl）。座標系の定義は FK に入っている
+    dict(name="SPIRIT", edl="MER/kernels/spk/mer2_edl_rcb_v1.bsp", id=-254, td="end", bounce=600,
+         kernels=["MER/kernels/fk/mer2_v10.tf", "MER/kernels/fk/mer2_tp_ep55a3_iau2000_v1.tf", "MER/kernels/spk/mer2_ls_040108_iau2000_v1.bsp"],
+         drive=("MER/kernels/spk/mer2_surf_roverrl_all_v01.bsp", -254)),
+    dict(name="OPPORTUNITY", edl="MER/kernels/spk/mer1_edl_rcb_v1.bsp", id=-253, td="end", bounce=600,
+         kernels=["MER/kernels/fk/mer1_v10.tf", "MER/kernels/fk/mer1_tp_tm20b3_iau2000_v1.tf", "MER/kernels/spk/mer1_ls_040128_iau2000_v1.bsp"],
+         drive=("MER/kernels/spk/mer1_surf_roverrl.bsp", -253)),
+    # フェニックス: PHX GNC チーム（JPL）の再構成。インサイト: InSight EDL チーム（LMCO・JPL）の再構成
+    dict(name="PHOENIX", edl="PHOENIX/kernels/spk/phx_edl_rec_traj.bsp", id=-84, td="stop", kernels=["PHOENIX/kernels/fk/phx_v01.tf"]),
+    dict(name="INSIGHT", edl="INSIGHT/kernels/spk/insight_edl_rec_v1.bsp", id=-189, td="end"),
 ]
 
 
@@ -142,29 +162,63 @@ def huygens_coast(work, entry_s):
     return out
 
 
-def mars_track(work, name, spk, dimu, td_tdb, offset):
+def mars_track(work, m):
     import spiceypy as sp
-    for k in ("generic_kernels/lsk/naif0012.tls", "generic_kernels/pck/pck00010.tpc", spk):
+    for k in ["generic_kernels/lsk/naif0012.tls", "generic_kernels/pck/pck00010.tpc"] + m.get("kernels", []) + [m["edl"]]:
         sp.furnsh(fetch(work, NAIF + k, os.path.basename(k)))
-    td = sp.str2et(td_tdb)
-    cov = sp.spkcov(os.path.join(work, os.path.basename(spk)), dimu)
-    t0 = sp.wnfetd(cov, 0)[0] + 1.0
-    (e0, o0), (e1, o1) = offset
+    cov = sp.spkcov(os.path.join(work, os.path.basename(m["edl"])), m["id"])
+    t0, t1 = sp.wnfetd(cov, 0)[0] + 1.0, sp.wnfetd(cov, sp.wncard(cov) - 1)[1]
+    speed = lambda t: 1000 * math.sqrt(sum(c * c for c in sp.spkezr(str(m["id"]), t, "IAU_MARS", "NONE", "499")[0][3:]))
+    if m["td"] == "end":
+        td = t1
+    elif m["td"] == "stop":   # 秒速 0.3 m より遅くなった時
+        td = t1
+        while speed(td - 0.1) < 0.3:
+            td -= 0.1
+    else:
+        td = sp.str2et(m["td"])
+    (e0, o0), (e1, o1) = m.get("offset", [(0, 0), (1, 0)])
     pts = []
     n = int((td - t0) / 0.5)
     for k in range(n + 1):
         t = td - (n - k) * 0.5
-        p, _ = sp.spkpos(str(dimu), t, "IAU_MARS", "NONE", "499")
+        p, _ = sp.spkpos(str(m["id"]), t, "IAU_MARS", "NONE", "499")
         u = min(1.0, max(0.0, (t - e0) / (e1 - e0)))
         off = (o0 + (o1 - o0) * u * u * (3 - 2 * u)) / 1000   # 吊り下げの間は 3 次でつなぐ（SPK と同じ扱い）
         r = math.sqrt(sum(c * c for c in p))
-        r2 = r - off
         lon = math.degrees(math.atan2(p[1], p[0]))
         lat = math.degrees(math.asin(p[2] / r))
-        pts.append((t - td, r2 - MARS_REF, lon, lat))
+        pts.append((t - td, r - off - MARS_REF, lon, lat))
     utc = sp.et2utc(td, "ISOC", 3)
-    print("%s: touchdown %s UTC, %.4f %.4f, start %.1f s" % (name, utc, pts[-1][3], pts[-1][2], pts[0][0]))
-    return pts, utc
+    print("%s: touchdown %s UTC, %.4f %.4f, start %.1f s" % (m["name"], utc, pts[-1][3], pts[-1][2], pts[0][0]))
+    return pts, utc, td
+
+
+def mars_traverse(work, m, td, land):
+    """着地した後の走行。bounce があれば、最初に地面に当たった所（land）から止まった所へその秒数で動かす"""
+    import spiceypy as sp
+    spk, rover = m["drive"]
+    path = os.path.join(work, os.path.basename(spk))
+    if os.path.exists(path) and len(sys.argv) > 3 and sys.argv[3] == "--refresh":
+        os.remove(path)   # 毎日更新されるので、取り直す時は --refresh
+    sp.furnsh(fetch(work, NAIF + spk, os.path.basename(spk)))
+    cov = sp.spkcov(path, rover)
+    a, b = sp.wnfetd(cov, 0)[0], sp.wnfetd(cov, sp.wncard(cov) - 1)[1]
+    bounce = m.get("bounce", 0)
+    a = max(a, td + bounce)
+    pts, t = [], a
+    while True:
+        p, _ = sp.spkpos(str(rover), t, "IAU_MARS", "NONE", "499")
+        r = math.sqrt(sum(c * c for c in p))
+        pts.append((t - td, 0.0, math.degrees(math.atan2(p[1], p[0])), math.degrees(math.asin(p[2] / r))))
+        if t >= b:
+            break
+        t = min(b, t + 600)
+    s = simplify(pts, (1.0, 0.00005, 0.00005))
+    if bounce:
+        s = [(0.0, 0.0, land[2], land[3])] + s
+    print("%s traverse: %d of %d points until %s UTC" % (m["name"], len(s), len(pts), sp.et2utc(b, "ISOC", 0)))
+    return s, sp.et2utc(b, "ISOC", 0)
 
 
 def main():
@@ -175,10 +229,10 @@ def main():
     s = simplify(pts, (0.03, 0.001, 0.001))
     coast = huygens_coast(work, s[0][0])
     tables = []
-    for name, spk, dimu, td, off in MARS:
-        mp, utc = mars_track(work, name, spk, dimu, td, off)
+    for m in MARS:
+        mp, utc, td = mars_track(work, m)
         ms = simplify(mp, (0.003, 0.00005, 0.00005))
-        tables.append((name, utc, ms, len(mp)))
+        tables.append((m["name"], utc, ms, len(mp), mars_traverse(work, m, td, mp[-1]) if "drive" in m else None))
     with open(out, "w") as f:
         f.write("// Solar System Voyager — Copyright (c) 2026 hubstacksea\n")
         f.write("// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator\n")
@@ -196,11 +250,20 @@ def main():
         for t, v in coast:
             f.write("    {%.1f, %s},\n" % (t, ", ".join("%.3f" % x if i % 6 < 3 else "%.6f" % x for i, x in enumerate(v))))
         f.write("};\n")
-        for name, utc, ms, n in tables:
+        for name, utc, ms, n, drive in tables:
             f.write("\n// %s: NAIF の再構成の EDL 軌道（SPK）。着地 %s UTC からの秒, 高度 km（%.0f km の球から）, 東経 deg, 緯度 deg\n" % (name.capitalize(), utc, MARS_REF))
             f.write("static const float %s_TRACK[][4] = {\n" % name)
             for t, a, lo, la in ms:
                 f.write("    {%.1ff, %.4ff, %.5ff, %.5ff},\n" % (t, a, lo, la))
+            f.write("};\n")
+            if not drive:
+                print("%s: wrote %d of %d points" % (name, len(ms), n))
+                continue
+            tr, end = drive
+            f.write("// %s の走行: NAIF の走行の位置の SPK（%s UTC まで）。着地からの秒, 東経 deg, 緯度 deg\n" % (name.capitalize(), end))
+            f.write("static const double %s_DRIVE[][3] = {\n" % name)
+            for t, _, lo, la in tr:
+                f.write("    {%.0f, %.6f, %.6f},\n" % (t, lo, la))
             f.write("};\n")
             print("%s: wrote %d of %d points" % (name, len(ms), n))
     print("Huygens: wrote %d of %d points, %.1f s .. %.1f s, %.1f km .. %.3f km; coast %d points from %.0f s"

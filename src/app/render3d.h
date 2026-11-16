@@ -1332,27 +1332,45 @@ static void DrawApolloPlume(const App& app, int i, int model, Quaternion q, V3 r
 
 // 探査機の機体（自機と同じシェーダ）。天体に隠れている時は描かない
 static const double GALILEO_PROBE_RELEASE = -1633.27;  // 1995-07-13 05:30 UTC: ガリレオが大気圏突入機を切り離す
-// 着陸機の形（基準からの秒 s）。火星の着陸機は背面カバーを切り離した後、降下段をローバーの上に別に描く（*dsUp: 吊り下げで
+// 着陸機の形（基準からの秒 s）。スカイクレーンの着陸機は背面カバーを切り離した後、降下段をローバーの上に別に描く（*dsUp: 吊り下げで
 // 伸ばした長さ m。降下段を描かない時は負）
 static int LanderModel(int li, double s, double* dsUp) {
+    const LanderDef& L = LANDERS[li];
+    const double* e = L.ev;
     *dsUp = -1;
-    if (li == 0)   // ホイヘンス: 主パラシュートを開く 09:10:23 まで大気に入る時の形（前面シールドを切り離す 09:10:53 までの 30 秒は
-                   // 描き分けない）、安定用パラシュートに替える 09:25:21、着地 11:38:11（Lebreton ほか 2005）
-        return s < 623 ? PM_HUYGENS_ENTRY : s < 1521 ? PM_HUYGENS_MAIN : s < LANDERS[0].land ? PM_HUYGENS_STAB : PM_HUYGENS;
-    // 着地からの秒: パラシュートを開く、前面シールド・背面カバーを切り離す、ローバーを吊り下げ始める・吊り下げ終える。
-    // パーシビアランスは Karlgaard ほか（MEDLI2 の再構成）の表、吊り下げは NAIF の SPK の説明。キュリオシティのパラシュートと
-    // 背面カバーは SPK の軌道の加速度の変わり目から求め、前面シールドはパラシュートの 24 秒後（打ち上げ前の NASA の資料の目安）
-    static const double EV[2][5] = {{-172.2, -148.2, -55.7, -18.58, -13.88}, {-178.12, -155.50, -61.20, -16.36, -10.86}};
-    static const double LOWER[2] = {7.10, 7.17};   // 吊り下げた長さ m（SPK の説明の、慣性計測装置からローバーまでの距離の変化）
-    const double* e = EV[li - 1];
-    if (s < e[0]) return PM_EDL_ENTRY;
-    if (s < e[1]) return PM_EDL_CHUTE;
-    if (s < e[2]) return PM_EDL_BACKSHELL;
-    if (s < 0) {   // 背面カバーを切り離した後、着地まで（着地の後に飛び去る降下段は描かない）
-        double u = std::max(0.0, std::min(1.0, (s - e[3]) / (e[4] - e[3])));
-        *dsUp = LOWER[li - 1] * u * u * (3 - 2 * u);
+    switch (L.kind) {
+    case LK_HUYGENS:   // 主パラシュートを開く 09:10:23 まで大気に入る時の形（前面シールドを切り離す 09:10:53 までの 30 秒は描き分けない）、
+                       // 安定用パラシュートに替える 09:25:21、着地 11:38:11（Lebreton ほか 2005）
+        return s < 623 ? PM_HUYGENS_ENTRY : s < 1521 ? PM_HUYGENS_MAIN : s < L.land ? PM_HUYGENS_STAB : PM_HUYGENS;
+    case LK_SKYCRANE:
+        // パーシビアランスは Karlgaard ほか（MEDLI2 の再構成）の表、吊り下げは NAIF の SPK の説明。キュリオシティのパラシュートと
+        // 背面カバーは SPK の軌道の加速度の変わり目から求め、前面シールドはパラシュートの 24 秒後（打ち上げ前の NASA の資料の目安）
+        if (s < e[0]) return PM_EDL_ENTRY;
+        if (s < e[1]) return PM_EDL_CHUTE;
+        if (s < e[2]) return PM_EDL_BACKSHELL;
+        if (s < 0) {   // 背面カバーを切り離した後、着地まで（着地の後に飛び去る降下段は描かない）
+            double u = std::max(0.0, std::min(1.0, (s - e[3]) / (e[4] - e[3])));
+            *dsUp = L.lower * u * u * (3 - 2 * u);
+        }
+        return PM_MARS_ROVER;
+    case LK_AIRBAG:
+        // パラシュートは軌道の加速度の変わり目から。前面シールドはその 20 秒後、着陸機を吊るのはさらに 10 秒後、エアバッグは
+        // 最初に地面に当たる 8 秒前、跳ねて止まるのは 10 分後（目安）。止まった後はローバーだけを描く（エアバッグをしぼませて
+        // 花びらを開くまでと、残した着陸台は描かない）
+        if (s < e[0]) return PM_MER_ENTRY;
+        if (s < e[1]) return PM_MER_CHUTE;
+        if (s < e[2]) return PM_MER_BACKSHELL;
+        if (s < e[3]) return PM_MER_BRIDLE;
+        if (s < 0) return PM_MER_AIRBAG_DESC;
+        return s < e[4] ? PM_AIRBAG : PM_MER_ROVER;
+    default:
+        // パラシュートと背面カバーから離れる時は軌道の加速度の変わり目から。前面シールドはパラシュートの 15 秒後（目安）
+        if (s < e[0]) return PM_LEG_ENTRY;
+        if (s < e[1]) return PM_LEG_CHUTE;
+        if (s < e[2]) return PM_LEG_BACKSHELL;
+        if (s < 0) return PM_LEG_POWERED;
+        return li == 5 ? PM_PHX_LANDED : PM_INSIGHT_LANDED;
     }
-    return PM_MARS_ROVER;
 }
 static void DrawProbes(App& app) {
     const Cam& c = app.cam;
@@ -1477,6 +1495,8 @@ static void DrawProbes(App& app) {
             double sp = Len(v) * 1000, f = std::max(0.0, std::min(1.0, (sp - 100) / 100));
             aim = ldUp * (1 - f * f * (3 - 2 * f)) - (sp > 0 ? v * (1.0 / Len(v)) : V3()) * (f * f * (3 - 2 * f));
             upHint = app.B[k].pole;
+            V3 dd = pm == PM_MARS_ROVER || pm == PM_MER_ROVER ? LanderDriveDir(app.B, b.d.lander, app.tDays) : V3();
+            if (Len(dd) > 0) upHint = Cross(dd, ldUp);   // ローバーの前（+X）を走ってきた向きへ（+Y = 前 × 天頂）
         }
         Quaternion q = QuatFromBasis(Len(aim) > 1e-6 ? aim : V3(1, 0, 0), upHint);
         if (apModel >= 0) {

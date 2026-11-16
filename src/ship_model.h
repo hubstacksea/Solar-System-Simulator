@@ -254,7 +254,13 @@ enum ProbeModel {
     // 火星の着陸機（キュリオシティとパーシビアランスで共通。-Z が上、原点はローバーの車輪の接地面）: 大気に入る時の形（前面
     // シールドと背面カバー）、パラシュートを開いた形、前面シールドを捨てた後（中のローバーと降下段が見える）、ローバー、
     // 降下段（原点は底。ローバーの上に別に描く）、スカイクレーンの吊りひも（長さ 1 m。吊り下げた長さに伸ばして描く）
-    PM_EDL_ENTRY, PM_EDL_CHUTE, PM_EDL_BACKSHELL, PM_MARS_ROVER, PM_DESCENT_STAGE, PM_BRIDLES, PM_COUNT
+    PM_EDL_ENTRY, PM_EDL_CHUTE, PM_EDL_BACKSHELL, PM_MARS_ROVER, PM_DESCENT_STAGE, PM_BRIDLES,
+    // スピリット・オポチュニティ（-Z が上、原点はエアバッグの下の端）: 大気に入る時の形、パラシュート、前面シールドを捨てた後、
+    // 着陸機をひもで 20 m 下へ吊った形、エアバッグをふくらませた形、跳ねて転がるエアバッグ、ローバー
+    PM_MER_ENTRY, PM_MER_CHUTE, PM_MER_BACKSHELL, PM_MER_BRIDLE, PM_MER_AIRBAG_DESC, PM_AIRBAG, PM_MER_ROVER,
+    // フェニックス・インサイト（-Z が上、原点は脚の下の端）: 大気に入る時の形、パラシュート、前面シールドを捨てた後、
+    // 背面カバーから離れてエンジンで降りる着陸機、太陽電池を開いた着陸機（フェニックス、インサイト）
+    PM_LEG_ENTRY, PM_LEG_CHUTE, PM_LEG_BACKSHELL, PM_LEG_POWERED, PM_PHX_LANDED, PM_INSIGHT_LANDED, PM_COUNT
 };
 // 科学機器室の扉: 幅 5 ft・長さ 9.5 ft（1.5 × 2.9 m）、170 lb（15 号の Flight Journal の管制センターの説明）。機械船の側面の
 // 向き SIM_ANG（高利得アンテナの反対側とする）を中心に幅の分の角度 ±SIM_HALF、機械船の真ん中（z 0）から SIM_ZC を中心に長さ
@@ -409,6 +415,46 @@ inline void SlaPanel(ShipMeshBuilder& mb) {
         C.push_back(std::vector<Color>(row.size(), white));
     }
     mb.Grid(P, false, C, SM_PAINT);
+}
+
+// 直径 2.65 m の 70° の円錐の前面シールドと背面カバー（スピリット・オポチュニティ・フェニックス・インサイトで同じ大きさ）。
+// z0 だけ上へずらす（-Z が上）。背面カバーの上の端の z を返す
+inline float SmallAeroshell(ShipMeshBuilder& mb, float z0, bool shield) {
+    const Color heat = {96, 70, 48, 255}, shell = {214, 214, 208, 255};
+    if (shield) mb.Revolve(0, 0, {{z0 + 0.25f, 0.0f}, {z0 + 0.18f, 0.35f}, {z0 - 0.25f, 1.325f}, {z0 - 0.32f, 1.325f}, {z0 - 0.32f, 0.0f}}, 32, heat, SM_PAINT);
+    mb.Revolve(0, 0, {{z0 - 0.32f, 1.325f}, {z0 - 0.45f, 1.3f}, {z0 - 1.35f, 0.75f}, {z0 - 1.5f, 0.45f}, {z0 - 1.6f, 0.3f}, {z0 - 1.62f, 0.001f}}, 32, shell, SM_PAINT);
+    return z0 - 1.62f;
+}
+// 円板・隙間・帯のパラシュート（開いた半径 R、帯の下の縁が ztop の上 L）と吊りひも
+inline void BandChute(ShipMeshBuilder& mb, float ztop, float R, float L) {
+    const Color canopy = {236, 236, 232, 255}, band = {232, 112, 48, 255}, line = {200, 200, 196, 255};
+    float cz = ztop - L;
+    std::vector<Vector2> disk;
+    for (int k = 0; k <= 6; k++) {
+        float u = PI / 2 * k / 6;
+        disk.push_back({cz - R * 0.41f - sinf(u) * R * 0.4f, cosf(u) * R * 0.92f + 0.001f});
+    }
+    mb.Revolve(0, 0, disk, 32, canopy, SM_PAINT);
+    mb.Revolve(0, 0, {{cz, R}, {cz - R * 0.32f, R * 0.95f}}, 32, band, SM_PAINT);
+    for (int k = 0; k < 12; k++) {
+        float b = 2 * PI * k / 12;
+        mb.Tube({0, 0, ztop}, {cosf(b) * R, sinf(b) * R, cz}, 0.02f, 3, line, SM_PAINT);
+    }
+}
+// 6 つの球を組んだエアバッグ（中心 c、全体の半径約 2.6 m）
+inline void Airbags(ShipMeshBuilder& mb, float c) {
+    const Color bag = {222, 212, 186, 255};
+    std::vector<Vector2> ball;
+    for (int k = 0; k <= 10; k++) {
+        float u = PI * k / 10;
+        ball.push_back({-cosf(u) * 1.35f, sinf(u) * 1.35f + 0.001f});
+    }
+    auto at = [&](float x, float y, float z) {
+        std::vector<Vector2> p = ball;
+        for (Vector2& v : p) v.x += z;
+        mb.Revolve(x, y, p, 18, bag, SM_PAINT);
+    };
+    at(1.2f, 0, c); at(-1.2f, 0, c); at(0, 1.2f, c); at(0, -1.2f, c); at(0, 0, c - 1.2f); at(0, 0, c + 1.2f);
 }
 
 inline Mesh GenProbeMesh(int model) {
@@ -983,6 +1029,72 @@ inline Mesh GenProbeMesh(int model) {
                 mb.Tube({0, 0, -2.9f}, {cosf(b) * R, sinf(b) * R, cz}, 0.03f, 3, line, SM_PAINT);
             }
         }
+        break;
+    }
+    case PM_MER_ENTRY:
+    case PM_MER_CHUTE:
+    case PM_MER_BACKSHELL:
+    case PM_MER_BRIDLE:
+    case PM_MER_AIRBAG_DESC:
+    case PM_AIRBAG: {
+        // スピリット・オポチュニティ（NASA の値: 前面シールドの直径 2.65 m、着陸機を吊るひも 20 m、エアバッグで包んだ大きさ約 5 m）。
+        // パラシュートの開いた直径 10 m と吊りひもの長さ 25 m は目安。形は簡略
+        const Color petal = {190, 190, 196, 255}, line = {200, 200, 196, 255};
+        bool hung = model == PM_MER_BRIDLE || model == PM_MER_AIRBAG_DESC;
+        if (model == PM_AIRBAG || model == PM_MER_AIRBAG_DESC) Airbags(mb, -2.6f);
+        else if (hung) mb.Prism({0, 0, -1.6f}, {0, 0, -3.0f}, 0.9f, 3, 0, petal, SM_METAL);   // たたんだ花びらの着陸機
+        if (model == PM_AIRBAG) break;
+        float z0 = hung ? -25.2f : -2.0f;   // 背面カバーの下の端（吊った時は着陸機の上 20 m）
+        if (hung) mb.Tube({0, 0, model == PM_MER_AIRBAG_DESC ? -5.2f : -3.0f}, {0, 0, z0 + 0.3f}, 0.015f, 4, line, SM_PAINT);
+        float top = SmallAeroshell(mb, z0, model == PM_MER_ENTRY || model == PM_MER_CHUTE);
+        if (model != PM_MER_ENTRY) BandChute(mb, top, 5.0f, 25.0f);
+        break;
+    }
+    case PM_MER_ROVER: {
+        // スピリット・オポチュニティのローバー（長さ 1.6 m・幅 2.3 m・マストの上まで 1.5 m、車輪の直径 0.25 m。NASA の値）。形は簡略
+        const Color wheel = {168, 168, 172, 255}, cell = {40, 52, 92, 255}, body = {200, 196, 186, 255};
+        for (int i = 0; i < 6; i++) {
+            float x = (i % 3 - 1) * 0.6f, y = i < 3 ? 0.6f : -0.6f;
+            mb.Tube({x, y - 0.08f, -0.125f}, {x, y + 0.08f, -0.125f}, 0.125f, 12, wheel, SM_METAL);
+            mb.Tube({x, y, -0.25f}, {x * 0.8f, y * 0.7f, -0.5f}, 0.02f, 4, wheel, SM_METAL);
+        }
+        mb.Box({0, 0, -0.55f}, {0.55f, 0.4f, 0.2f}, body, SM_PAINT);
+        mb.Box({0, 0, -0.78f}, {0.75f, 0.55f, 0.02f}, cell, SM_PAINT);             // 太陽電池の甲板と翼
+        mb.Box({-0.15f, 0.95f, -0.78f}, {0.45f, 0.4f, 0.02f}, cell, SM_PAINT);
+        mb.Box({-0.15f, -0.95f, -0.78f}, {0.45f, 0.4f, 0.02f}, cell, SM_PAINT);
+        mb.Tube({0.45f, 0.25f, -0.8f}, {0.45f, 0.25f, -1.4f}, 0.03f, 6, body, SM_PAINT);   // マスト
+        mb.Box({0.45f, 0.25f, -1.44f}, {0.07f, 0.16f, 0.06f}, body, SM_PAINT);
+        mb.Disc({-0.4f, -0.25f, -0.95f}, {0, 0, -1}, 0.14f, 12, wheel, SM_METAL);   // 高利得アンテナ
+        break;
+    }
+    case PM_LEG_ENTRY:
+    case PM_LEG_CHUTE:
+    case PM_LEG_BACKSHELL:
+    case PM_LEG_POWERED:
+    case PM_PHX_LANDED:
+    case PM_INSIGHT_LANDED: {
+        // フェニックス・インサイト（NASA の値: 前面シールドの直径 2.65 m、甲板の直径 1.5 m、太陽電池の直径 フェニックス 1.8 m・
+        // インサイト 2.2 m）。パラシュートの開いた直径 8 m と吊りひもの長さ 20 m は目安。形は簡略
+        const Color deck = {200, 170, 96, 255}, leg = {168, 168, 172, 255}, cell = {40, 52, 92, 255}, back = {200, 200, 196, 255};
+        bool open = model == PM_PHX_LANDED || model == PM_INSIGHT_LANDED;
+        mb.Prism({0, 0, -0.95f}, {0, 0, -1.15f}, 0.75f, 10, 0, deck, SM_METAL);
+        if (model != PM_LEG_ENTRY && model != PM_LEG_CHUTE)
+            for (int k = 0; k < 3; k++) {   // 脚（前面シールドを捨てた後に開く）
+                float b = PI / 2 + 2 * PI * k / 3;
+                mb.Tube({cosf(b) * 0.55f, sinf(b) * 0.55f, -0.95f}, {cosf(b) * 1.05f, sinf(b) * 1.05f, -0.06f}, 0.035f, 6, leg, SM_METAL);
+                mb.Disc({cosf(b) * 1.05f, sinf(b) * 1.05f, -0.01f}, {0, 0, -1}, 0.14f, 10, leg, SM_METAL);
+            }
+        if (open) {   // 開いた太陽電池（十角形 2 枚）
+            float R = model == PM_PHX_LANDED ? 0.9f : 1.1f;
+            for (int s = -1; s <= 1; s += 2)
+                mb.Prism({0, s * (0.72f + R), -1.1f}, {0, s * (0.72f + R), -1.14f}, R, 10, 0, cell, SM_PAINT);
+        } else {   // たたんだ太陽電池
+            for (int s = -1; s <= 1; s += 2)
+                mb.Prism({0, s * 0.8f, -1.2f}, {0, s * 0.9f, -1.2f}, 0.45f, 10, 0, back, SM_PAINT);
+        }
+        if (model == PM_LEG_POWERED || open) break;
+        float top = SmallAeroshell(mb, -0.4f, model != PM_LEG_BACKSHELL);
+        if (model != PM_LEG_ENTRY) BandChute(mb, top, 4.0f, 20.0f);
         break;
     }
     case PM_DESCENT_STAGE: {

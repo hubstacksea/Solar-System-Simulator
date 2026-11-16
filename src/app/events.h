@@ -664,7 +664,14 @@ static std::string EventDetail(const App& app, const AstroEvent& ev) {
         case EV_COMET_EARTH: snprintf(b, sizeof b, T(UI_EV_FROM_EARTH), FmtDist(ev.dist).c_str()); return b;
         case EV_PERIHELION: snprintf(b, sizeof b, T(UI_EV_FROM_SUN), FmtDist(ev.dist).c_str()); return b;
         case EV_IMPACT: return T(UI_EV_IMPACT_D);
-        case EV_LANDING: return T(app.B[ev.probe].d.lander == 0 ? UI_EV_LANDING_D : UI_EV_LANDING_MARS_D);
+        case EV_LANDING: {
+            const LanderDef& L = LANDERS[app.B[ev.probe].d.lander];
+            if (L.kind == LK_HUYGENS) return T(UI_EV_LANDING_D);
+            if (L.kind == LK_SKYCRANE) return T(UI_EV_LANDING_MARS_D);
+            // 再構成の軌道が大気に入る所から始まる着陸機（大気に入る所から見る）
+            snprintf(b, sizeof b, T(UI_EV_LANDING_ENTRY_D), (int)std::lround(-L.track[0][0] / 60));
+            return b;
+        }
         case EV_METEOR: snprintf(b, sizeof b, T(UI_EV_METEOR_D), (int)ev.dist); return b;
         case EV_PERIASTRON: snprintf(b, sizeof b, T(UI_EV_SEPARATION), FmtDist(ev.dist).c_str()); return b;
         case EV_HISTORY: {   // 食の種類と史実の場所（ハレー彗星は近日点の距離と記録の名前）
