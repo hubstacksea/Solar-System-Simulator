@@ -250,7 +250,11 @@ enum ProbeModel {
     // 機械船と同じ座標で重ねて描く）とハッチの扉
     PM_EVA_SUIT, PM_EVA_HATCH_CREW, PM_CM_HATCHWAY, PM_CM_HATCH,
     // ホイヘンス（-Z が上）: 大気に入る時の形（前面シールドと後部カバー）、主パラシュート、安定用パラシュート、着地した本体
-    PM_HUYGENS_ENTRY, PM_HUYGENS_MAIN, PM_HUYGENS_STAB, PM_HUYGENS, PM_COUNT
+    PM_HUYGENS_ENTRY, PM_HUYGENS_MAIN, PM_HUYGENS_STAB, PM_HUYGENS,
+    // 火星の着陸機（キュリオシティとパーシビアランスで共通。-Z が上、原点はローバーの車輪の接地面）: 大気に入る時の形（前面
+    // シールドと背面カバー）、パラシュートを開いた形、前面シールドを捨てた後（中のローバーと降下段が見える）、ローバー、
+    // 降下段（原点は底。ローバーの上に別に描く）、スカイクレーンの吊りひも（長さ 1 m。吊り下げた長さに伸ばして描く）
+    PM_EDL_ENTRY, PM_EDL_CHUTE, PM_EDL_BACKSHELL, PM_MARS_ROVER, PM_DESCENT_STAGE, PM_BRIDLES, PM_COUNT
 };
 // 科学機器室の扉: 幅 5 ft・長さ 9.5 ft（1.5 × 2.9 m）、170 lb（15 号の Flight Journal の管制センターの説明）。機械船の側面の
 // 向き SIM_ANG（高利得アンテナの反対側とする）を中心に幅の分の角度 ±SIM_HALF、機械船の真ん中（z 0）から SIM_ZC を中心に長さ
@@ -932,6 +936,78 @@ inline Mesh GenProbeMesh(int model) {
                 mb.Tube({0, 0, -0.55f}, {cosf(b) * R, sinf(b) * R, cz}, 0.02f, 3, line, SM_PAINT);
             }
         }
+        break;
+    }
+    case PM_EDL_ENTRY:
+    case PM_EDL_CHUTE:
+    case PM_EDL_BACKSHELL:
+    case PM_MARS_ROVER: {
+        // キュリオシティ・パーシビアランス（NASA の値: 前面シールドの直径 4.5 m・70° の円錐、ローバーの長さ 3.0 m・幅 2.7〜2.8 m・
+        // マストの上まで 2.1〜2.2 m、車輪の直径 0.5 m）。形は簡略。パラシュートは開いた直径 16 m（設計の直径 21.5 m）で、
+        // 背面カバーの上 40 m（吊りひもの長さは目安）
+        const Color white = {226, 224, 216, 255}, wheel = {168, 168, 172, 255}, dark = {70, 70, 74, 255};
+        const Color shield = {96, 70, 48, 255}, shell = {214, 214, 208, 255}, canopy = {236, 236, 232, 255};
+        const Color band = {232, 112, 48, 255}, line = {200, 200, 196, 255};
+        if (model == PM_MARS_ROVER || model == PM_EDL_BACKSHELL) {
+            for (int i = 0; i < 6; i++) {   // 車輪とロッカー・ボギー
+                float x = (i % 3 - 1) * 1.05f, y = i < 3 ? 1.15f : -1.15f, s = y > 0 ? 1.0f : -1.0f;
+                mb.Tube({x, y - 0.2f, -0.25f}, {x, y + 0.2f, -0.25f}, 0.25f, 14, wheel, SM_METAL);
+                mb.Tube({x, y - 0.22f * s, -0.45f}, {x * 0.7f, 0.68f * s, -0.85f}, 0.04f, 6, wheel, SM_METAL);
+            }
+            mb.Box({0, 0, -0.95f}, {0.95f, 0.66f, 0.3f}, white, SM_PAINT);             // 本体
+            mb.Tube({0.75f, 0.45f, -1.25f}, {0.75f, 0.45f, -2.0f}, 0.06f, 8, white, SM_PAINT);  // マスト
+            mb.Box({0.75f, 0.45f, -2.06f}, {0.13f, 0.26f, 0.1f}, white, SM_PAINT);
+            mb.Tube({-0.9f, 0, -1.05f}, {-1.45f, 0, -1.45f}, 0.3f, 12, dark, SM_PAINT);  // 原子力電池
+            mb.Disc({-0.25f, -0.4f, -1.32f}, {0, 0, -1}, 0.3f, 16, wheel, SM_METAL);      // 高利得アンテナ
+            mb.Box({1.08f, 0, -0.9f}, {0.07f, 0.6f, 0.07f}, wheel, SM_METAL);             // たたんだロボットアーム
+        }
+        if (model == PM_EDL_BACKSHELL) {   // ローバーの上の降下段（八角形、直径 3 m ほど）
+            mb.Prism({0, 0, -1.3f}, {0, 0, -2.0f}, 1.45f, 8, PI / 8, {200, 170, 96, 255}, SM_METAL);
+        }
+        if (model == PM_EDL_ENTRY || model == PM_EDL_CHUTE)   // 前面シールド
+            mb.Revolve(0, 0, {{0.42f, 0.0f}, {0.3f, 0.6f}, {-0.36f, 2.25f}, {-0.46f, 2.25f}, {-0.46f, 0.0f}}, 40, shield, SM_PAINT);
+        if (model != PM_MARS_ROVER) {   // 背面カバー（下から開いた殻）
+            mb.Revolve(0, 0, {{-0.46f, 2.25f}, {-0.7f, 2.2f}, {-2.3f, 1.25f}, {-2.6f, 0.75f}, {-2.85f, 0.6f}, {-2.9f, 0.001f}}, 40, shell, SM_PAINT);
+        }
+        if (model == PM_EDL_CHUTE || model == PM_EDL_BACKSHELL) {
+            float R = 8.0f, cz = -2.9f - 40.0f;   // 帯の下の縁
+            std::vector<Vector2> disk;
+            for (int k = 0; k <= 6; k++) {
+                float u = PI / 2 * k / 6;
+                disk.push_back({cz - 3.3f - sinf(u) * R * 0.4f, cosf(u) * R * 0.92f + 0.001f});
+            }
+            mb.Revolve(0, 0, disk, 32, canopy, SM_PAINT);                          // 円板
+            mb.Revolve(0, 0, {{cz, R}, {cz - 2.6f, R * 0.95f}}, 32, band, SM_PAINT);  // 隙間の下の帯
+            for (int k = 0; k < 12; k++) {   // 吊りひも
+                float b = 2 * PI * k / 12;
+                mb.Tube({0, 0, -2.9f}, {cosf(b) * R, sinf(b) * R, cz}, 0.03f, 3, line, SM_PAINT);
+            }
+        }
+        break;
+    }
+    case PM_DESCENT_STAGE: {
+        // 降下段: 八角形の台（直径 3 m ほど）と、下へ向いた 8 基のエンジン（4 か所に 2 基ずつ）。形は簡略
+        const Color foil = {200, 170, 96, 255}, metal = {150, 150, 156, 255};
+        mb.Prism({0, 0, 0}, {0, 0, -0.7f}, 1.45f, 8, PI / 8, foil, SM_METAL);
+        for (int k = 0; k < 3; k++) {   // 推進剤のタンク
+            float b = 2 * PI * k / 3;
+            mb.Revolve(cosf(b) * 0.7f, sinf(b) * 0.7f, {{-0.7f, 0.001f}, {-0.85f, 0.3f}, {-1.1f, 0.35f}, {-1.35f, 0.3f}, {-1.5f, 0.001f}}, 16, metal, SM_METAL);
+        }
+        for (int k = 0; k < 8; k++) {
+            float b = PI / 4 * (k / 2) + (k % 2 ? 0.18f : -0.18f) + PI / 8;
+            float x = cosf(b) * 1.55f, y = sinf(b) * 1.55f;
+            mb.Revolve(x, y, {{-0.1f, 0.06f}, {0.15f, 0.08f}, {0.35f, 0.14f}}, 10, metal, SM_METAL);
+        }
+        break;
+    }
+    case PM_BRIDLES: {
+        // スカイクレーンの吊りひも 3 本と配線（長さ 1 m。原点はローバーの上面）
+        const Color line = {210, 210, 205, 255};
+        for (int k = 0; k < 3; k++) {
+            float b = 2 * PI * k / 3 + 0.5f;
+            mb.Tube({cosf(b) * 0.45f, sinf(b) * 0.45f, 0}, {cosf(b) * 0.45f, sinf(b) * 0.45f, -1}, 0.012f, 4, line, SM_PAINT);
+        }
+        mb.Tube({0, 0, 0}, {0, 0, -1}, 0.02f, 4, {60, 60, 60, 255}, SM_PAINT);
         break;
     }
     case PM_CM_MAIN: {

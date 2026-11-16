@@ -72,7 +72,7 @@ struct BodyDef {
     bool probeEnd = false;     // 探査機: データの終わりが運用終了（天体への突入・着地）
     const char* apolloTrack = nullptr;   // アポロ計画の宇宙船: assets/apollo.bin の "飛行/機体"（"Apollo 11/Columbia"）
     int apollo = -1;           // その軌跡の番号（起動時に名前で結び付ける）
-    bool huygens = false;      // ホイヘンス: タイタンに対する降下の道（src/app/huygens_track.h）をたどる
+    int lander = -1;           // 着陸機: 降りる天体に対する道（src/app/bodies.h の LANDERS、表は src/app/lander_tracks.h）をたどる
     // 地球を回る人工衛星（ISS・ハッブル）: 平均軌道要素 TLE（tleN > 0 の時に使う）。地球中心・J2000 赤道座標とみなす
     double tleEpoch = 0, tleN = 0, tleNdot = 0;   // 元期（J2000 からの日数）, 平均運動 周/日, その変化の半分 周/日²
     double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
@@ -163,7 +163,7 @@ inline std::vector<BodyDef> BuildSolarSystem() {
                            KIND_EARTH, {0.06f, 0.18f, 0.45f}, {0.22f, 0.40f, 0.17f}, 0, {0.35f, 0.6f, 1.0f}, 1.2f));
     v.push_back(MakePlanet("火星", "Mars", 3396.2, 0.00589, 6.417e23,
                            1.52371034, 0.09339410, 1.84969142, -4.55343205, -23.94362959, 49.55953891,
-                           317.68, 52.89, 1.02596,
+                           317.68, 52.89, 1.0259567565,   // 自転は IAU の 350.89198226°/日（丸めると向きが年に 0.4° ずれていく）
                            KIND_ROCKY, {0.82f, 0.45f, 0.26f}, {0.52f, 0.25f, 0.14f}, 0, {0.9f, 0.6f, 0.45f}, 0.3f));
     v.push_back(MakePlanet("木星", "Jupiter", 71492, 0.06487, 1.898e27,
                            5.20288700, 0.04838624, 1.30439695, 34.39644051, 14.72847983, 100.47390909,
@@ -464,13 +464,20 @@ inline std::vector<BodyDef> BuildSolarSystem() {
         d.probeModel = ap.model; d.apolloTrack = ap.track;
         v.push_back(d);
     }
-    {   // ホイヘンス（アポロの宇宙船の後ろ）: タイタンの大気に入ってから着地するまでの道をたどり、着地した後はそこに残る
+    // 着陸機（アポロの宇宙船の後ろ。並びは src/app/bodies.h の LANDERS と同じ）: 大気に入ってから着地するまでの道をたどり、
+    // 着地した後はそこに残る（ホイヘンスはカッシーニから切り離されてから。ローバーは走り出す日まで）
+    static const struct { const char* jp; const char* en; double radius, mass; } LANDER_BODIES[] = {
+        {"ホイヘンス", "Huygens", 0.0014, 320},          // 前面シールドの直径 2.7 m、大気に入る時の重さ約 320 kg
+        {"キュリオシティ", "Curiosity", 0.0015, 899},     // ローバーの長さ 3.0 m・重さ 899 kg（NASA）
+        {"パーシビアランス", "Perseverance", 0.0015, 1025},  // ローバーの長さ 3.0 m・重さ 1,025 kg（NASA）
+    };
+    for (int i = 0; i < (int)(sizeof LANDER_BODIES / sizeof LANDER_BODIES[0]); i++) {
         BodyDef d{};
-        d.jp = "ホイヘンス"; d.en = "Huygens"; d.parent = 0;
-        d.radius = 0.0014; d.mass = 320;   // 前面シールドの直径 2.7 m、大気に入る時の重さ約 320 kg
+        d.jp = LANDER_BODIES[i].jp; d.en = LANDER_BODIES[i].en; d.parent = 0;
+        d.radius = LANDER_BODIES[i].radius; d.mass = LANDER_BODIES[i].mass;
         d.rotPeriod = 1e9;
         d.kind = KIND_PROBE; d.c1 = {0.85f, 0.82f, 0.70f}; d.c2 = d.c1;
-        d.huygens = true;
+        d.lander = i;
         v.push_back(d);
     }
     for (BodyDef& d : v)

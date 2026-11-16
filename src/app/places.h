@@ -323,6 +323,9 @@ static const City CITIES[] = {
     {"ベガ2号の着陸地点（1985年6月15日）", "Vega 2 landing site (15 Jun 1985)", -7.14, 177.67, B_VENUS, NAN},
     // タイタン（経度は東が正。Wikipedia の Huygens (spacecraft) の 10°34′23″S 192°20′06″W）
     {"ホイヘンスの着陸地点（タイタン、2005年1月14日）", "Huygens landing site (Titan, 14 Jan 2005)", -10.573, 167.665, CITY_TITAN, NAN},
+    // セルク・クレーター: ドラゴンフライ（2028 年 7 月に打ち上げ、2034 年にタイタンに着く予定の回転翼機）の目的地。
+    // 座標は Wikipedia の Selk (crater) の 7°N 199°W。着陸の予定地はこのそばの砂丘の間（資料によって座標が違う）
+    {"セルク・クレーター（ドラゴンフライの目的地、2034年到着予定）", "Selk crater (Dragonfly's destination, arriving 2034)", 7.0, 161.0, CITY_TITAN, NAN},
     // プロキシマ・ケンタウリ b（自転が公転と同期していると考え、経度 0° が恒星の真下。経度 70° では恒星が高さ 20° に止まって見える）
     {"プロキシマ・ケンタウリ b（想像図）", "Proxima Centauri b (artist's impression)", 0, 70, CITY_PROXIMA_B, NAN},
 };

@@ -1332,7 +1332,28 @@ static void DrawApolloPlume(const App& app, int i, int model, Quaternion q, V3 r
 
 // 探査機の機体（自機と同じシェーダ）。天体に隠れている時は描かない
 static const double GALILEO_PROBE_RELEASE = -1633.27;  // 1995-07-13 05:30 UTC: ガリレオが大気圏突入機を切り離す
-static const double HUYGENS_RELEASE = 1819.58;         // 2004-12-25 02:00 UTC: カッシーニがホイヘンスを切り離す
+// 着陸機の形（基準からの秒 s）。火星の着陸機は背面カバーを切り離した後、降下段をローバーの上に別に描く（*dsUp: 吊り下げで
+// 伸ばした長さ m。降下段を描かない時は負）
+static int LanderModel(int li, double s, double* dsUp) {
+    *dsUp = -1;
+    if (li == 0)   // ホイヘンス: 主パラシュートを開く 09:10:23 まで大気に入る時の形（前面シールドを切り離す 09:10:53 までの 30 秒は
+                   // 描き分けない）、安定用パラシュートに替える 09:25:21、着地 11:38:11（Lebreton ほか 2005）
+        return s < 623 ? PM_HUYGENS_ENTRY : s < 1521 ? PM_HUYGENS_MAIN : s < LANDERS[0].land ? PM_HUYGENS_STAB : PM_HUYGENS;
+    // 着地からの秒: パラシュートを開く、前面シールド・背面カバーを切り離す、ローバーを吊り下げ始める・吊り下げ終える。
+    // パーシビアランスは Karlgaard ほか（MEDLI2 の再構成）の表、吊り下げは NAIF の SPK の説明。キュリオシティのパラシュートと
+    // 背面カバーは SPK の軌道の加速度の変わり目から求め、前面シールドはパラシュートの 24 秒後（打ち上げ前の NASA の資料の目安）
+    static const double EV[2][5] = {{-172.2, -148.2, -55.7, -18.58, -13.88}, {-178.12, -155.50, -61.20, -16.36, -10.86}};
+    static const double LOWER[2] = {7.10, 7.17};   // 吊り下げた長さ m（SPK の説明の、慣性計測装置からローバーまでの距離の変化）
+    const double* e = EV[li - 1];
+    if (s < e[0]) return PM_EDL_ENTRY;
+    if (s < e[1]) return PM_EDL_CHUTE;
+    if (s < e[2]) return PM_EDL_BACKSHELL;
+    if (s < 0) {   // 背面カバーを切り離した後、着地まで（着地の後に飛び去る降下段は描かない）
+        double u = std::max(0.0, std::min(1.0, (s - e[3]) / (e[4] - e[3])));
+        *dsUp = LOWER[li - 1] * u * u * (3 - 2 * u);
+    }
+    return PM_MARS_ROVER;
+}
 static void DrawProbes(App& app) {
     const Cam& c = app.cam;
     // アポロ計画: 月面に残った下降段（離陸した後）
@@ -1398,7 +1419,7 @@ static void DrawProbes(App& app) {
     }
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        if ((b.d.probe < 0 && b.d.apollo < 0 && !b.d.huygens) || !b.active) continue;
+        if ((b.d.probe < 0 && b.d.apollo < 0 && b.d.lander < 0) || !b.active) continue;
         // アポロ: 時刻に応じた機体の形（つながっている間の月着陸船は司令船の側で描く）
         int apModel = -1, mission = -1;
         if (b.d.apollo >= 0) {
@@ -1407,7 +1428,10 @@ static void DrawProbes(App& app) {
             apModel = ApolloModel(APOLLO_MISSIONS[mission], vehicle, app.tDays);
             if (apModel < 0) continue;
         }
+        double dsUp = -1;
+        int ldModel = b.d.lander >= 0 ? LanderModel(b.d.lander, (app.tDays - LANDERS[b.d.lander].t0) * 86400, &dsUp) : -1;
         double size = apModel >= 0 ? std::max(0.02, (double)app.probeOuter[apModel] * 1.1) : 0.02;
+        if (ldModel >= 0) size = std::max(0.02, (double)app.probeOuter[ldModel] * 1.1);
         if (apModel >= 0 && ApolloBurnAt(b.d, app.tDays)) size += 0.25;   // 噴流の分（F-1 は 200 m まで）
         const std::vector<ApolloPiece>* near = nullptr;   // 同じ描画で描く部品
         for (int m = 0; m < APOLLO_COUNT && apModel >= 0; m++)
@@ -1442,16 +1466,17 @@ static void DrawProbes(App& app) {
         }
         if (pm == PM_GALILEO && app.tDays < GALILEO_PROBE_RELEASE) pm = PM_GALILEO_PROBE;
         if (pm == PM_CASSINI && app.tDays < HUYGENS_RELEASE) pm = PM_CASSINI_HUYGENS;
-        if (b.d.huygens) {
-            // ホイヘンス: パラシュートを上に。主パラシュートを開く 09:10:23 まで大気に入る時の形（前面シールドを切り離す
-            // 09:10:53 までの 30 秒は描き分けない）、安定用パラシュートに替える 09:25:21、着地 11:38:11（Lebreton ほか 2005）
-            double sec = (app.tDays - HUYGENS_T0) * 86400;
-            pm = sec < 623 ? PM_HUYGENS_ENTRY : sec < 1521 ? PM_HUYGENS_MAIN : sec < HUYGENS_LAND ? PM_HUYGENS_STAB : PM_HUYGENS;
-            int k = HuygensTitan(app.B);
-            if (k >= 0) {
-                aim = b.pos - app.B[k].pos;
-                upHint = app.B[k].pole;
-            }
+        V3 ldUp;
+        if (ldModel >= 0) {
+            // 着陸機: 前面シールドを進む向きへ（パラシュートは後ろへなびく）。地表に対して秒速 200 m より遅くなると上を天頂へ
+            // 向けていく（秒速 100 m で真上。パラシュートは風と一緒に流れるので、遅い時は地表に対する速さの向きを使わない）
+            pm = ldModel;
+            int k = LanderWorld(app.B, b.d.lander);
+            ldUp = Norm(b.pos - app.B[k].pos);
+            V3 v = LanderVelocity(app.B, b.d.lander, app.tDays);
+            double sp = Len(v) * 1000, f = std::max(0.0, std::min(1.0, (sp - 100) / 100));
+            aim = ldUp * (1 - f * f * (3 - 2 * f)) - (sp > 0 ? v * (1.0 / Len(v)) : V3()) * (f * f * (3 - 2 * f));
+            upHint = app.B[k].pole;
         }
         Quaternion q = QuatFromBasis(Len(aim) > 1e-6 ? aim : V3(1, 0, 0), upHint);
         if (apModel >= 0) {
@@ -1465,6 +1490,15 @@ static void DrawProbes(App& app) {
         // 15〜17 号: 科学機器室の扉を捨てた後は、機械船に開いた所を重ねる
         bool withSm = pm == PM_APOLLO_CSM || pm == PM_APOLLO_CSM_LM || pm == PM_APOLLO_CSM_LMG || pm == PM_APOLLO_CSM_LMA;
         if (withSm && mission >= 0 && app.tDays >= ApolloSimDoorT(APOLLO_MISSIONS[mission])) DrawMesh(app.probeMesh[PM_SIM_BAY], app.shipMat, model);
+        if (dsUp >= 0) {   // 降下段（ローバーの上面 1.3 m の上）と、吊り下げている間の吊りひも
+            V3 at = rel + ldUp * ((1.3 + dsUp) * 0.001);
+            DrawMesh(app.probeMesh[PM_DESCENT_STAGE], app.shipMat,
+                     MatrixMultiply(MatrixMultiply(MatrixScale(0.001f, 0.001f, 0.001f), QuaternionToMatrix(q)), MatrixTranslate((float)at.x, (float)at.y, (float)at.z)));
+            V3 top = rel + ldUp * 0.0013;
+            if (dsUp > 0.01)
+                DrawMesh(app.probeMesh[PM_BRIDLES], app.shipMat,
+                         MatrixMultiply(MatrixMultiply(MatrixScale(0.001f, 0.001f, 0.001f * (float)dsUp), QuaternionToMatrix(q)), MatrixTranslate((float)top.x, (float)top.y, (float)top.z)));
+        }
         rlEnableBackfaceCulling();
         if (near)
             for (const ApolloPiece& p : *near) meshAt(p.pm, p.pos, p.q);

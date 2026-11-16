@@ -4,6 +4,17 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.43.0 (2026-11-16)
+
+- Mars landers' descents: Curiosity (6 August 2012) and Perseverance (18 February 2021) are now spacecraft. From about 9 minutes before entering the atmosphere they come down over Mars along the descent trajectories reconstructed by NASA's EDL teams (NAIF SPKs), and after landing they stay put until the day they first drove (22 August 2012, 4 March 2021; later traverses are not included). The landing points match the official coordinates
+- Their shape changes with time: the entry capsule (4.5 m across), the parachute, after heat shield separation, the descent stage with the rover, the rover lowered on the sky crane (about 7.1 m below) and the landed rover. Perseverance's times are from the table of Karlgaard et al. (MEDLI2 reconstruction), the lowering from the SPK notes, and Curiosity's parachute and backshell separation from where the acceleration along its trajectory changes
+- The "spacecraft events" page of the event list gained "Curiosity lands on Mars" and "Perseverance lands on Mars". They show the craft up close from beside its direction of travel and descend with it, from 1 minute before entry
+- Estimated or left out: the simplified shapes, the parachute's inflated diameter of 16 m and 40 m lines, and Curiosity's heat shield separation (24 seconds after the parachute). The descent stage flying off after landing and the cruise stage before entry are not drawn
+- Huygens now also flies the three weeks from its release from Cassini on 25 December 2004 to entry, on the JPL Horizons trajectory (which includes the prediction as of 6 January 2005). It is 43 km from the reconstructed path at entry, so the two are joined over the last hour
+- The "On Earth" search tab gained Selk crater on Titan (Dragonfly's destination; launch planned for July 2028 and arrival in 2034). Dragonfly itself is not drawn, since no trajectory data is available
+- Mars's rotation period is now the IAU value (1.0259567565 days). The rounded value let its orientation drift by about 0.4° a year, about 11° by now (places on the map stay put; what changes is where it is day at a given time)
+- README gallery tidied: two images of the old-style Jupiter and a near-duplicate Saturn image were removed, the info card image was retaken, and Huygens under its parachute was added
+
 ## 2.42.0 (2026-11-16)
 
 - Titan's lakes and seas: the seas and lakes filled with liquid (methane and ethane) in the north and south polar regions are now drawn. Their extent is the "seas" and "liquid-filled lakes" of the polar geomorphologic maps of Birch et al. (2017) (Birch and Hayes, CC BY 4.0), 1.08% of Titan's surface (matching the published value of about 1.1%). The liquid is flat and dark and reflects more of the sky the more obliquely it is seen (Fresnel reflection with liquid methane's refractive index of about 1.29)
