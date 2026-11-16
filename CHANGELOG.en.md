@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.45.0 (2026-11-16)
+
+- Fixed a sphere about 1.5 m across that was drawn near landers in addition to their models (since Huygens in 2.42.0)
+- The lander descent paths and rover drives moved from the source code into an asset file (assets/landers.bin, about 370 KB). Nothing looks different; the browser version loads it at startup
+- The README gallery gained Perseverance lowering its rover on the sky crane and Spirit coming down on its airbags
+
 ## 2.44.0 (2026-11-16)
 
 - Four more Mars landers: Spirit (4 January 2004) and Opportunity (25 January 2004) on airbags, and Phoenix (25 May 2008) and InSight (26 November 2018) on legs and engines, come down from atmospheric entry along NAIF's reconstructed descent trajectories. The landing points match the official coordinates. The "spacecraft events" page of the event list gained their four landings

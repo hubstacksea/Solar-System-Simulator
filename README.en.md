@@ -56,6 +56,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Rosetta arriving at Comet Churyumov-Gerasimenko](docs/screenshots/rosetta.jpg) Guided tour (U key): Rosetta arriving at its comet, 6 August 2014 | ![One minute before DART's impact](docs/screenshots/dart_impact.jpg) Didymos and Dimorphos one minute before DART's impact |
 | ![Europa Clipper](docs/screenshots/europa_clipper.jpg) Europa Clipper on its way to Jupiter (30 m solar array span) | ![Juno](docs/screenshots/probe_view.jpg) Warping to a spacecraft: centered and large in a zoomed view (Juno at Jupiter) |
 | ![BepiColombo arriving at Mercury](docs/screenshots/voyage_bepicolombo.jpg) Spacecraft voyage: BepiColombo just before entering Mercury orbit in November 2026 (top right: a map of its path so far) | ![Asteroid Dinkinesh](docs/screenshots/voyage_dinkinesh.jpg) Spacecraft voyage: asteroid Dinkinesh, passed by Lucy at 422 km in November 2023 (zoomed in automatically) |
+| ![Perseverance on the sky crane](docs/screenshots/perseverance_skycrane.jpg) 18 February 2021: Perseverance's sky crane lowering the rover about 7 m below it (8.5 seconds before touchdown; NAIF's reconstructed descent trajectory, simplified shapes) | ![Spirit on its airbags](docs/screenshots/spirit_airbags.jpg) 4 January 2004: Spirit inside its inflated airbags, hanging 20 m below the parachute and backshell (3 seconds before first impact; shapes and parachute size are estimates) |
 
 **The sky from the ground and historic events**
 

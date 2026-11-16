@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Solar System Voyager — Copyright (c) 2026 hubstacksea
 # MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
-"""着陸機が大気に入ってから着地するまでの道 (src/app/lander_tracks.h) を作る。
+"""着陸機が大気に入ってから着地するまでの道とローバーの走行 (assets/landers.bin) を作る。
 
 ホイヘンス（タイタン）:
   降下: NASA PDS 大気ノードの Huygens Descent Trajectory Working Group（DTWG）による再構成の軌道
@@ -22,17 +22,21 @@
   エアバッグで跳ねて止まるまでの道は無いので、最初に地面に当たった所から止まった所へ 10 分（目安）で動かす。
 フェニックス・インサイト: NAIF の EDL の SPK（phx_edl_rec_traj.bsp: PHX GNC チーム、insight_edl_rec_v1.bsp: InSight EDL チーム）。
 
-出力: 時刻の基準からの秒, 高度 km（基準の球から）, 東経 deg, 緯度 deg（惑星中心）の表（高度で 30 m（火星は 3 m）、緯度・経度で
-0.001°（火星は 0.00005°）の誤差に収まるところまで点を間引く）、ホイヘンスの惰性飛行の表（秒, タイタンからの位置 km・速度 km/s,
-土星から見たタイタンの位置 km・速度 km/s）、ローバーの走行の表（着地からの秒, 東経 deg, 緯度 deg）
+出力形式（リトルエンディアン）: uint32 表の数、表ごとに char[16] 名前, uint32 列の数, uint32 行の数, uint32 値の大きさ（4: float32,
+8: float64）と値。表は 3 種類:
+  名前（HUYGENS, CURIOSITY, ...）: 時刻の基準からの秒, 高度 km（基準の球から）, 東経 deg, 緯度 deg（惑星中心）。高度で 30 m（火星は
+    3 m）、緯度・経度で 0.001°（火星は 0.00005°）の誤差に収まるところまで点を間引く
+  HUYGENS_COAST: ホイヘンスの惰性飛行（秒, タイタンからの位置 km・速度 km/s, 土星から見たタイタンの位置 km・速度 km/s）
+  名前_DRIVE: ローバーの走行（着地からの秒, 東経 deg, 緯度 deg）
 
-使い方: python3 tools/make_lander_tracks.py <作業ディレクトリ> [出力先=src/app/lander_tracks.h] [--refresh]
+使い方: python3 tools/make_lander_tracks.py <作業ディレクトリ> [出力先=assets] [--refresh]
 （--refresh: ローバーの走行の SPK を取り直す）
 （火星の着陸機には SpiceyPy（pip install spiceypy）が要る）
 """
 import datetime
 import math
 import os
+import struct
 import sys
 import urllib.parse
 import urllib.request
@@ -223,7 +227,7 @@ def mars_traverse(work, m, td, land):
 
 def main():
     work = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "src/app/lander_tracks.h"
+    out = os.path.join(sys.argv[2] if len(sys.argv) > 2 else "assets", "landers.bin")
     os.makedirs(work, exist_ok=True)
     pts = huygens_descent(work)
     s = simplify(pts, (0.03, 0.001, 0.001))
@@ -233,39 +237,22 @@ def main():
         mp, utc, td = mars_track(work, m)
         ms = simplify(mp, (0.003, 0.00005, 0.00005))
         tables.append((m["name"], utc, ms, len(mp), mars_traverse(work, m, td, mp[-1]) if "drive" in m else None))
-    with open(out, "w") as f:
-        f.write("// Solar System Voyager — Copyright (c) 2026 hubstacksea\n")
-        f.write("// MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator\n")
-        f.write("// tools/make_lander_tracks.py で作った表（手で書き換えない）。着陸機が大気に入ってから着地するまでの道。\n")
-        f.write("#pragma once\n\n")
-        f.write("// ホイヘンス: NASA PDS の Huygens DTWG の再構成の軌道（HP-SSA-DTWG-6-TRAJECTORY-V1.0）。\n")
-        f.write("// 2005-01-14 09:00:00 UTC からの秒, 高度 km（2,575 km の球から）, 東経 deg, 緯度 deg\n")
-        f.write("static const float HUYGENS_TRACK[][4] = {\n")
-        for t, a, lo, la in s:
-            f.write("    {%.1ff, %.3ff, %.4ff, %.4ff},\n" % (t, a, lo, la))
-        f.write("};\n\n")
-        f.write("// ホイヘンスがカッシーニから切り離されてから大気に入るまで: JPL Horizons の軌道（-150）。2005-01-14 09:00:00 UTC からの秒,\n")
-        f.write("// タイタンからの位置 km・速度 km/s, 土星から見たタイタンの位置 km・速度 km/s（黄道座標 J2000）\n")
-        f.write("static const double HUYGENS_COAST[][13] = {\n")
-        for t, v in coast:
-            f.write("    {%.1f, %s},\n" % (t, ", ".join("%.3f" % x if i % 6 < 3 else "%.6f" % x for i, x in enumerate(v))))
-        f.write("};\n")
-        for name, utc, ms, n, drive in tables:
-            f.write("\n// %s: NAIF の再構成の EDL 軌道（SPK）。着地 %s UTC からの秒, 高度 km（%.0f km の球から）, 東経 deg, 緯度 deg\n" % (name.capitalize(), utc, MARS_REF))
-            f.write("static const float %s_TRACK[][4] = {\n" % name)
-            for t, a, lo, la in ms:
-                f.write("    {%.1ff, %.4ff, %.5ff, %.5ff},\n" % (t, a, lo, la))
-            f.write("};\n")
-            if not drive:
-                print("%s: wrote %d of %d points" % (name, len(ms), n))
-                continue
-            tr, end = drive
-            f.write("// %s の走行: NAIF の走行の位置の SPK（%s UTC まで）。着地からの秒, 東経 deg, 緯度 deg\n" % (name.capitalize(), end))
-            f.write("static const double %s_DRIVE[][3] = {\n" % name)
-            for t, _, lo, la in tr:
-                f.write("    {%.0f, %.6f, %.6f},\n" % (t, lo, la))
-            f.write("};\n")
+    blobs = [("HUYGENS", 4, [(t, a, lo, la) for t, a, lo, la in s]), ("HUYGENS_COAST", 8, [[t] + v for t, v in coast])]
+    for name, utc, ms, n, drive in tables:
+        blobs.append((name, 4, ms))
+        if drive:
+            blobs.append((name + "_DRIVE", 8, [(t, lo, la) for t, _, lo, la in drive[0]]))
+            print("%s: wrote %d of %d points, drive %d points until %s UTC" % (name, len(ms), n, len(drive[0]), drive[1]))
+        else:
             print("%s: wrote %d of %d points" % (name, len(ms), n))
+    with open(out + ".part", "wb") as f:
+        f.write(struct.pack("<I", len(blobs)))
+        for name, size, rows in blobs:
+            cols = len(rows[0])
+            f.write(struct.pack("<16sIII", name.encode(), cols, len(rows), size))
+            for r in rows:
+                f.write(struct.pack("<%d%s" % (cols, "f" if size == 4 else "d"), *r))
+    os.replace(out + ".part", out)
     print("Huygens: wrote %d of %d points, %.1f s .. %.1f s, %.1f km .. %.3f km; coast %d points from %.0f s"
           % (len(s), len(pts), s[0][0], s[-1][0], s[0][1], s[-1][1], len(coast), coast[0][0]))
 

@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
         struct { const char* name; EmbeddedFile f; } files[] = {
             {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
             {"earth_clouds.jpg", EarthCloudsJpg()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
-            {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"sky.txt", SkyTxt()},
+            {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"landers.bin", LandersBin()}, {"sky.txt", SkyTxt()},
             {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},
             {"saturn_rings.png", SaturnRingsPng()}, {"milkyway.jpg", MilkyWayJpg()}};
         int missing = 0;

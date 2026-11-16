@@ -619,7 +619,7 @@ static double SunCover(const App& app, V3 from) {
     double best = 0;
     for (size_t i = 1; i < app.B.size(); i++) {
         const Body& b = app.B[i];
-        if (b.d.probe >= 0 || !b.active) continue;
+        if (b.d.probe >= 0 || b.d.lander >= 0 || !b.active) continue;
         V3 db = b.pos - from;
         double Lb = Len(db);
         if (Lb >= Ls || Lb < b.d.radius) continue;
@@ -862,7 +862,7 @@ static void DrawBodies(App& app) {
         const Body& b = app.B[i];
         V3 rel = CamRel(c, b.pos);
         double dist = Len(rel);
-        if (b.d.probe >= 0) continue;  // 探査機は DrawProbes で描く
+        if (b.d.probe >= 0 || b.d.lander >= 0) continue;  // 探査機と着陸機は DrawProbes で描く
         if (!rv.on && Dot(rel, c.fwd) < -b.outer) continue;   // 光速に近いと後ろの天体も前方に見えるので省かない
         if (b.outer / dist * c.focal < 0.8) continue;  // サブピクセルは 2D の点で描く
         items.push_back({(int)i, dist});
@@ -1118,7 +1118,7 @@ static void SetShipLighting(App& app, V3 shipWorld) {
     int best = -1;
     double bestK = 0;
     for (size_t i = 1; i < app.B.size(); i++) {
-        if (app.B[i].d.probe >= 0) continue;
+        if (app.B[i].d.probe >= 0 || app.B[i].d.lander >= 0) continue;
         double d = Len(app.B[i].pos - shipWorld);
         double k = app.B[i].d.radius / d;
         if (k > bestK) { bestK = k; best = (int)i; }
@@ -1483,7 +1483,7 @@ static void DrawProbes(App& app) {
             upHint = Norm(b.pos - app.B[B_EARTH].pos);
         }
         if (pm == PM_GALILEO && app.tDays < GALILEO_PROBE_RELEASE) pm = PM_GALILEO_PROBE;
-        if (pm == PM_CASSINI && app.tDays < HUYGENS_RELEASE) pm = PM_CASSINI_HUYGENS;
+        if (pm == PM_CASSINI && app.tDays < HuygensRelease()) pm = PM_CASSINI_HUYGENS;
         V3 ldUp;
         if (ldModel >= 0) {
             // 着陸機: 前面シールドを進む向きへ（パラシュートは後ろへなびく）。地表に対して秒速 200 m より遅くなると上を天頂へ

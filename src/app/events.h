@@ -584,7 +584,7 @@ static std::vector<AstroEvent> FindProbeEvents(const App& app) {
         }
     }
     for (size_t i = 0; i < app.B.size(); i++)   // 着陸機の着地（ホイヘンスは着地の 10 分前、火星の着陸機は大気に入る 1 分前から見る）
-        if (app.B[i].d.lander >= 0 && LanderWorld(app.B, app.B[i].d.lander) >= 0) {
+        if (app.B[i].d.lander >= 0 && LanderWorld(app.B, app.B[i].d.lander) >= 0 && LANDERS[app.B[i].d.lander].track) {
             const LanderDef& L = LANDERS[app.B[i].d.lander];
             AstroEvent ev;
             ev.kind = EV_LANDING;

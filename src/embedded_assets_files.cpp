@@ -73,6 +73,7 @@ EmbeddedFile IconPng() { return Load("icon.png"); }
 EmbeddedFile StarsBin() { return Load("stars.bin"); }
 EmbeddedFile ProbesBin() { return Load("probes.bin"); }
 EmbeddedFile ApolloBin() { return Load("apollo.bin"); }
+EmbeddedFile LandersBin() { return Load("landers.bin"); }
 EmbeddedFile SkyTxt() { return Load("sky.txt"); }
 EmbeddedFile MilkyWayJpg() { return Load("milkyway.jpg"); }
 EmbeddedFile ShapesBin() { return Load("shapes.bin"); }

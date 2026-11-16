@@ -56,6 +56,7 @@
 | ![チュリュモフ・ゲラシメンコ彗星に到着したロゼッタ](docs/screenshots/rosetta.jpg) 自動ツアー（U キー）: 2014年8月6日、彗星に到着したロゼッタ | ![DART の衝突 1 分前](docs/screenshots/dart_impact.jpg) DART の衝突 1 分前のディディモスとディモルフォス |
 | ![エウロパ・クリッパー](docs/screenshots/europa_clipper.jpg) 木星へ向かうエウロパ・クリッパー（太陽電池パネルは両翼で 30 m） | ![ジュノー](docs/screenshots/probe_view.jpg) 探査機へのワープ: ズームした視野で中央に大きく（木星を回るジュノー） |
 | ![ベピコロンボの水星到着](docs/screenshots/voyage_bepicolombo.jpg) 探査機の旅: 2026 年 11 月、水星を回る軌道に入る直前のベピコロンボ（右上はこれまでの軌道の全体図） | ![小惑星ディンキネシュ](docs/screenshots/voyage_dinkinesh.jpg) 探査機の旅: 2023 年 11 月、ルーシーが 422 km まで近づいた小惑星ディンキネシュ（自動でズーム） |
+| ![スカイクレーンで降りるパーシビアランス](docs/screenshots/perseverance_skycrane.jpg) 2021年2月18日、スカイクレーンで約 7 m 下に吊ったローバーを降ろすパーシビアランス（着地の 8.5 秒前。NAIF の再構成の降下軌道。形は簡略） | ![エアバッグで降りるスピリット](docs/screenshots/spirit_airbags.jpg) 2004年1月4日、エアバッグをふくらませ、パラシュートと背面カバーの 20 m 下に吊られて降りるスピリット（最初に地面に当たる 3 秒前。形とパラシュートの大きさは推定） |
 
 **地上から見る空と歴史上の出来事**
 

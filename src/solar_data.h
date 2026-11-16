@@ -72,7 +72,7 @@ struct BodyDef {
     bool probeEnd = false;     // 探査機: データの終わりが運用終了（天体への突入・着地）
     const char* apolloTrack = nullptr;   // アポロ計画の宇宙船: assets/apollo.bin の "飛行/機体"（"Apollo 11/Columbia"）
     int apollo = -1;           // その軌跡の番号（起動時に名前で結び付ける）
-    int lander = -1;           // 着陸機: 降りる天体に対する道（src/app/bodies.h の LANDERS、表は src/app/lander_tracks.h）をたどる
+    int lander = -1;           // 着陸機: 降りる天体に対する道（src/app/bodies.h の LANDERS、表は assets/landers.bin）をたどる
     // 地球を回る人工衛星（ISS・ハッブル）: 平均軌道要素 TLE（tleN > 0 の時に使う）。地球中心・J2000 赤道座標とみなす
     double tleEpoch = 0, tleN = 0, tleNdot = 0;   // 元期（J2000 からの日数）, 平均運動 周/日, その変化の半分 周/日²
     double tleE = 0, tleI = 0, tleNode = 0, tleArgp = 0, tleM = 0;   // 離心率, deg
