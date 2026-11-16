@@ -195,12 +195,12 @@ static void LoadLanderTracks() {
     std::memcpy(&nt, q, 4);
     q += 4;
     for (uint32_t i = 0; i < nt; i++) {
-        char name[17] = {0};
+        char name[33] = {0};
         uint32_t h[3];   // 列の数, 行の数, 値の大きさ
-        if (q + 28 > end) return;
-        std::memcpy(name, q, 16);
-        std::memcpy(h, q + 16, 12);
-        q += 28;
+        if (q + 44 > end) return;
+        std::memcpy(name, q, 32);
+        std::memcpy(h, q + 32, 12);
+        q += 44;
         size_t bytes = (size_t)h[0] * h[1] * h[2];
         if (q + bytes > end || h[1] < 2) return;
         g_landerData.emplace_back(q, q + bytes);   // 並びを揃えるため写す

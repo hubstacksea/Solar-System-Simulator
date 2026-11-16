@@ -956,6 +956,27 @@ static std::vector<InfoLine> InfoLines(const App& app) {
     } else if (d.tleN > 0) {
         double alt = Len(b.pos - app.B[B_EARTH].pos) - app.B[B_EARTH].d.radius;
         L.push_back({T(UI_INFO_ALT), FmtDist(alt) + " / " + FmtDuration(86400 / d.tleN)});
+    } else if (d.lander >= 0 && LANDERS[d.lander].track && LanderWorld(app.B, d.lander) >= 0) {
+        // 着陸機: 着地の日時、火星なら着地から何ソル（火星の 1 日 = 88,775.244 秒）、ローバーは今までに走った距離（エアバッグで
+        // 跳ねた分は除く）
+        const LanderDef& Ld = LANDERS[d.lander];
+        double land = Ld.t0 + Ld.land / 86400, s = (app.tDays - Ld.t0) * 86400;
+        L.push_back({T(UI_INFO_LANDING), FmtMinute(land)});
+        if (s >= Ld.land && std::strcmp(Ld.world, "Mars") == 0)
+            L.push_back({T(UI_INFO_SOLS), std::to_string((long long)((s - Ld.land) / 88775.244))});
+        if (Ld.drive && s >= Ld.drive[0][0]) {
+            const Body& w = app.B[LanderWorld(app.B, d.lander)];
+            double km = 0;
+            V3 prev = LanderOnTrack(w, Ld, Ld.drive[Ld.kind == LK_AIRBAG ? 1 : 0][0], w.spin);
+            for (int k = Ld.kind == LK_AIRBAG ? 2 : 1; k < Ld.nDrive && Ld.drive[k - 1][0] < s; k++) {
+                V3 q = LanderOnTrack(w, Ld, std::min(s, Ld.drive[k][0]), w.spin);
+                km += Len(q - prev);
+                prev = q;
+            }
+            char v[64];
+            snprintf(v, sizeof v, "%.2f km", km);
+            L.push_back({T(UI_INFO_DRIVEN), v});
+        }
     } else if (d.apollo >= 0 && d.apollo < (int)g_apollo.size() && !g_apollo[d.apollo].segs.empty()) {
         const auto& segs = g_apollo[d.apollo].segs;
         L.push_back({T(UI_INFO_DATA), FmtMinute(segs.front().t.front()) + " - " + FmtMinute(segs.back().t.back())});

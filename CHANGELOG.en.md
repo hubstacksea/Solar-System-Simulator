@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.46.0 (2026-11-16)
+
+- Fixed Perseverance and Opportunity staying at their landing sites instead of driving in 2.45.0 (their table names in the asset file were too long to be read). The data check (--check-assets) now also confirms that all lander tables were read
+- Rover tracks: with orbit lines on (O key), the path the target rover drove is drawn 3 m above the ground (bright where it has already driven, dim ahead)
+- The info card (I key) now shows a lander's landing time, the sols since landing for Mars landers, and the distance driven for rovers (the length through the recorded points, not counting airbag bounces). Opportunity comes to 45.24 km (NASA's figure is 45.16 km)
+
 ## 2.45.0 (2026-11-16)
 
 - Fixed a sphere about 1.5 m across that was drawn near landers in addition to their models (since Huygens in 2.42.0)

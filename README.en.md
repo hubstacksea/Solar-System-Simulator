@@ -217,7 +217,7 @@ After building, run `cpack` in the build directory.
 | T / Shift+T | Autopilot / autopilot with automatic engine selection |
 | Right mouse button (hold) | Zoom |
 | V | Chase view / cockpit view |
-| O / L | Orbit lines / moon markers |
+| O / L | Orbit lines (the path driven by a target rover) / moon markers |
 | C | Constellations (off → lines → lines and names) |
 | [ / ] | Time scale (x1 real time to 1 year per second). Affects both orbits/rotation of the bodies and the ship's acceleration and movement |
 | P / Backspace | Pause time / sync to current time at x1 |
@@ -227,7 +227,7 @@ After building, run `cpack` in the build directory.
 | Z | Photo mode (each press: hide gauges and markers → hide the ship too → back to normal; orbit lines are toggled with O) |
 | U | Guided tour: 24 scenes (spacecraft highlights, great comets, eclipses, nearby stars, historic eclipses and more) in chronological order with captions, 15 seconds each. Enter for next, Shift+Enter for previous, U again to stop |
 | K | Event list (select one and press Enter to warp to that time and place). Tab / Shift+Tab switches pages: astronomical events (solar and lunar eclipses, planetary conjunctions and oppositions over the next 3 years, the next shadow transit of each Galilean moon across Jupiter, and transits of Mercury and Venus up to 150 years ahead), comets and binary stars (comet perihelia and closest approaches to Earth, asteroid Apophis's 2029 Earth encounter from space and from the ground, binary periastra) and spacecraft events (closest approaches, orbit insertions, end of mission, the Huygens landing on Titan, the Spirit, Opportunity, Phoenix, Curiosity, InSight and Perseverance landings on Mars) and historic eclipses, supernovae, returns of Halley's Comet, transits of Venus and a comet hitting Jupiter; spacecraft voyages (see "Spacecraft voyages" below) |
-| I | Info card for the target (type, radius, mass, surface gravity, escape velocity, rotation and orbital periods, orbit, number of moons, distances from the Sun / Earth / you, brightness (magnitude), phase, apparent size and Moon age as seen from Earth (or from where you stand on the ground), spacecraft that flew by; data period for spacecraft, altitude and period for satellites). "Info" button on touch screens, tap the card to close. Mouse inversion is in the settings (F10) |
+| I | Info card for the target (type, radius, mass, surface gravity, escape velocity, rotation and orbital periods, orbit, number of moons, distances from the Sun / Earth / you, brightness (magnitude), phase, apparent size and Moon age as seen from Earth (or from where you stand on the ground), spacecraft that flew by; data period for spacecraft, altitude and period for satellites, landing time, sols since landing and distance driven for landers). "Info" button on touch screens, tap the card to close. Mouse inversion is in the settings (F10) |
 | J | Switch language (日本語 / English) |
 | B / N | Bookmark the current spot / warp to bookmarks in turn (up to 9; position and orientation are stored relative to the rotating body) |
 | M / Shift+M | Sound effects (engine and warp) / music on/off |

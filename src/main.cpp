@@ -162,7 +162,18 @@ int main(int argc, char** argv) {
         std::vector<Body> B = InitBodies();
         size_t shapes = 0;
         for (const Body& b : B) shapes += b.shape >= 0 ? 1 : 0;
-        printf("music %d/%d, bodies %zu, bodies with shapes %zu, missing %d\n", music, MUSIC_COUNT, B.size(), shapes, missing);
+        // 着陸機の表: 道（全機）、ローバーの走行（スカイクレーンとエアバッグの機体）、ホイヘンスの惰性飛行
+        LoadLanderTracks();
+        int tables = 0, want = 1;
+        tables += g_huygensCoast ? 1 : 0;
+        for (const LanderDef& L : LANDERS) {
+            bool rover = L.kind == LK_SKYCRANE || L.kind == LK_AIRBAG;
+            want += rover ? 2 : 1;
+            tables += (L.track ? 1 : 0) + (rover && L.drive ? 1 : 0);
+        }
+        missing += want - tables;
+        printf("music %d/%d, bodies %zu, bodies with shapes %zu, lander tables %d/%d, missing %d\n", music, MUSIC_COUNT, B.size(), shapes,
+               tables, want, missing);
         return missing ? 1 : 0;
     }
     if (opt.listVoyages) {   // 探査機の旅の行程を出力して終了（確認用）
@@ -790,6 +801,7 @@ int main(int argc, char** argv) {
         if (app.showOrbits) DrawOrbits(app);
         DrawCometTails(app);
         DrawBodies(app);
+        if (app.showOrbits) DrawRoverPath(app);
         DrawProbes(app);
         if (app.photoMode < 2) DrawShipPass(app, dt);
         EndMode3D();

@@ -157,6 +157,42 @@ static void DrawOrbits(App& app) {
     rlEnableDepthTest();
 }
 
+// ターゲットのローバーが走った道（着地点からの走行の記録。地表の 3 m 上。走ってきた部分は明るく、これから走る部分は暗く）。
+// 地表の上の線なので天体の後に描き、天体の向こう側（地平線の下）になる所は描かない
+static void DrawRoverPath(App& app) {
+    if (app.target < 0 || app.relU > 0.02) return;
+    const Body& b = app.B[app.target];
+    if (b.d.lander < 0 || !b.active) return;
+    const LanderDef& L = LANDERS[b.d.lander];
+    int k = LanderWorld(app.B, b.d.lander);
+    if (k < 0 || !L.drive) return;
+    const Body& w = app.B[k];
+    const Cam& c = app.cam;
+    double now = (app.tDays - L.t0) * 86400;
+    SetPassProjection(c, 1e-4, 1e5);
+    rlDisableDepthTest();
+    rlCheckRenderBatchLimit(L.nDrive * 2 + 2);
+    rlBegin(RL_LINES);
+    V3 prev;
+    bool prevVis = false;
+    for (int i = 0; i < L.nDrive; i++) {
+        V3 f = LanderOnTrack(w, L, L.drive[i][0], w.spin);
+        V3 pnt = w.pos + f + Norm(f) * 0.003;
+        bool vis = Dot(f, c.pos - pnt) > 0;   // 天体の手前の側
+        if (i > 0 && vis && prevVis) {
+            rlColor4ub(255, 196, 120, (unsigned char)(L.drive[i][0] <= now ? 200 : 70));
+            Vector3 p0 = ToF(prev - c.pos), p1 = ToF(pnt - c.pos);
+            rlVertex3f(p0.x, p0.y, p0.z);
+            rlVertex3f(p1.x, p1.y, p1.z);
+        }
+        prev = pnt;
+        prevVis = vis;
+    }
+    rlEnd();
+    rlDrawRenderBatchActive();
+    rlEnableDepthTest();
+}
+
 // 彗星のコマと尾。大きさと明るさは CometActivity・CometTailLength
 //  - イオンの尾: 太陽と反対方向へまっすぐ伸びる青い尾
 //  - ダストの尾: 公転の向きと逆側へ曲がる、幅の広い黄白色の尾

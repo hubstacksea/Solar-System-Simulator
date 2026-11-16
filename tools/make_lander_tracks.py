@@ -22,7 +22,7 @@
   エアバッグで跳ねて止まるまでの道は無いので、最初に地面に当たった所から止まった所へ 10 分（目安）で動かす。
 フェニックス・インサイト: NAIF の EDL の SPK（phx_edl_rec_traj.bsp: PHX GNC チーム、insight_edl_rec_v1.bsp: InSight EDL チーム）。
 
-出力形式（リトルエンディアン）: uint32 表の数、表ごとに char[16] 名前, uint32 列の数, uint32 行の数, uint32 値の大きさ（4: float32,
+出力形式（リトルエンディアン）: uint32 表の数、表ごとに char[32] 名前, uint32 列の数, uint32 行の数, uint32 値の大きさ（4: float32,
 8: float64）と値。表は 3 種類:
   名前（HUYGENS, CURIOSITY, ...）: 時刻の基準からの秒, 高度 km（基準の球から）, 東経 deg, 緯度 deg（惑星中心）。高度で 30 m（火星は
     3 m）、緯度・経度で 0.001°（火星は 0.00005°）の誤差に収まるところまで点を間引く
@@ -249,7 +249,8 @@ def main():
         f.write(struct.pack("<I", len(blobs)))
         for name, size, rows in blobs:
             cols = len(rows[0])
-            f.write(struct.pack("<16sIII", name.encode(), cols, len(rows), size))
+            assert len(name) < 32
+            f.write(struct.pack("<32sIII", name.encode(), cols, len(rows), size))
             for r in rows:
                 f.write(struct.pack("<%d%s" % (cols, "f" if size == 4 else "d"), *r))
     os.replace(out + ".part", out)

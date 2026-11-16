@@ -257,6 +257,9 @@
     X(INFO_VISITS, "近くを飛んだ探査機", "Spacecraft that flew by") \
     X(INFO_DATA, "軌跡のデータ", "Trajectory data") \
     X(INFO_ALT, "高度 / 周期", "Altitude / period") \
+    X(INFO_LANDING, "着地", "Landing") \
+    X(INFO_SOLS, "着地からのソル", "Sols since landing") \
+    X(INFO_DRIVEN, "走った距離", "Distance driven") \
     X(INFO_EARTHX, "地球の %s 倍", "%s x Earth") \
     X(INFO_CLOSE, "I / タップ: 閉じる", "I / tap: close") \
     X(INFO_WHITE_DWARF, "白色矮星", "White dwarf") \
