@@ -385,7 +385,7 @@ The images in `assets/` are made from NASA / NOAA data by `tools/make_earth_asse
 - Music (Moon): Debussy, "Clair de lune", Laurens Goedhart, piano (2011). CC BY 3.0
 - All recordings were taken from Wikimedia Commons. To regenerate: `python3 tools/make_music_assets.py <work dir>` (requires ffmpeg; downloads about 350 MB)
 
-All of them may be used and redistributed freely, including commercially (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). To regenerate them: `python3 tools/make_earth_assets.py <work dir>` (downloads about 50 MB) and `python3 tools/make_moon_assets.py <work dir>` (about 45 MB). Both require Pillow.
+All of them may be used and redistributed freely, including commercially (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). To regenerate them: `python3 tools/make_earth_assets.py <work dir>` (downloads about 50 MB) and `python3 tools/make_moon_assets.py <work dir>` (about 45 MB). Both require Pillow. The tools for the Earth, Earth's seasons and clouds, the Moon, the Milky Way and the planet and moon maps make a high-resolution set when `--hq` is added at the end (8192×4096 for the Earth and Moon colors and the Mercury and Mars maps, and so on). Write it to another folder and build with `cmake -B build-hq -DEMBED_ASSET_DIR=<that folder>` to embed it (an executable of about 178 MB and about 1.2 GB of textures; the released builds use the normal resolution). The source of the Moon's 8k colors (svs.gsfc.nasa.gov) does not send its intermediate certificate, so if the download fails, add the Let's Encrypt intermediate certificate.
 
 ## Display language (日本語 / English)
 

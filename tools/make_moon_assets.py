@@ -4,16 +4,16 @@
 """NASA SVS CGI Moon Kit から月のアセット (assets/moon_color.jpg, assets/moon_data.png) を作る。
 
 データ（NASA's Scientific Visualization Studio, https://svs.gsfc.nasa.gov/4720）:
-  - lroc_color_poles_4k.tif  LRO カメラ (LROC WAC) の色  4096x2048
+  - lroc_color_poles_4k.tif  LRO カメラ (LROC WAC) の色  4096x2048（--hq では lroc_color_poles_8k.tif 8192x4096）
   - ldem_16_uint.tif         LRO レーザー高度計 (LOLA) の標高 5760x2880, 0.5 m 単位, 半径 1727.4 km 基準
 
 出力:
-  moon_color.jpg  地表の色 4096x2048
-  moon_data.png   標高 2048x1024（グレー+アルファ = 16 bit の上位 / 下位バイト。
+  moon_color.jpg  地表の色 4096x2048（--hq では 8192x4096）
+  moon_data.png   標高 2048x1024（--hq では 4096x2048。グレー+アルファ = 16 bit の上位 / 下位バイト。
                   線形補間しても 上位 + 下位/256 の関係が保たれるのでそのままフィルタできる）
 
-使い方: python3 tools/make_moon_assets.py <作業ディレクトリ> [出力先=assets]
-必要なもの: Pillow（ダウンロード 約 45 MB）
+使い方: python3 tools/make_moon_assets.py <作業ディレクトリ> [出力先=assets] [--hq]
+必要なもの: Pillow（ダウンロード 約 45 MB、--hq では 約 85 MB）
 """
 import os
 import sys
@@ -22,7 +22,8 @@ import urllib.request
 from PIL import Image
 
 BASE = "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/"
-FILES = ["lroc_color_poles_4k.tif", "ldem_16_uint.tif"]
+HQ = "--hq" in sys.argv
+FILES = ["lroc_color_poles_8k.tif" if HQ else "lroc_color_poles_4k.tif", "ldem_16_uint.tif"]
 
 
 def fetch(work, name):
@@ -34,8 +35,9 @@ def fetch(work, name):
 
 
 def main():
-    work = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "assets"
+    args = [a for a in sys.argv[1:] if a != "--hq"]
+    work = args[0]
+    out = args[1] if len(args) > 1 else "assets"
     os.makedirs(work, exist_ok=True)
     os.makedirs(out, exist_ok=True)
     Image.MAX_IMAGE_PIXELS = None
@@ -43,8 +45,8 @@ def main():
 
     Image.open(color_path).convert("RGB").save(os.path.join(out, "moon_color.jpg"), quality=88, optimize=True)
 
-    # 16 bit 標高 → 2048x1024 に平均縮小し、上位・下位バイトに分ける
-    dem = Image.open(dem_path).convert("F").resize((2048, 1024), Image.BOX)
+    # 16 bit 標高 → 2048x1024（--hq では 4096x2048）に平均縮小し、上位・下位バイトに分ける
+    dem = Image.open(dem_path).convert("F").resize((4096, 2048) if HQ else (2048, 1024), Image.BOX)
     w, h = dem.size
     px = dem.load()
     hi = Image.new("L", (w, h))

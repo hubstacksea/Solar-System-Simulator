@@ -8,12 +8,12 @@
   - Blue Marble の雲（cloud_combined_8192, MODIS 2001 年）… 雲の分布
 
 出力:
-  earth_months.jpg  1024x512 の 12 か月を 4 列 × 3 行に並べたもの（1 月が左上、横へ 2・3・4 月）。
+  earth_months.jpg  1024x512（--hq では 2048x1024）の 12 か月を 4 列 × 3 行に並べたもの（1 月が左上、横へ 2・3・4 月）。
                     ゲームでは今の月の色と 4 月の色の差を、4 月の高解像度の地表（earth_color.jpg）に足す
-  earth_clouds.jpg  4096x2048 のグレー（白いほど厚い雲）
+  earth_clouds.jpg  4096x2048（--hq では 8192x4096）のグレー（白いほど厚い雲）
 どちらも正距円筒図法・左端が経度 -180°・上端が北緯 90°（earth_color.jpg と同じ並び）。
 
-使い方: python3 tools/make_earth_season_assets.py <作業ディレクトリ> [出力先=assets]
+使い方: python3 tools/make_earth_season_assets.py <作業ディレクトリ> [出力先=assets] [--hq]
 必要なもの: Pillow（ダウンロード 約 150 MB）
 """
 import os
@@ -27,7 +27,8 @@ BASE = "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/b
 MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
           "november", "december"]
 CLOUDS = "https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57747/cloud_combined_8192.tif"
-TW, TH = 1024, 512
+HQ = "--hq" in sys.argv
+TW, TH = (2048, 1024) if HQ else (1024, 512)
 Image.MAX_IMAGE_PIXELS = None
 
 
@@ -47,8 +48,9 @@ def fetch(work, url):
 
 
 def main():
-    work = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "assets"
+    args = [a for a in sys.argv[1:] if a != "--hq"]
+    work = args[0]
+    out = args[1] if len(args) > 1 else "assets"
     os.makedirs(work, exist_ok=True)
     atlas = Image.new("RGB", (TW * 4, TH * 3))
     for m, name in enumerate(MONTHS):
@@ -56,7 +58,7 @@ def main():
         img = Image.open(fetch(work, url)).convert("RGB").resize((TW, TH), Image.LANCZOS)
         atlas.paste(img, ((m % 4) * TW, (m // 4) * TH))
     atlas.save(os.path.join(out, "earth_months.jpg"), quality=88, optimize=True)
-    clouds = Image.open(fetch(work, CLOUDS)).convert("L").resize((4096, 2048), Image.LANCZOS)
+    clouds = Image.open(fetch(work, CLOUDS)).convert("L").resize((TW * 4, TH * 4), Image.LANCZOS)
     clouds.save(os.path.join(out, "earth_clouds.jpg"), quality=85, optimize=True)
     print("done")
 

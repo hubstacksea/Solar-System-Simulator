@@ -24,7 +24,8 @@ NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）、水星・金星・ケレ�
              [標高ありなら uint32 長さ + PNG（グレー + アルファ = 16 bit の上位 / 下位バイト。単位と 0 の高さは
              標高の欄の値による。1 は月と同じ）]
 
-使い方: python3 tools/make_planet_maps.py <作業ディレクトリ> [出力先=assets]
+使い方: python3 tools/make_planet_maps.py <作業ディレクトリ> [出力先=assets] [--hq]
+  --hq: 高画質版（地図と標高の幅を下の HQ_WIDTH の値にし、火星の標高は MOLA の 16 ピクセル/度）
 必要なもの: Pillow, NumPy（ダウンロード 約 2.6 GB。うち標高データが約 2.5 GB）
 """
 import io
@@ -42,6 +43,8 @@ from PIL import Image, ImageFilter
 
 UA = "SolarSystemVoyager-asset-build/1.0 (https://github.com/hubstacksea/Solar-System-Simulator)"
 WMS = "https://planetarymaps.usgs.gov/cgi-bin/mapserv"
+WMS_MAX = 4096   # WMS が 1 回で返す画像の幅と高さの上限。それより大きい地図はタイルに分けて取ってつなぐ
+HQ = "--hq" in sys.argv
 # 英語名, 地図ファイル, レイヤー, 幅, 種類（0: カラー, 1: 白黒, 2: 模様だけ）, 元データ
 # イアペトゥスのモザイクは明暗がならされていて、暗い半球と明るい半球の差が残っていないので模様だけ使う。
 # 木星の雲は場所ごとに違う速さで流れるので、地図は大赤斑が経度 0°（画像の中央）に来るよう回して保存し、
@@ -80,7 +83,14 @@ MAPS = [
     ("Pluto", "pluto/pluto_simp_cyl.map", "NEWHORIZONS_PLUTO_MOSAIC", 2048, 1, "New Horizons LORRI / MVIC"),
     ("Charon", "pluto/charon_simp_cyl.map", "NEWHORIZONS_CHARON_MOSAIC", 1024, 0, "New Horizons LORRI / MVIC"),
 ]
-MOLA = "https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x/meg004/megt90n000cb.img"
+# 高画質版の地図と標高の幅（元データの細かさを超えない範囲。ここにない天体は上の表と DEMS の幅のまま）
+HQ_WIDTH = {"Mercury": (8192, 4096), "Mars": (8192, 0), "Ceres": (4096, 2048), "Vesta": (4096, 2048), "Io": (4096, 0),
+            "Europa": (4096, 0), "Ganymede": (4096, 0), "Callisto": (4096, 0), "Mimas": (2048, 0), "Enceladus": (4096, 0),
+            "Tethys": (4096, 0), "Dione": (4096, 0), "Rhea": (4096, 0), "Titan": (4040, 0), "Iapetus": (4096, 0),
+            "Triton": (2048, 0), "Pluto": (4096, 4096), "Charon": (2048, 2048), "Venus": (0, 4096)}
+MOLA = ("https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x/" +
+        ("meg016/megt90n000eb.img" if HQ else "meg004/megt90n000cb.img"))
+MOLA_PPD = 16 if HQ else 4
 
 
 def fetch(work, name, url):
@@ -148,17 +158,23 @@ def wms(work, mapfile, layer, w):
     if mapfile.startswith("jpl:"):
         name = mapfile[4:]
         return Image.open(fetch(work, "jpl_" + name, JPL_TMAPS + name)).convert("RGB")
-    q = {"map": "/maps/" + mapfile, "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetMap", "LAYERS": layer,
-         "STYLES": "", "SRS": "EPSG:4326", "BBOX": "-180,-90,180,90", "WIDTH": str(w), "HEIGHT": str(w // 2),
-         "FORMAT": "image/png"}
-    path = fetch(work, "%s_%s_%d.png" % (mapfile.split("/")[1].split("_")[0], layer, w), WMS + "?" + urllib.parse.urlencode(q))
-    return Image.open(path).convert("RGB")
+    nx, ny = (w + WMS_MAX - 1) // WMS_MAX, (w // 2 + WMS_MAX - 1) // WMS_MAX
+    out = Image.new("RGB", (w, w // 2))
+    for ty in range(ny):
+        for tx in range(nx):
+            tw, th = w // nx, w // 2 // ny
+            bbox = "%g,%g,%g,%g" % (-180 + 360 * tx / nx, 90 - 180 * (ty + 1) / ny, -180 + 360 * (tx + 1) / nx, 90 - 180 * ty / ny)
+            q = {"map": "/maps/" + mapfile, "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetMap", "LAYERS": layer,
+                 "STYLES": "", "SRS": "EPSG:4326", "BBOX": bbox, "WIDTH": str(tw), "HEIGHT": str(th), "FORMAT": "image/png"}
+            name = "%s_%s_%d%s.png" % (mapfile.split("/")[1].split("_")[0], layer, w, "_%d_%d" % (tx, ty) if nx * ny > 1 else "")
+            out.paste(Image.open(fetch(work, name, WMS + "?" + urllib.parse.urlencode(q))).convert("RGB"), (tx * tw, ty * th))
+    return out
 
 
 def mars_height(work):
-    """MOLA MEGDR 4 ピクセル/度: 1440x720, ビッグエンディアン int16 [m]、経度 0〜360°E、上端が北緯 90°"""
-    raw = np.fromfile(fetch(work, os.path.basename(MOLA), MOLA), dtype=">i2").reshape(720, 1440).astype(np.int32)
-    raw = np.roll(raw, 720, axis=1)   # 左端を経度 -180° に
+    """MOLA MEGDR 4 ピクセル/度（--hq では 16 ピクセル/度）: 1440x720, ビッグエンディアン int16 [m]、経度 0〜360°E、上端が北緯 90°"""
+    raw = np.fromfile(fetch(work, os.path.basename(MOLA), MOLA), dtype=">i2").reshape(180 * MOLA_PPD, 360 * MOLA_PPD).astype(np.int32)
+    raw = np.roll(raw, 180 * MOLA_PPD, axis=1)   # 左端を経度 -180° に
     v = np.clip((raw + 10000) * 2, 0, 65535).astype(np.uint16)
     hi, lo = Image.fromarray((v >> 8).astype(np.uint8), "L"), Image.fromarray((v & 255).astype(np.uint8), "L")
     buf = io.BytesIO()
@@ -333,6 +349,8 @@ def dem_height(work, name):
     """標高の PNG（シミュレータの楕円体からの高さ。グレー + アルファ = 16 bit、0.5 m 単位で -10,000 m を 0。
     それに収まらない天体（ベスタ・カロン）は 1 m 単位で -32,768 m を 0）と、その形式（1 か 2）"""
     fn, w, radius, lon0 = DEMS[name]
+    if HQ and HQ_WIDTH.get(name, (0, 0))[1]:
+        w = HQ_WIDTH[name][1]
     if fn.startswith("zip:"):   # タイタン: Cornell の zip の中の 1 ファイル
         fn = fn[4:]
         path = os.path.join(work, fn)
@@ -385,11 +403,14 @@ def dem_height(work, name):
 
 
 def main():
-    work = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "assets"
+    args = [a for a in sys.argv[1:] if a != "--hq"]
+    work = args[0]
+    out = args[1] if len(args) > 1 else "assets"
     os.makedirs(work, exist_ok=True)
     blob = struct.pack("<I", len(MAPS))
     for name, mapfile, layer, w, kind, src in MAPS:
+        if HQ and HQ_WIDTH.get(name, (0, 0))[0]:
+            w = HQ_WIDTH[name][0]
         img = wms(work, mapfile, layer, w)
         a = np.asarray(img).astype(np.float32) / 255
         if name in SHAPE:

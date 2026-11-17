@@ -458,7 +458,7 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     }
 
     // 標高の勾配（中心差分。間隔は 1 テクセルか 1 画素の大きい方）
-    vec2 texel = vec2(1.0 / 4096.0, 1.0 / 2048.0);
+    vec2 texel = 1.0 / vec2(textureSize(texture1, 0));
     vec2 st = max(texel, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
     float hE = earthHeightM(textureGrad(texture1, uv + vec2(st.x, 0.0), dx, dy).r);
     float hW = earthHeightM(textureGrad(texture1, uv - vec2(st.x, 0.0), dx, dy).r);
@@ -563,7 +563,7 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
     vec3 tc = pow(textureGrad(texture0, uv, dx, dy).rgb, vec3(1.3)) * 1.25;   // 海と高地の明暗差を少し強調
 
-    vec2 texel = vec2(1.0 / 2048.0, 1.0 / 1024.0);
+    vec2 texel = 1.0 / vec2(textureSize(texture1, 0));
     vec2 st = max(texel, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
     float hE = moonHeightM(textureGrad(texture1, uv + vec2(st.x, 0.0), dx, dy));
     float hW = moonHeightM(textureGrad(texture1, uv - vec2(st.x, 0.0), dx, dy));

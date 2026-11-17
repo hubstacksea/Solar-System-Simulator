@@ -385,7 +385,7 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 - 音楽（月）: ドビュッシー「月の光」 ピアノ: Laurens Goedhart（2011 年）。CC BY 3.0
 - 音源はいずれも Wikimedia Commons から取得。作り直す場合は `python3 tools/make_music_assets.py <作業フォルダ>`（ffmpeg が必要、約 350 MB をダウンロード）
 
-いずれも商用を含め自由に使用・再配布できるデータです（詳細は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。作り直す場合は `python3 tools/make_earth_assets.py <作業フォルダ>`（約 50 MB をダウンロード）と `python3 tools/make_moon_assets.py <作業フォルダ>`（約 45 MB）。どちらも Pillow が必要です。
+いずれも商用を含め自由に使用・再配布できるデータです（詳細は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。作り直す場合は `python3 tools/make_earth_assets.py <作業フォルダ>`（約 50 MB をダウンロード）と `python3 tools/make_moon_assets.py <作業フォルダ>`（約 45 MB）。どちらも Pillow が必要です。地球・地球の季節と雲・月・天の川・惑星と衛星の地図のツールは、最後に `--hq` を付けると高画質版（地球・月の色と水星・火星の地図は 8192×4096 など）を作ります。別のフォルダに出力し、`cmake -B build-hq -DEMBED_ASSET_DIR=<そのフォルダ>` でビルドすると、それを埋め込みます（実行ファイル約 178 MB、テクスチャ約 1.2 GB。配布する版は通常の画質です）。月の 8k の色の取得元（svs.gsfc.nasa.gov）は中間証明書を送らないので、取得に失敗する場合は Let's Encrypt の中間証明書を加えてください。
 
 ## 表示言語（日本語 / English）
 

@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.47.0 (2026-11-17)
+
+- The asset tools (Earth, Earth's seasons and clouds, the Moon, the Milky Way, and the planet and moon maps) gained `--hq` to make a high-resolution set: 8192×4096 for the Earth and Moon colors and the Mercury and Mars maps, 4096×2048 for the Moon's elevations, MOLA at 16 pixels per degree for Mars, and so on (never finer than the source data). Maps larger than the 4096 pixels the USGS map service returns at once are fetched in tiles. The CMake option `EMBED_ASSET_DIR` builds with another folder of embedded data, such as the high-resolution set. The released builds keep the current resolution (a high-resolution build is about 178 MB with about 1.2 GB of textures)
+- The relief shading of the Earth and the Moon now reads the size of the elevation image from the image instead of assuming it (no visible change)
+
 ## 2.46.0 (2026-11-16)
 
 - Fixed Perseverance and Opportunity staying at their landing sites instead of driving in 2.45.0 (their table names in the asset file were too long to be read). The data check (--check-assets) now also confirms that all lander tables were read

@@ -12,8 +12,9 @@
   earth_color.jpg  地表の色（海は周囲の陸の色で埋めてある）
   earth_data.png   R: 高さコード, G: 夜景, B: 海陸マスク（少しぼかし）, A: 海氷
 
-使い方: python3 tools/make_earth_assets.py <作業ディレクトリ> [出力先=assets]
-必要なもの: Pillow（ダウンロード 約 50 MB）
+使い方: python3 tools/make_earth_assets.py <作業ディレクトリ> [出力先=assets] [--hq]
+  --hq: 高画質版（8192x4096。地表の色は 21600x10800、標高は 2 個おきに取得）
+必要なもの: Pillow（ダウンロード 約 50 MB、--hq では 約 300 MB）
 """
 import os
 import sys
@@ -21,16 +22,18 @@ import struct
 import urllib.request
 from PIL import Image, ImageChops, ImageFilter, ImageMath
 
+HQ = "--hq" in sys.argv
 BASE = "https://assets.science.nasa.gov/content/dam/science/esd/eo/images"
 SOURCES = {
-    "color": BASE + "/bmng/bmng-base/april/world.200404.3x5400x2700.jpg",
+    "color": BASE + "/bmng/bmng-base/april/world.200404.3x%s.jpg" % ("21600x10800" if HQ else "5400x2700"),
     "lights": BASE + "/imagerecords/144000/144898/BlackMarble_2016_3km.jpg",
 }
-# ETOPO 2022 60 秒角 (21600x10800) を 5 個おきに取得 → 4320x2160 (float32, OPeNDAP バイナリ)
+# ETOPO 2022 60 秒角 (21600x10800) を 5 個おきに取得 → 4320x2160（--hq では 2 個おきで 10800x5400。float32, OPeNDAP バイナリ)
+ETOPO_STRIDE = 2 if HQ else 5
 ETOPO_URL = ("https://oceanwatch.pifsc.noaa.gov/erddap/griddap/ETOPO_2022_v1_60s.dods"
-             "?z%5B0:5:10799%5D%5B0:5:21599%5D")
-ETOPO_FILE = "etopo2022_60s_stride5.dods"
-W, H = 4096, 2048
+             "?z%%5B0:%d:10799%%5D%%5B0:%d:21599%%5D" % (ETOPO_STRIDE, ETOPO_STRIDE))
+ETOPO_FILE = "etopo2022_60s_stride%d.dods" % ETOPO_STRIDE
+W, H = (8192, 4096) if HQ else (4096, 2048)
 LAND_MAX, SEA_MAX = 8900.0, 11000.0  # 高さコードの範囲 (m)。シェーダの earthHeightM と合わせる
 
 
@@ -50,7 +53,7 @@ def load_etopo(path):
     if not sep:
         raise RuntimeError("unexpected ETOPO response: " + raw[:200].decode("latin-1"))
     n = struct.unpack(">I", body[:4])[0]
-    w, h = 4320, 2160
+    w, h = 21600 // ETOPO_STRIDE, 10800 // ETOPO_STRIDE
     assert n == w * h, n
     img = Image.frombytes("F", (w, h), body[8:8 + n * 4], "raw", "F;32BF")
     # 元データは南が先頭・経度 0〜360。北を上に、経度 -180 を左端にする
@@ -91,8 +94,9 @@ def fill_ocean(color, land):
 
 
 def main():
-    work = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "assets"
+    args = [a for a in sys.argv[1:] if a != "--hq"]
+    work = args[0]
+    out = args[1] if len(args) > 1 else "assets"
     os.makedirs(work, exist_ok=True)
     os.makedirs(out, exist_ok=True)
     Image.MAX_IMAGE_PIXELS = None

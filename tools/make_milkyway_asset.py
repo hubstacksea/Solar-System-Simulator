@@ -9,10 +9,10 @@
   中央が赤経 0h、左へ行くほど赤経が増える。リニアな色の half float の OpenEXR（ZIP 圧縮）
 
 出力:
-  milkyway.jpg  2048x1024。並びは元の画像のまま（中央が赤経 0h、左へ赤経が増える、上が赤緯 +90°）
+  milkyway.jpg  2048x1024（--hq では 4096x2048）。並びは元の画像のまま（中央が赤経 0h、左へ赤経が増える、上が赤緯 +90°）
                 明るさは 8 ビット（明るさ^(1/GAMMA)）。黒点 BLACK を 0、白点 WHITE を 255 にする（ゲーム側で薄く重ねる）
 
-使い方: python3 tools/make_milkyway_asset.py <作業ディレクトリ> [出力先=assets]
+使い方: python3 tools/make_milkyway_asset.py <作業ディレクトリ> [出力先=assets] [--hq]
 必要なもの: Pillow, NumPy（ダウンロード 約 35 MB）
 """
 import os
@@ -26,7 +26,7 @@ from PIL import Image
 
 UA = "SolarSystemVoyager-asset-build/1.0 (https://github.com/hubstacksea/Solar-System-Simulator)"
 URL = "https://svs.gsfc.nasa.gov/vis/a000000/a004800/a004851/milkyway_2020_4k.exr"
-OUT_W, OUT_H = 2048, 1024
+OUT_W, OUT_H = (4096, 2048) if "--hq" in sys.argv else (2048, 1024)
 WHITE = 99.5  # この百分位の明るさを 255 にする（銀河中心の一番明るい所だけ飽和させる）
 GAMMA = 1.5   # 8 ビットにする時の階調（sRGB の 2.2 より小さくし、銀河中心と反対側の明るさの差を残す）
 BLACK = 30    # この百分位の明るさを 0 にする（天の川から離れた所の淡い光を消して、背景を黒く保つ）
@@ -87,8 +87,9 @@ def read_exr(path):
 
 
 def main():
-    work = sys.argv[1]
-    out = sys.argv[2] if len(sys.argv) > 2 else "assets"
+    args = [a for a in sys.argv[1:] if a != "--hq"]
+    work = args[0]
+    out = args[1] if len(args) > 1 else "assets"
     os.makedirs(work, exist_ok=True)
     img, chans = read_exr(fetch(work))
     rgb = np.stack([img[:, :, chans.index(c)] for c in "RGB"], axis=2)
