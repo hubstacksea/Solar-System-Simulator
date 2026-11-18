@@ -138,7 +138,8 @@ static DetailMap g_detail[3];   // 地球・月・火星
 static int DetailIndex(int body) { return body == B_EARTH ? 0 : body == B_MOON ? 1 : body == B_MARS ? 2 : -1; }
 
 // ---- シェーダの手続きの起伏（NOISE_GLSL・BUMPS_GLSL）と同じ計算（float で同じ順に）。地形の格子の高さと合わせ、
-// 高度・衝突に使う。CPU では頂点の間隔の代わりに一番細かい間隔 BUMP_MIN_M（m）までのオクターブをすべて足す
+// 高度・衝突に使う。CPU では地形の格子の頂点の間隔の代わりに、一番細かい格子点の段（間隔 BUMP_MIN_M m。そこまでのオクターブを
+// すべて足す）で求めて補間する（シェーダの vertexBumps の、カメラの近くの値と同じ）
 static const double BUMP_MIN_M = 20.0;
 static unsigned NoiseHash(int x, int y, int z) {
     unsigned n = ((unsigned)x * 1597334673u ^ (unsigned)y * 3812015801u ^ (unsigned)z * 2798796415u) * 1597334673u;
@@ -243,19 +244,32 @@ static float MoonDark(float r, float g, float b) {
     float l = (std::pow(r, 1.3f) + std::pow(g, 1.3f) + std::pow(b, 1.3f)) * 1.25f / 3;
     return 1 - Smoothf(0.12f, 0.3f, l);
 }
-// 地球の 1 分角より細かい山肌の高さ m（earthBumps の値）。p は単位球の点、s は傾き、h は標高 m
+// 手続きの起伏を地表に固定した 3 次元の格子点（間隔 L）で求め、点 p で 3 重線形に補間する（シェーダの bumpLattice）
+template <class F> static float BumpLattice(V3 p, float L, F at) {
+    F3 g{(float)p.x / L, (float)p.y / L, (float)p.z / L};
+    float ix = std::floor(g.x), iy = std::floor(g.y), iz = std::floor(g.z), fx = g.x - ix, fy = g.y - iy, fz = g.z - iz;
+    auto v = [&](float a, float b, float c) { return at(F3{(ix + a) * L, (iy + b) * L, (iz + c) * L}); };
+    return Mixf(Mixf(Mixf(v(0, 0, 0), v(1, 0, 0), fx), Mixf(v(0, 1, 0), v(1, 1, 0), fx), fy),
+                Mixf(Mixf(v(0, 0, 1), v(1, 0, 1), fx), Mixf(v(0, 1, 1), v(1, 1, 1), fx), fy), fz);
+}
+// 地球の 1 分角より細かい山肌の高さ m（earthBumps の値）。p は単位球の点、s は傾き、h は標高 m。一番細かい格子点の段で求める
 static double EarthBumpsM(V3 p, double s, double h) {
-    const float seed = (float)(B_EARTH * 7.31), sp = (float)(BUMP_MIN_M / 6378137.0);
-    float a = (float)((0.003 + 0.6 * std::min(s, 1.0)) / 3200.0 * std::max(0.0, std::min(1.0, h / 50.0))), f = 3200.0f, r = 0;
-    F3 q{(float)p.x, (float)p.y, (float)p.z}, o{seed, seed * 1.37f, seed * 0.71f};
-    for (int i = 0; i < 7 && a > 0; i++) {
-        float w = 1 - Smoothf(0.15f, 0.5f, f * sp);
-        if (w <= 0) break;
-        r += a * w * (NoiseValue(q * f + o + (float)i * 7.13f) * 2 - 1);
-        a *= 0.5f;
-        f *= 2.03f;
-    }
-    return r * 6378137.0;
+    const float seed = (float)(B_EARTH * 7.31), L = (float)(BUMP_MIN_M / 6378137.0);
+    double a = (0.003 + 0.6 * std::min(s, 1.0)) / 3200.0 * std::max(0.0, std::min(1.0, h / 50.0));
+    if (a <= 0) return 0;
+    const F3 o{seed, seed * 1.37f, seed * 0.71f};
+    float n = BumpLattice(p, L, [&](F3 q) {
+        float r = 0, am = 1, f = 3200.0f;
+        for (int i = 0; i < 7; i++) {
+            float w = 1 - Smoothf(0.15f, 0.5f, f * L);
+            if (w <= 0) break;
+            r += am * w * (NoiseValue(q * f + o + (float)i * 7.13f) * 2 - 1);
+            am *= 0.5f;
+            f *= 2.03f;
+        }
+        return r;
+    });
+    return a * n * 6378137.0;
 }
 
 // 厚い雲・もやに覆われた天体（金星・タイタン）: 外からは雲（もや）の層を描き、その上端より下に降りると地表と一様な空を
@@ -289,10 +303,12 @@ static const HazeWorld* HazeWorldOf(const BodyDef& d) {
 
 // 本体の座標系（X, 自転軸, Z）の向き o の地表の高さ km。楕円体の上の点は、向きを (x, y / (1 − 扁平率), z) にした
 // 球面の点で地図を引く（球のメッシュと同じ）
-// 月・地図のある天体の、データより細かい手続きの起伏（単位は半径。シェーダの bodyBumps と同じ）。uv は全球の画像の座標
-static float BodyBumps(const Terrain& T, V3 pd, double u, double v, float sp, float fLo) {
+// 月・地図のある天体の、データより細かい手続きの起伏（単位は半径。シェーダの bumpAt と同じ）。点 p で sp より細かいものを省く
+static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo) {
     const float seed = (float)(T.body * 7.31);
-    F3 p{(float)pd.x, (float)pd.y, (float)pd.z}, o{seed, seed * 1.37f, seed * 0.71f};
+    const F3 o{seed, seed * 1.37f, seed * 0.71f};
+    float l = std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+    double u = std::atan2(-p.z / l, p.x / l) / (2 * PI) + 0.5, v = 0.5 - std::asin(std::max(-1.0f, std::min(1.0f, p.y / l))) / PI;
     if (T.bumps == 1) {   // 月: 海（暗い所）はクレーターが少なく平ら
         float dark = T.aux.empty() ? 0.0f : MoonDark(T.Aux(u, v, 0), T.Aux(u, v, 1), T.Aux(u, v, 2));
         return CratersBand(p, Mixf(0.55f, 0.2f, dark), 260.0f, o * 0.37f, sp, fLo) +
@@ -328,7 +344,8 @@ static double TerrainKm(const Body& b, V3 o) {
         if (w > 0) km = std::max(0.0, km * 1000 + EarthBumpsM(p, D->Slope(lx, ly, lat, 6378137.0), km * 1000) * w) / 1000;
     } else if (T.bumps) {   // データより細かい手続きの起伏
         double R = b.d.radius * 1000, fLo = T.h / (2 * PI) * (1 - w) + (D ? D->H / (2 * PI) * w : 0);
-        km += BodyBumps(T, p, u, v, (float)(BUMP_MIN_M / R), (float)fLo) * b.d.radius;
+        float L = (float)(BUMP_MIN_M / R);   // 地形の格子と同じく、地表に固定した一番細かい格子点の段で求める
+        km += BumpLattice(p, L, [&](F3 q) { return BodyBumps(T, q, L, (float)fLo); }) * b.d.radius;
     }
     return km;
 }

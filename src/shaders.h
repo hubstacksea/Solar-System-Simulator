@@ -65,7 +65,7 @@ bool cellSpot(vec3 p, float F, float density, vec3 salt, float rmin, float rmax,
 )"
 
 // 標高データより細かい手続きの起伏の高さ（地形の格子の頂点用。値はフラグメントシェーダの陰影の起伏と同じ式の、周波数 fLo より
-// 細かい部分）。sp: 頂点の間隔（単位球の長さ）。それより細かいものは省く。bodies.h の CPU 版（BodyBumps）と同じ計算
+// 細かい部分）。sp: 格子点の間隔（単位球の長さ）。それより細かいものは省く。bodies.h の CPU 版（BodyBumps）と同じ計算
 #define BUMPS_GLSL R"(
 float bandW(float f, float sp, float fLo) { return (1.0 - smoothstep(0.15, 0.5, f * sp)) * smoothstep(0.5, 1.0, f / fLo); }
 // fbm（オクターブはすべて）
@@ -237,6 +237,53 @@ float terrHeight(vec3 d, float lod) {
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
 )" NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
+// データより細かい手続きの起伏（単位球の長さ。地球は山肌の振幅を掛ける前の値）を、点 q で、L より細かいものを省いて求める
+float bumpAt(vec3 q, float L, float fLo, vec3 o) {
+    if (terrA.w < 1.5) {   // 地球の山肌（earthBumps の値を振幅で割ったもの）
+        float r = 0.0, a = 1.0, f = 3200.0;
+        for (int i = 0; i < 7; i++) {
+            float w = 1.0 - smoothstep(0.15, 0.5, f * L);
+            if (w <= 0.0) break;
+            r += a * w * (vnoise(q * f + o + float(i) * 7.13) * 2.0 - 1.0);
+            a *= 0.5; f *= 2.03;
+        }
+        return r;
+    }
+    vec3 n = normalize(q);
+    vec2 uv = vec2(atan(-n.z, n.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(n.y, -1.0, 1.0)) / 3.1415927);
+    float h;
+    if (terrE.z < 1.5) {   // 月: 海（暗い所）はクレーターが少なく平ら
+        float dark = moonDark(textureLod(texture0, uv, 0.0).rgb);
+        h = cratersBand(q, mix(0.55, 0.2, dark), 260.0, o * 0.37, L, fLo) +
+            fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (mix(0.004, 0.0015, dark) / 260.0);
+    } else {               // 地図のある天体: 撮影された所は細かいクレーターと山肌、撮影されていない所は手続きの表面
+        vec4 m = textureLod(texture2, uv, 0.0);
+        float fine = 0.0, ph = 0.0;
+        if (m.r > 0.0) fine = cratersBand(q, 0.35, 260.0, o * 0.37, L, fLo) + fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (0.003 / 260.0);
+        if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(q, int(mapInfo2.x + 0.5), o, L, fLo);
+        h = mix(ph, fine, m.r);
+        if (mapInfo2.z > 0.5) h *= 1.0 - m.a;   // 液体の湖・海は平ら
+    }
+    return h;
+}
+// 手続きの起伏を地表に固定した 3 次元の格子点（間隔 L）で求め、点 d で 3 重線形に補間する
+float bumpLattice(vec3 d, float L, float fLo, vec3 o) {
+    vec3 g = d / L, i = floor(g), f = g - i;
+    float v000 = bumpAt(i * L, L, fLo, o), v100 = bumpAt((i + vec3(1, 0, 0)) * L, L, fLo, o);
+    float v010 = bumpAt((i + vec3(0, 1, 0)) * L, L, fLo, o), v110 = bumpAt((i + vec3(1, 1, 0)) * L, L, fLo, o);
+    float v001 = bumpAt((i + vec3(0, 0, 1)) * L, L, fLo, o), v101 = bumpAt((i + vec3(1, 0, 1)) * L, L, fLo, o);
+    float v011 = bumpAt((i + vec3(0, 1, 1)) * L, L, fLo, o), v111 = bumpAt((i + vec3(1, 1, 1)) * L, L, fLo, o);
+    return mix(mix(mix(v000, v100, f.x), mix(v010, v110, f.x), f.y), mix(mix(v001, v101, f.x), mix(v011, v111, f.x), f.y), f.z);
+}
+// 地形の格子の頂点の手続きの起伏。頂点はカメラと一緒に地表の上を滑るので、頂点の位置で直接求めると細かい起伏を拾ったり
+// 外したりして、飛ぶと縁が波打つ。標高の縮小画像と同じく、地表に固定した格子点（間隔は一番細かい Lmin の 2 の累乗倍で、
+// 頂点の間隔の LAT_K 倍以上）で求めて補間し、隣の段となめらかにつなぐ。sp: 頂点の間隔、Lmin: 20 m（CPU と同じ）
+const float LAT_K = 1.0;
+float vertexBumps(vec3 d, float sp, float Lmin, float fLo, vec3 o) {
+    float lv = log2(max(LAT_K * sp / Lmin, 1.0)), n = floor(lv), t = lv - n;
+    float L = Lmin * exp2(n), a = bumpLattice(d, L, fLo, o);
+    return t < 0.001 ? a : mix(a, bumpLattice(d, 2.0 * L, fLo, o), t);
+}
 // 地球: カメラの周り（1 分角の窓の中）は細かい標高と、それより細かい山肌を足した高さ m。sp は頂点の間隔、hm は全球の標高
 float earthDetailHeight(vec3 d, float sp, float hm) {
     float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
@@ -246,14 +293,14 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
     float lod = log2(max(sp * detB.y / 3.1415927, 1.0));
     float hd = lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l);
     float hb = mix(hm, hd, w);
-    sp = max(sp, 20.0 / EARTH_RM);       // CPU と同じく 20 m より細かいオクターブは省く
-    if (3200.0 * sp >= 0.5) return hb;   // 山肌の一番粗いオクターブも頂点の間隔より細かい
+    if (3200.0 * LAT_K * sp >= 0.5) return hb;   // 山肌の一番粗いオクターブも格子点の間隔より細かい
     // 傾き: 両隣の画素の差（CPU の EarthDetail::Slope と同じ）
     float dy = 3.1415927 * EARTH_RM / detB.y, dx = 6.2831853 * EARTH_RM / detB.x * max(cos(lat), 0.05);
     float gx = (detHeight(l + vec2(1.0, 0.0)) - detHeight(l - vec2(1.0, 0.0))) / (2.0 * dx);
     float gy = (detHeight(l + vec2(0.0, 1.0)) - detHeight(l - vec2(0.0, 1.0))) / (2.0 * dy);
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
-    return max(0.0, hb + earthBumps(d, length(vec2(gx, gy)), hb, sp, 7, o).x * EARTH_RM * w);
+    float a = (0.003 + 0.6 * min(length(vec2(gx, gy)), 1.0)) / 3200.0 * clamp(hb / 50.0, 0.0, 1.0);   // earthBumps の振幅
+    return max(0.0, hb + a * vertexBumps(d, sp, 20.0 / EARTH_RM, 0.0, o) * EARTH_RM * w);
 }
 // 地球以外: カメラの周り（月・火星の窓の中）は細かい標高。データより細かい手続きの起伏（クレーター・山肌）を足した高さ m
 float bodyHeight(vec3 d, float sp, float hm) {
@@ -265,23 +312,8 @@ float bodyHeight(vec3 d, float sp, float hm) {
         hm = mix(hm, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w);
     }
     if (terrE.z < 0.5) return hm;
-    sp = max(sp, 20.0 / terrE.x);         // CPU と同じく 20 m より細かいものは省く
-    float fLo = mix(terrE.y, terrE.w, w);
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
-    float h;
-    if (terrE.z < 1.5) {   // 月: 海（暗い所）はクレーターが少なく平ら
-        float dark = moonDark(textureLod(texture0, uv, 0.0).rgb);
-        h = cratersBand(d, mix(0.55, 0.2, dark), 260.0, o * 0.37, sp, fLo) +
-            fbmBand(d, 600.0, 20, 0.48, o, sp, fLo) * (mix(0.004, 0.0015, dark) / 260.0);
-    } else {               // 地図のある天体: 撮影された所は細かいクレーターと山肌、撮影されていない所は手続きの表面
-        vec4 m = textureLod(texture2, uv, 0.0);
-        float fine = 0.0, ph = 0.0;
-        if (m.r > 0.0) fine = cratersBand(d, 0.35, 260.0, o * 0.37, sp, fLo) + fbmBand(d, 600.0, 20, 0.48, o, sp, fLo) * (0.003 / 260.0);
-        if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(d, int(mapInfo2.x + 0.5), o, sp, fLo);
-        h = mix(ph, fine, m.r);
-        if (mapInfo2.z > 0.5) h *= 1.0 - m.a;   // 液体の湖・海は平ら
-    }
-    return hm + h * terrE.x;
+    return hm + vertexBumps(d, sp, 20.0 / terrE.x, mix(terrE.y, terrE.w, w), o) * terrE.x;
 }
 
 void main() {

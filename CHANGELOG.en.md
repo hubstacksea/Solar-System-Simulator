@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.51.0 (2026-11-18)
+
+- The procedural relief (craters and slopes) added to the terrain shape in 2.49.0 no longer ripples at its edges in flight (it stood out, for example, on the crater to the right as the Apollo 16 ascent stage leaves the Moon). The terrain grid's vertices slide over the ground with the camera, so computing the relief directly at the vertices caught and missed relief close to the vertex spacing, making edges jagged along the triangles and changing their shape from frame to frame. The relief is now computed at 3D lattice points fixed to the ground (spaced at a power of two times 20 m, no closer than the vertex spacing, blended smoothly with the next level) and interpolated, the same idea as the downscaled elevation images. The relief that takes shape is about as fine as before. Altitude and collisions interpolate the same way at the finest level (20 m). Earth's slopes work the same way. Near the surface of the Moon and Mars, a frame takes about 1.5 to 2 ms longer in the native version on this PC (Earth is about the same)
+
 ## 2.50.0 (2026-11-18)
 
 - The planet and moon maps were rebuilt to reduce the square mosaic seen up close from orbit (it stood out on the walls of Valles Marineris on Mars). The USGS map service picks the nearest pixels when asked for the target size, which makes the maps jagged, so `tools/make_planet_maps.py` now fetches them at 4 times the size and averages only the imaged pixels down. Color maps are stored as JPEG without chroma subsampling (color edges no longer come in 2-pixel steps). The maps are as detailed as before (about 5.2 km per pixel on Mars), and `assets/maps.bin` went from about 23.3 MB to about 23.0 MB. On Mars, the bluish-white pixels in the source data now show as well
