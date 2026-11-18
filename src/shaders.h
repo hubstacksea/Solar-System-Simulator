@@ -6,6 +6,94 @@
 //  - 天体ごとの特徴（月の海、火星の極冠、木星の大赤斑、地球の大陸・雲・夜景など）を detail.x で描き分ける
 #pragma once
 
+// 頂点・フラグメントシェーダで共通の部分（隣り合う文字列リテラルとしてシェーダの文字列につなぐ）
+#define NOISE_GLSL R"(
+// ---- 整数ハッシュ（座標が大きくても劣化しないので、地表付近の細かいオクターブでも使える）
+uint hashu(ivec3 c) {
+    uvec3 v = uvec3(c) * uvec3(1597334673u, 3812015801u, 2798796415u);
+    uint n = (v.x ^ v.y ^ v.z) * 1597334673u;
+    n ^= n >> 15; n *= 2246822519u; n ^= n >> 13; n *= 3266489917u; n ^= n >> 16;
+    return n;
+}
+float hash1(ivec3 c) { return float(hashu(c) >> 8u) * (1.0 / 16777216.0); }
+
+float vnoise(vec3 x) {
+    vec3 fl = floor(x);
+    ivec3 i = ivec3(fl);
+    vec3 f = x - fl;
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    float a = hash1(i), b = hash1(i + ivec3(1, 0, 0)), c = hash1(i + ivec3(0, 1, 0)), d = hash1(i + ivec3(1, 1, 0));
+    float e = hash1(i + ivec3(0, 0, 1)), g = hash1(i + ivec3(1, 0, 1)), h = hash1(i + ivec3(0, 1, 1)), k = hash1(i + ivec3(1, 1, 1));
+    return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), mix(mix(e, g, u.x), mix(h, k, u.x), u.y), u.z);
+}
+
+// 値ノイズと解析的な勾配 (x: 値 0..1, yzw: 勾配)
+vec4 noised(vec3 x) {
+    vec3 fl = floor(x);
+    ivec3 i = ivec3(fl);
+    vec3 w = x - fl;
+    vec3 u = w * w * (3.0 - 2.0 * w);
+    vec3 du = 6.0 * w * (1.0 - w);
+    float a = hash1(i), b = hash1(i + ivec3(1, 0, 0)), c = hash1(i + ivec3(0, 1, 0)), d = hash1(i + ivec3(1, 1, 0));
+    float e = hash1(i + ivec3(0, 0, 1)), f = hash1(i + ivec3(1, 0, 1)), g = hash1(i + ivec3(0, 1, 1)), h = hash1(i + ivec3(1, 1, 1));
+    float k1 = b - a, k2 = c - a, k3 = e - a;
+    float k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f;
+    float k7 = -a + b + c - d + e - f - g + h;
+    float v = a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
+    vec3 dv = du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z,
+                        k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x,
+                        k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y);
+    return vec4(v, dv);
+}
+
+)"
+
+// 地球の陸の細かい標高（1 分角）。CPU がカメラの真下を中心に展開した窓（texture4。bodies.h の EarthDetail と同じ計算）
+#define EARTH_DETAIL_GLSL R"(
+uniform sampler2D texture4;
+uniform vec4 detA;   // xy: 窓の左上（全球の 1 分角の画素）, z: 窓の一辺の画素数, w: 縁でなじませる幅（画素）
+uniform vec4 detB;   // xy: 全球の画素数, z: 1 で窓あり
+const float EARTH_RM = 6378137.0;
+// 窓の中の位置 l（画素）と重み（窓の外は 0、縁から detA.w 画素で 1）。uv は全球の画像の座標
+float detWeight(vec2 uv, out vec2 l) {
+    l = vec2(0.0);
+    if (detB.z < 0.5) return 0.0;
+    l = uv * detB.xy - 0.5 - detA.xy;
+    l.x -= detB.x * floor(l.x / detB.x + 0.5);
+    vec2 e = min(l, detA.z - 1.0 - l);
+    return clamp(min(e.x, e.y) / detA.w, 0.0, 1.0);
+}
+// 高さコード → m（陸 128..255 = 0..8900 m、海は海面）
+float detDecode(float c) {
+    float v = c * 255.0, s = (v - 128.0) / 127.0;
+    return v >= 127.5 ? s * s * 8900.0 : 0.0;
+}
+// 窓の画素 l の標高 m（4 画素の双線形。CPU と同じ）
+float detHeight(vec2 l) {
+    ivec2 i = ivec2(floor(l)), n = ivec2(int(detA.z) - 1);
+    vec2 f = l - floor(l);
+    ivec2 a = clamp(i, ivec2(0), n), b = clamp(i + 1, ivec2(0), n);
+    float h00 = detDecode(texelFetch(texture4, a, 0).r), h10 = detDecode(texelFetch(texture4, ivec2(b.x, a.y), 0).r);
+    float h01 = detDecode(texelFetch(texture4, ivec2(a.x, b.y), 0).r), h11 = detDecode(texelFetch(texture4, b, 0).r);
+    return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
+// 1 分角より細かい山肌（手続き。地形の格子の高さと陰影の両方に使う）。x: 高さ（単位球の長さ）, yzw: 勾配。
+// 振幅は標高の傾き s（tan）で決め、急な山ほど険しく、平野は穏やかにする。h: 標高 m（海面の近くでは 0 へ）。
+// sp: 頂点・画素の間隔（単位球の長さ）。それより細かいオクターブは省く
+vec4 earthBumps(vec3 p, float s, float h, float sp, int oct, vec3 o) {
+    float a = (0.003 + 0.6 * min(s, 1.0)) / 3200.0 * clamp(h / 50.0, 0.0, 1.0), f = 3200.0;
+    vec4 r = vec4(0.0);
+    for (int i = 0; i < oct; i++) {
+        float w = 1.0 - smoothstep(0.15, 0.5, f * sp);
+        if (w <= 0.0 || a <= 0.0) break;
+        vec4 n = noised(p * f + o + float(i) * 7.13);
+        r += a * w * vec4(n.x * 2.0 - 1.0, n.yzw * 2.0 * f);
+        a *= 0.5; f *= 2.03;
+    }
+    return r;
+}
+)"
+
 static const char* PLANET_VS = R"(
 #version 330
 in vec3 vertexPosition;
@@ -28,6 +116,7 @@ uniform vec4 terrB;      // xyz: 真下の向き c（本体の座標系の球面
 uniform vec4 terrC;      // xyz: c に垂直な向き, w: 1 m あたりの長さ（1 / 赤道半径 m）
 uniform vec4 terrD;      // x, y: 標高の画像の幅と高さ, z: 輪の数, w: 1 周の頂点の数
 uniform sampler2D texture1;
+uniform vec4 params;     // z: 天体ごとのシード（フラグメントシェーダと同じ）
 out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
@@ -54,6 +143,24 @@ float terrHeight(vec3 d, float lod) {
     float h01 = terrDecode(texelFetch(texture1, ivec2(x0, y1), 0)), h11 = terrDecode(texelFetch(texture1, ivec2(x1, y1), 0));
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
+)" NOISE_GLSL EARTH_DETAIL_GLSL R"(
+// 地球: カメラの周り（1 分角の窓の中）は細かい標高と、それより細かい山肌を足した高さ m。sp は頂点の間隔、hm は全球の標高
+float earthDetailHeight(vec3 d, float sp, float hm) {
+    float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    vec2 l;
+    float w = detWeight(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l);
+    if (w <= 0.0) return hm;
+    float lod = log2(max(sp * detB.y / 3.1415927, 1.0));
+    float hd = lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod).r) : detHeight(l);
+    float hb = mix(hm, hd, w);
+    if (3200.0 * sp >= 0.5) return hb;   // 山肌の一番粗いオクターブも頂点の間隔より細かい
+    // 傾き: 両隣の画素の差（CPU の EarthDetail::Slope と同じ）
+    float dy = 3.1415927 * EARTH_RM / detB.y, dx = 6.2831853 * EARTH_RM / detB.x * max(cos(lat), 0.05);
+    float gx = (detHeight(l + vec2(1.0, 0.0)) - detHeight(l - vec2(1.0, 0.0))) / (2.0 * dx);
+    float gy = (detHeight(l + vec2(0.0, 1.0)) - detHeight(l - vec2(0.0, 1.0))) / (2.0 * dy);
+    vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
+    return max(0.0, hb + earthBumps(d, length(vec2(gx, gy)), hb, sp, 7, o).x * EARTH_RM * w);
+}
 
 void main() {
     vec3 pos = vertexPosition, nrm = vertexNormal;
@@ -74,7 +181,9 @@ void main() {
         float sp = max(dth, st * 6.2831853 * float(stp) / terrD.w);
         float lod = log2(max(sp * terrD.y / 3.1415927, 1.0));
         vec3 E = vec3(1.0, terrB.w, 1.0);
-        float hm = terrHeight(d, lod), h = hm * terrC.w;
+        float hm = terrHeight(d, lod);
+        if (terrA.w < 1.5) hm = earthDetailHeight(d, sp, hm);
+        float h = hm * terrC.w;
         fragAlt = hm * 0.001;
         pos = E * (c * cm1 + t * st) + normalize(E * d) * h;
         nrm = vec3(d.x, d.y / terrB.w, d.z);
@@ -150,44 +259,7 @@ float fw;      // 1 画素の大きさ（単位球の長さ）
 float g_ray;   // 新しいクレーターの明るさ（光条）
 float g_liquid = 0.0;   // 液体の湖・海の割合（タイタン）
 
-// ---- 整数ハッシュ（座標が大きくても劣化しないので、地表付近の細かいオクターブでも使える）
-uint hashu(ivec3 c) {
-    uvec3 v = uvec3(c) * uvec3(1597334673u, 3812015801u, 2798796415u);
-    uint n = (v.x ^ v.y ^ v.z) * 1597334673u;
-    n ^= n >> 15; n *= 2246822519u; n ^= n >> 13; n *= 3266489917u; n ^= n >> 16;
-    return n;
-}
-float hash1(ivec3 c) { return float(hashu(c) >> 8u) * (1.0 / 16777216.0); }
-
-float vnoise(vec3 x) {
-    vec3 fl = floor(x);
-    ivec3 i = ivec3(fl);
-    vec3 f = x - fl;
-    vec3 u = f * f * (3.0 - 2.0 * f);
-    float a = hash1(i), b = hash1(i + ivec3(1, 0, 0)), c = hash1(i + ivec3(0, 1, 0)), d = hash1(i + ivec3(1, 1, 0));
-    float e = hash1(i + ivec3(0, 0, 1)), g = hash1(i + ivec3(1, 0, 1)), h = hash1(i + ivec3(0, 1, 1)), k = hash1(i + ivec3(1, 1, 1));
-    return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), mix(mix(e, g, u.x), mix(h, k, u.x), u.y), u.z);
-}
-
-// 値ノイズと解析的な勾配 (x: 値 0..1, yzw: 勾配)
-vec4 noised(vec3 x) {
-    vec3 fl = floor(x);
-    ivec3 i = ivec3(fl);
-    vec3 w = x - fl;
-    vec3 u = w * w * (3.0 - 2.0 * w);
-    vec3 du = 6.0 * w * (1.0 - w);
-    float a = hash1(i), b = hash1(i + ivec3(1, 0, 0)), c = hash1(i + ivec3(0, 1, 0)), d = hash1(i + ivec3(1, 1, 0));
-    float e = hash1(i + ivec3(0, 0, 1)), f = hash1(i + ivec3(1, 0, 1)), g = hash1(i + ivec3(0, 1, 1)), h = hash1(i + ivec3(1, 1, 1));
-    float k1 = b - a, k2 = c - a, k3 = e - a;
-    float k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f;
-    float k7 = -a + b + c - d + e - f - g + h;
-    float v = a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
-    vec3 dv = du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z,
-                        k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x,
-                        k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y);
-    return vec4(v, dv);
-}
-
+)" NOISE_GLSL EARTH_DETAIL_GLSL R"(
 // 周波数 f の模様の重み: 画素より細かくなったら消す
 float lodW(float f) { return 1.0 - smoothstep(0.15, 0.5, f * fw); }
 
@@ -471,6 +543,23 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
     vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
+    // カメラの周り（1 分角の窓の中）: 細かい標高の勾配。傾き s は細かい山肌の振幅に使う
+    vec2 dl;
+    float dw = detWeight(uv, dl), s = 0.0;
+    if (dw > 0.0) {
+        vec2 k = detB.xy / detA.z, gx = dx * k, gy = dy * k;
+        vec2 sd = max(1.0 / detB.xy, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
+        vec2 q = (dl + 0.5) / detA.z, sq = sd * k;
+        float dE = detDecode(textureGrad(texture4, q + vec2(sq.x, 0.0), gx, gy).r);
+        float dW = detDecode(textureGrad(texture4, q - vec2(sq.x, 0.0), gx, gy).r);
+        float dN = detDecode(textureGrad(texture4, q - vec2(0.0, sq.y), gx, gy).r);
+        float dS = detDecode(textureGrad(texture4, q + vec2(0.0, sq.y), gx, gy).r);
+        float dm = detDecode(textureGrad(texture4, q, gx, gy).r);
+        vec2 sl = vec2((dE - dW) / (2.0 * sd.x) / (2.0 * PI * max(cos(lat), 0.05)), (dN - dS) / (2.0 * sd.y) / PI) / R;
+        s = length(sl);
+        grad = mix(grad, (east * sl.x + north * sl.y) * EXAG, dw);
+        if (hm > 0.0 || dm > 0.0) hm = mix(hm, dm, dw);
+    }
 
     // 海岸線: ぼかしたマスクの 0.5 を境にし、テクセルより細かい所はノイズで入り組ませる（マスクが 0 か 1 の所、
     // つまり海岸から離れた所はノイズで境を越えないので求めない）。以下の模様も、掛ける重みが 0 の所では求めない
@@ -503,7 +592,9 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     // 起伏: データの勾配 + テクセルより細かい山肌（標高が高いほど険しい）
     float rough = (0.03 + 0.3 * clamp(hm / 4000.0, 0.0, 1.0)) / 1400.0;
     vec4 h = vec4(hm / R * EXAG, grad) * land;
-    if (land > 0.0) h += fbmD(p, 700.0, 18, 0.5, o) * (rough * land);
+    // 窓の中は 1 分角より細かい山肌（地形の格子の高さと同じ。陰影は画素まで細かく）
+    if (land > 0.0) h += mix(dw < 1.0 ? fbmD(p, 700.0, 18, 0.5, o) * rough : vec4(0.0),
+                             dw > 0.0 ? earthBumps(p, s, max(hm, 0.0), fw, 16, o) : vec4(0.0), dw) * land;
     if (land < 1.0) h += fbmD(p, 20000.0, 14, 0.55, o + 31.0) * (1.5e-6 * (1.0 - land));
     return h;
 }

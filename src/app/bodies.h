@@ -73,6 +73,82 @@ struct Terrain {
     }
 };
 static std::vector<Terrain> g_terrain;
+
+// 地球の陸の細かい標高（assets/earth_detail.bin。1 分角 = 21600x10800 の高さコードを 600 画素四方の区画の PNG で持つ）。
+// カメラの真下を中心にした N 画素四方の窓だけを展開して GPU に載せ（texture4）、窓の中では全球の標高の代わりに使う。
+// 窓の縁 MARGIN 画素で全球の標高へなじませる。シェーダ（shaders.h の EARTH_DETAIL_GLSL）と同じ計算
+struct EarthDetail {
+    static const int N = 2048, MARGIN = 64;
+    int cols = 0, rows = 0, tile = 0, W = 0, H = 0;   // 区画の数・1 区画の画素数・全球の画素数
+    std::vector<unsigned> pos, len;                   // 区画の PNG の位置と大きさ（0 は陸の無い区画）
+    const unsigned char* file = nullptr;
+    bool active = false;                              // 窓あり
+    int x0 = 0, y0 = 0;                               // 窓の左上（全球の画素）
+    std::vector<unsigned char> win;                   // 窓の高さコード（N x N）
+    // 窓の中の位置 l（画素）と重み（窓の外は 0）。uv は全球の画像の座標
+    double Weight(double u, double v, double* lx, double* ly) const {
+        if (!active) return 0;
+        double x = u * W - 0.5 - x0, y = v * H - 0.5 - y0;
+        x -= W * std::floor(x / W + 0.5);
+        *lx = x, *ly = y;
+        double e = std::min(std::min(x, N - 1 - x), std::min(y, N - 1 - y));
+        return std::max(0.0, std::min(1.0, e / MARGIN));
+    }
+    static double Decode(int c) {
+        double s = (c - 128.0) / 127.0;
+        return c >= 128 ? s * s * 8900.0 : 0.0;
+    }
+    // 窓の画素 (lx, ly) の標高 m（4 画素の双線形）
+    double Height(double lx, double ly) const {
+        int i = (int)std::floor(lx), j = (int)std::floor(ly);
+        double fx = lx - i, fy = ly - j;
+        auto at = [&](int a, int b) {
+            a = std::max(0, std::min(N - 1, a));
+            b = std::max(0, std::min(N - 1, b));
+            return Decode(win[(size_t)b * N + a]);
+        };
+        return (at(i, j) * (1 - fx) + at(i + 1, j) * fx) * (1 - fy) + (at(i, j + 1) * (1 - fx) + at(i + 1, j + 1) * fx) * fy;
+    }
+    // 標高の傾き（tan。両隣の画素の差。lat は緯度 rad）
+    double Slope(double lx, double ly, double lat) const {
+        const double R = 6378137.0;
+        double dy = PI * R / H, dx = 2 * PI * R / W * std::max(std::cos(lat), 0.05);
+        double gx = (Height(lx + 1, ly) - Height(lx - 1, ly)) / (2 * dx), gy = (Height(lx, ly + 1) - Height(lx, ly - 1)) / (2 * dy);
+        return std::sqrt(gx * gx + gy * gy);
+    }
+};
+static EarthDetail g_detail;
+
+// シェーダの値ノイズ（noised）と同じ計算（float で同じ順に）
+static unsigned NoiseHash(int x, int y, int z) {
+    unsigned n = ((unsigned)x * 1597334673u ^ (unsigned)y * 3812015801u ^ (unsigned)z * 2798796415u) * 1597334673u;
+    n ^= n >> 15; n *= 2246822519u; n ^= n >> 13; n *= 3266489917u; n ^= n >> 16;
+    return n;
+}
+static float NoiseValue(float x, float y, float z) {
+    float fx = std::floor(x), fy = std::floor(y), fz = std::floor(z);
+    int i = (int)fx, j = (int)fy, k = (int)fz;
+    float wx = x - fx, wy = y - fy, wz = z - fz;
+    float ux = wx * wx * (3 - 2 * wx), uy = wy * wy * (3 - 2 * wy), uz = wz * wz * (3 - 2 * wz);
+    auto h = [&](int a, int b, int c) { return (float)(NoiseHash(i + a, j + b, k + c) >> 8u) * (1.0f / 16777216.0f); };
+    auto mix = [](float a, float b, float t) { return a + (b - a) * t; };
+    return mix(mix(mix(h(0, 0, 0), h(1, 0, 0), ux), mix(h(0, 1, 0), h(1, 1, 0), ux), uy),
+               mix(mix(h(0, 0, 1), h(1, 0, 1), ux), mix(h(0, 1, 1), h(1, 1, 1), ux), uy), uz);
+}
+// 地球の 1 分角より細かい山肌の高さ m（シェーダの earthBumps の値。オクターブはすべて）。p は単位球の点、s は傾き、h は標高 m
+static double EarthBumpsM(V3 p, double s, double h) {
+    const float seed = (float)(B_EARTH * 7.31);
+    float a = (float)((0.003 + 0.6 * std::min(s, 1.0)) / 3200.0 * std::max(0.0, std::min(1.0, h / 50.0))), f = 3200.0f, r = 0;
+    for (int i = 0; i < 7 && a > 0; i++) {
+        float o = (float)i * 7.13f;
+        float n = NoiseValue((float)p.x * f + seed + o, (float)p.y * f + seed * 1.37f + o, (float)p.z * f + seed * 0.71f + o);
+        r += a * (n * 2 - 1);
+        a *= 0.5f;
+        f *= 2.03f;
+    }
+    return r * 6378137.0;
+}
+
 // 厚い雲・もやに覆われた天体（金星・タイタン）: 外からは雲（もや）の層を描き、その上端より下に降りると地表と一様な空を
 // 描く。値はどれも推定（目安）を含む:
 //  - 層の上端・下端: 金星は雲の層 70 km・48 km。タイタンは外から不透明に見えるもやの上端 150 km、地表が見え始める 50 km
@@ -116,7 +192,13 @@ static double TerrainKm(const Body& b, V3 o) {
         j = std::max(0, std::min(T.h - 1, j));
         return T.Km(j * T.w + i);
     };
-    return (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy;
+    double km = (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy;
+    double lx, ly, w;
+    if (T.earth && (w = g_detail.Weight(lon / (2 * PI) + 0.5, 0.5 - lat / PI, &lx, &ly)) > 0) {   // 地球のカメラの周り
+        double hb = km * 1000 * (1 - w) + g_detail.Height(lx, ly) * w;
+        km = std::max(0.0, hb + EarthBumpsM(p, g_detail.Slope(lx, ly, lat), hb) * w) / 1000;
+    }
+    return km;
 }
 
 // 天体固定座標 f（x: 経度 0°, y: 東経 90°, z: 北極）の点を、楕円体の上 15 km より下では地表の高さの分だけ持ち上げる

@@ -1507,6 +1507,7 @@ static void RefreshDeferredAssets(App& app) {
     if (app.maps.empty() && MapsBin().data) LoadBodyMaps(app);
     if (!app.earthMonths.id && EarthMonthsJpg().data) app.earthMonths = LoadEmbeddedTexture(EarthMonthsJpg(), ".jpg");
     if (!app.earthClouds.id && EarthCloudsJpg().data) app.earthClouds = LoadEmbeddedTexture(EarthCloudsJpg(), ".jpg");
+    if (!g_detail.file && app.earthTex) LoadEarthDetail(app);
     if (!app.moonTex && MoonColorJpg().data && MoonDataPng().data) LoadMoonTextures(app);
 }
 

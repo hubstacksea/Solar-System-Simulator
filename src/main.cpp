@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
     if (opt.checkAssets) {   // データの大きさを出し、足りないものがあれば 1 で終わる
         struct { const char* name; EmbeddedFile f; } files[] = {
             {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
-            {"earth_clouds.jpg", EarthCloudsJpg()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
+            {"earth_clouds.jpg", EarthCloudsJpg()}, {"earth_detail.bin", EarthDetailBin()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
             {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"landers.bin", LandersBin()}, {"sky.txt", SkyTxt()},
             {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},
             {"saturn_rings.png", SaturnRingsPng()}, {"milkyway.jpg", MilkyWayJpg()}};
@@ -428,6 +428,8 @@ int main(int argc, char** argv) {
     app.locTerrD = GetShaderLocation(app.shader, "terrD");
     app.locTerrRing = GetShaderLocation(app.shader, "terrRing");
     app.locTerrStep = GetShaderLocation(app.shader, "terrStep");
+    app.locDetA = GetShaderLocation(app.shader, "detA");
+    app.locDetB = GetShaderLocation(app.shader, "detB");
     TerrainOff(app);
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
@@ -440,6 +442,7 @@ int main(int argc, char** argv) {
         app.ringMesh.push_back(GenRing((float)(rs.inner / R), (float)(rs.outer / R), 720));
     }
     app.shader.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(app.shader, "texture3");   // DrawMesh が texture3 に割り当てる
+    app.shader.locs[SHADER_LOC_MAP_OCCLUSION] = GetShaderLocation(app.shader, "texture4");   // 同じく texture4（地球の細かい標高）
     LoadBodyMaps(app);
     app.locMapInfo = GetShaderLocation(app.shader, "mapInfo");
     app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");

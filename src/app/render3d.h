@@ -368,10 +368,100 @@ static void SetRingInfo(const App& app, const RingSet& rs) {
     SetShaderValue(app.shader, app.locRingInfo, info, SHADER_UNIFORM_VEC4);
 }
 
-// 地形の格子を使わない状態に戻す（同じシェーダで描くほかの天体・環のため）
+// 地球の細かい標高（g_detail）: 区画の索引を読み、窓のテクスチャを作る（ブラウザ版はファイルが届いてから）
+static void LoadEarthDetail(App& app) {
+    EmbeddedFile f = EarthDetailBin();
+    EarthDetail& D = g_detail;
+    if (D.file || !f.data || f.size < 16 || std::memcmp(f.data, "EDT1", 4) != 0) return;
+    std::memcpy(&D.cols, f.data + 4, 4);
+    std::memcpy(&D.rows, f.data + 8, 4);
+    std::memcpy(&D.tile, f.data + 12, 4);
+    int n = D.cols * D.rows;
+    if (n <= 0 || D.tile <= 0 || f.size < 16 + 8 * (size_t)n) return;
+    D.pos.resize(n);
+    D.len.resize(n);
+    for (int k = 0; k < n; k++) {
+        std::memcpy(&D.pos[k], f.data + 16 + 8 * k, 4);
+        std::memcpy(&D.len[k], f.data + 20 + 8 * k, 4);
+        if ((size_t)D.pos[k] + D.len[k] > f.size) return;
+    }
+    D.W = D.cols * D.tile;
+    D.H = D.rows * D.tile;
+    D.file = f.data;
+    D.win.assign((size_t)EarthDetail::N * EarthDetail::N, 127);
+    Image img = {D.win.data(), EarthDetail::N, EarthDetail::N, 1, PIXELFORMAT_UNCOMPRESSED_GRAYSCALE};
+    app.earthDetail = LoadTextureFromImage(img);
+    GenTextureMipmaps(&app.earthDetail);
+    SetTextureFilter(app.earthDetail, TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(app.earthDetail, TEXTURE_WRAP_CLAMP);
+    if (app.B[B_EARTH].terrain >= 0) {   // 山頂は全球の標高より高い（細かい山肌の分も見込む）
+        Terrain& T = g_terrain[app.B[B_EARTH].terrain];
+        T.hi = std::max(T.hi, 9.4);
+        app.B[B_EARTH].outer = std::max(app.B[B_EARTH].outer, app.B[B_EARTH].d.radius + T.hi);
+    }
+}
+
+// 窓をカメラの真下（緯度 lat・経度 lon rad）に合わせる。中心から窓の 1/4 以上ずれたら区画から組み直して GPU に載せる
+static void UpdateEarthDetail(App& app, double lat, double lon) {
+    EarthDetail& D = g_detail;
+    const int N = EarthDetail::N;
+    if (!D.file || !app.earthDetail.id) return;
+    int x0 = (int)std::lround((lon / (2 * PI) + 0.5) * D.W - 0.5 - N / 2);
+    int y0 = std::max(0, std::min(D.H - N, (int)std::lround((0.5 - lat / PI) * D.H - 0.5 - N / 2)));
+    x0 = ((x0 % D.W) + D.W) % D.W;
+    int ddx = x0 - D.x0;
+    ddx -= D.W * (int)std::floor((double)ddx / D.W + 0.5);
+    if (D.active && std::abs(ddx) <= N / 4 && std::abs(y0 - D.y0) <= N / 4) return;
+    // 区画の PNG を展開したもの（最近使ったものだけ残す）
+    static std::map<int, std::vector<unsigned char>> cache;
+    static std::map<int, unsigned> used;
+    static unsigned stamp = 0;
+    stamp++;
+    auto tileData = [&](int k) -> const unsigned char* {
+        if (!D.len[k]) return nullptr;
+        used[k] = stamp;
+        auto it = cache.find(k);
+        if (it == cache.end()) {
+            Image img = LoadImageFromMemory(".png", D.file + D.pos[k], (int)D.len[k]);
+            std::vector<unsigned char> v;
+            if (img.data && img.width == D.tile && img.height == D.tile && img.format == PIXELFORMAT_UNCOMPRESSED_GRAYSCALE)
+                v.assign((unsigned char*)img.data, (unsigned char*)img.data + (size_t)D.tile * D.tile);
+            UnloadImage(img);
+            it = cache.emplace(k, std::move(v)).first;
+        }
+        return it->second.empty() ? nullptr : it->second.data();
+    };
+    for (int j = 0; j < N; j++) {
+        int gy = y0 + j, tr = gy / D.tile, py = gy % D.tile;
+        unsigned char* row = &D.win[(size_t)j * N];
+        for (int i = 0; i < N;) {
+            int gx = (x0 + i) % D.W, tc = gx / D.tile, px = gx % D.tile;
+            int run = std::min(N - i, D.tile - px);
+            const unsigned char* t = tileData(tr * D.cols + tc);
+            if (t) std::memcpy(row + i, t + (size_t)py * D.tile + px, run);
+            else std::memset(row + i, 127, run);   // 陸の無い区画は海面
+            i += run;
+        }
+    }
+    for (auto it = used.begin(); it != used.end();) {   // 今の窓で使わなかった区画は、多ければ捨てる
+        if (cache.size() > 48 && it->second != stamp) {
+            cache.erase(it->first);
+            it = used.erase(it);
+        } else ++it;
+    }
+    D.x0 = x0;
+    D.y0 = y0;
+    D.active = true;
+    UpdateTexture(app.earthDetail, D.win.data());
+    GenTextureMipmaps(&app.earthDetail);
+}
+
+// 地形の格子・地球の細かい標高を使わない状態に戻す（同じシェーダで描くほかの天体・環のため）
 static void TerrainOff(App& app) {
     float a[4] = {0, 0, 0, 0};
     SetShaderValue(app.shader, app.locTerrA, a, SHADER_UNIFORM_VEC4);
+    SetShaderValue(app.shader, app.locDetB, a, SHADER_UNIFORM_VEC4);
+    if (app.mat.maps) app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = Texture2D{};
 }
 
 // 標高データのある天体（地球・月・火星）の地表近く: カメラの真下を中心に、近くほど細かい格子を地平線の先まで敷き、
@@ -399,7 +489,11 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     // 間の山を拾ったり外したりして遠くの起伏が波打つ）。使わなかった輪は外の端に重ねる（面積 0 で塗らない）。画面の縦の
     // 間隔はカメラから見た角度 α（半径 a の球の上の点）の変化で見る。真下の近くで 1 周の頂点が画面で詰まる輪も、同じ
     // 間隔まで間引く
-    const double TERRAIN_PX = 32, texel = PI / texH * 0.5;
+    // 地球: 細かい標高の窓をカメラの真下に合わせる（輪の間隔もその 1 画素に合わせる）
+    bool det = T.earth && g_detail.file;
+    if (det) UpdateEarthDetail(app, std::asin(std::max(-1.0, std::min(1.0, c.y))), std::atan2(-c.z, c.x));
+    det = det && g_detail.active;
+    const double TERRAIN_PX = 32, texel = PI / (det ? g_detail.H : texH) * 0.5;
     static float ring[4 * 61], step[4 * 61];
     {
         const int NS = 2048;
@@ -446,6 +540,13 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     SetShaderValue(app.shader, app.locTerrD, td, SHADER_UNIFORM_VEC4);
     SetShaderValueV(app.shader, app.locTerrRing, ring, SHADER_UNIFORM_VEC4, 61);
     SetShaderValueV(app.shader, app.locTerrStep, step, SHADER_UNIFORM_VEC4, 61);
+    if (det) {
+        float da[4] = {(float)g_detail.x0, (float)g_detail.y0, (float)EarthDetail::N, (float)EarthDetail::MARGIN};
+        float db[4] = {(float)g_detail.W, (float)g_detail.H, 1, 0};
+        SetShaderValue(app.shader, app.locDetA, da, SHADER_UNIFORM_VEC4);
+        SetShaderValue(app.shader, app.locDetB, db, SHADER_UNIFORM_VEC4);
+        app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = app.earthDetail;
+    }
     // 原点は真下の楕円体の上の点（カメラからの位置を倍精度で求める）、軸は本体の座標系、長さは赤道半径を 1 とする
     V3 o = rel + (X * c.x + b.pole * (c.y * e) + Z * c.z) * a;
     Matrix m = BodyMatrix(b, o * s, a * s, a * s, b.spin);
@@ -463,6 +564,7 @@ static void LoadEarthTextures(App& app) {
         TraceLog(LOG_WARNING, "Earth textures unavailable, using procedural surface");
         return;
     }
+    LoadEarthDetail(app);
 }
 
 // 木星の大赤斑の経度（体系 II、西経 deg、360° を超えても続けて数える）。Project Pluto がまとめた観測値

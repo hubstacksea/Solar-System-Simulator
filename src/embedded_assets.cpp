@@ -29,6 +29,7 @@ INCBIN(g_earth_color_jpg, "earth_color.jpg")
 INCBIN(g_earth_data_png, "earth_data.png")
 INCBIN(g_earth_months_jpg, "earth_months.jpg")
 INCBIN(g_earth_clouds_jpg, "earth_clouds.jpg")
+INCBIN(g_earth_detail_bin, "earth_detail.bin")
 INCBIN(g_moon_color_jpg, "moon_color.jpg")
 INCBIN(g_moon_data_png, "moon_data.png")
 INCBIN(g_icon_png, "icon.png")
@@ -57,6 +58,7 @@ EmbeddedFile EarthColorJpg() { return {g_earth_color_jpg, (size_t)(g_earth_color
 EmbeddedFile EarthDataPng() { return {g_earth_data_png, (size_t)(g_earth_data_png_end - g_earth_data_png)}; }
 EmbeddedFile EarthMonthsJpg() { return {g_earth_months_jpg, (size_t)(g_earth_months_jpg_end - g_earth_months_jpg)}; }
 EmbeddedFile EarthCloudsJpg() { return {g_earth_clouds_jpg, (size_t)(g_earth_clouds_jpg_end - g_earth_clouds_jpg)}; }
+EmbeddedFile EarthDetailBin() { return {g_earth_detail_bin, (size_t)(g_earth_detail_bin_end - g_earth_detail_bin)}; }
 EmbeddedFile MoonColorJpg() { return {g_moon_color_jpg, (size_t)(g_moon_color_jpg_end - g_moon_color_jpg)}; }
 EmbeddedFile MoonDataPng() { return {g_moon_data_png, (size_t)(g_moon_data_png_end - g_moon_data_png)}; }
 EmbeddedFile IconPng() { return {g_icon_png, (size_t)(g_icon_png_end - g_icon_png)}; }

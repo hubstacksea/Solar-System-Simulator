@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.48.0 (2026-11-18)
+
+- Mountains on Earth now stand out as 3D relief near the surface. Land elevations are kept at the 1 arc-minute resolution of NOAA ETOPO 2022 (about 1.85 km, up from about 10 km; `assets/earth_detail.bin`, about 17 MB, made by `tools/make_earth_detail.py`), and only an area about 3,800 km across centered under the camera is unpacked and used for the terrain and its shading. In the data, Mount Fuji rises from about 1,730 m to about 3,360 m and Everest from about 6,560 m to about 8,210 m, so their shapes can be seen from the ground and from low altitude. The shading of mountain ranges seen from space is finer too
+- Slopes finer than Earth's 1 arc-minute data are added procedurally according to the steepness of the terrain (rugged on steep mountains, gentle on plains; they do not match the real terrain). The terrain shape, the shading and the altitude and collision calculations all use the same values
+- In the browser version, Earth's fine elevations are loaded in the background after startup (the amount needed to start is unchanged)
+
 ## 2.47.0 (2026-11-17)
 
 - The asset tools (Earth, Earth's seasons and clouds, the Moon, the Milky Way, and the planet and moon maps) gained `--hq` to make a high-resolution set: 8192×4096 for the Earth and Moon colors and the Mercury and Mars maps, 4096×2048 for the Moon's elevations, MOLA at 16 pixels per degree for Mars, and so on (never finer than the source data). Maps larger than the 4096 pixels the USGS map service returns at once are fetched in tiles. The CMake option `EMBED_ASSET_DIR` builds with another folder of embedded data, such as the high-resolution set. The released builds keep the current resolution (a high-resolution build is about 178 MB with about 1.2 GB of textures)

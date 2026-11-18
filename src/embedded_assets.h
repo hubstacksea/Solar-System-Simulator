@@ -13,6 +13,7 @@ EmbeddedFile EarthColorJpg();  // 地球の地表の色 (NASA Blue Marble)
 EmbeddedFile EarthDataPng();   // R: 標高・水深, G: 夜景, B: 海陸マスク (NOAA ETOPO 2022 / NASA Black Marble)
 EmbeddedFile EarthMonthsJpg();  // 地球の 12 か月の地表の色 (NASA Blue Marble NG)。形式は tools/make_earth_season_assets.py
 EmbeddedFile EarthCloudsJpg();  // 地球の雲 (NASA Blue Marble)
+EmbeddedFile EarthDetailBin();  // 地球の陸の細かい標高 1 分角 (NOAA ETOPO 2022)。形式は tools/make_earth_detail.py
 EmbeddedFile MoonColorJpg();   // 月の地表の色 (NASA SVS / LROC)
 EmbeddedFile MoonDataPng();    // 月の標高 16 bit: グレー=上位, アルファ=下位 (NASA SVS / LOLA)
 EmbeddedFile IconPng();         // ウィンドウのアイコン (256px)
