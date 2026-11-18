@@ -65,6 +65,22 @@ struct Terrain {
     bool wide = false;               // 上位・下位バイトが 1 m 単位で -32768 m から（凹凸の大きいベスタ・カロン）
     std::vector<unsigned short> v;   // 画像の値
     double lo = 0, hi = 0;           // 最低・最高 km
+    // 標高より細かい手続きの起伏（シェーダの地形の格子と同じ）: 1 月, 2 地図のある天体（0 はなし。地球は別）
+    int body = -1, bumps = 0, style = 0, aw = 0, ah = 0, an = 0;
+    bool pattern = false, liquid = false;   // 地図が模様だけ（明暗は手続き）、撮影範囲の画像のアルファが液体の湖・海
+    std::vector<unsigned char> aux;         // 月: 地表の色 (RGB)。地図のある天体: 撮影された範囲 (R) と液体 (A)。an は 1 画素のバイト数
+    // aux の (u, v) の成分 c の値 0..1（シェーダの textureLod(…, 0) と同じ双線形）
+    float Aux(double u, double vv, int c) const {
+        double x = u * aw - 0.5, y = vv * ah - 0.5;
+        int x0 = (int)std::floor(x), y0 = (int)std::floor(y);
+        double fx = x - x0, fy = y - y0;
+        auto at = [&](int i, int j) {
+            i = ((i % aw) + aw) % aw;
+            j = std::max(0, std::min(ah - 1, j));
+            return aux[((size_t)j * aw + i) * an + c] / 255.0;
+        };
+        return (float)((at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy);
+    }
     double Km(int i) const {
         double c = v[i];
         if (!earth) return wide ? (c - 32768.0) / 1000.0 : (c * 0.5 - 10000.0) / 1000.0;
@@ -74,17 +90,18 @@ struct Terrain {
 };
 static std::vector<Terrain> g_terrain;
 
-// 地球の陸の細かい標高（assets/earth_detail.bin。1 分角 = 21600x10800 の高さコードを 600 画素四方の区画の PNG で持つ）。
-// カメラの真下を中心にした N 画素四方の窓だけを展開して GPU に載せ（texture4）、窓の中では全球の標高の代わりに使う。
-// 窓の縁 MARGIN 画素で全球の標高へなじませる。シェーダ（shaders.h の EARTH_DETAIL_GLSL）と同じ計算
-struct EarthDetail {
+// 細かい標高（地球 assets/earth_detail.bin 1 分角・月 moon_detail.bin 16 ピクセル/度・火星 mars_detail.bin 16 ピクセル/度）。
+// 区画に分けて持ち、カメラの真下を中心にした N 画素四方の窓だけを展開して GPU に載せ（texture4）、窓の中では全球の標高の
+// 代わりに使う。窓の縁 MARGIN 画素で全球の標高へなじませる。シェーダ（shaders.h の DETAIL_GLSL）と同じ計算
+struct DetailMap {
     static const int N = 2048, MARGIN = 64;
+    int fmt = 0;                                      // 1: 地球の高さコード（8 bit）, 2: 0.5 m 単位で −10000 m から（16 bit）
     int cols = 0, rows = 0, tile = 0, W = 0, H = 0;   // 区画の数・1 区画の画素数・全球の画素数
-    std::vector<unsigned> pos, len;                   // 区画の PNG の位置と大きさ（0 は陸の無い区画）
+    std::vector<unsigned> pos, len;                   // 区画のデータの位置と大きさ（0 は陸の無い区画。地球だけ）
     const unsigned char* file = nullptr;
     bool active = false;                              // 窓あり
     int x0 = 0, y0 = 0;                               // 窓の左上（全球の画素）
-    std::vector<unsigned char> win;                   // 窓の高さコード（N x N）
+    std::vector<unsigned short> win;                  // 窓の値（N x N）
     // 窓の中の位置 l（画素）と重み（窓の外は 0）。uv は全球の画像の座標
     double Weight(double u, double v, double* lx, double* ly) const {
         if (!active) return 0;
@@ -94,7 +111,8 @@ struct EarthDetail {
         double e = std::min(std::min(x, N - 1 - x), std::min(y, N - 1 - y));
         return std::max(0.0, std::min(1.0, e / MARGIN));
     }
-    static double Decode(int c) {
+    double Decode(int c) const {
+        if (fmt == 2) return c * 0.5 - 10000.0;
         double s = (c - 128.0) / 127.0;
         return c >= 128 ? s * s * 8900.0 : 0.0;
     }
@@ -109,40 +127,131 @@ struct EarthDetail {
         };
         return (at(i, j) * (1 - fx) + at(i + 1, j) * fx) * (1 - fy) + (at(i, j + 1) * (1 - fx) + at(i + 1, j + 1) * fx) * fy;
     }
-    // 標高の傾き（tan。両隣の画素の差。lat は緯度 rad）
-    double Slope(double lx, double ly, double lat) const {
-        const double R = 6378137.0;
+    // 標高の傾き（tan。両隣の画素の差。lat は緯度 rad、R は半径 m）
+    double Slope(double lx, double ly, double lat, double R) const {
         double dy = PI * R / H, dx = 2 * PI * R / W * std::max(std::cos(lat), 0.05);
         double gx = (Height(lx + 1, ly) - Height(lx - 1, ly)) / (2 * dx), gy = (Height(lx, ly + 1) - Height(lx, ly - 1)) / (2 * dy);
         return std::sqrt(gx * gx + gy * gy);
     }
 };
-static EarthDetail g_detail;
+static DetailMap g_detail[3];   // 地球・月・火星
+static int DetailIndex(int body) { return body == B_EARTH ? 0 : body == B_MOON ? 1 : body == B_MARS ? 2 : -1; }
 
-// シェーダの値ノイズ（noised）と同じ計算（float で同じ順に）
+// ---- シェーダの手続きの起伏（NOISE_GLSL・BUMPS_GLSL）と同じ計算（float で同じ順に）。地形の格子の高さと合わせ、
+// 高度・衝突に使う。CPU では頂点の間隔の代わりに一番細かい間隔 BUMP_MIN_M（m）までのオクターブをすべて足す
+static const double BUMP_MIN_M = 20.0;
 static unsigned NoiseHash(int x, int y, int z) {
     unsigned n = ((unsigned)x * 1597334673u ^ (unsigned)y * 3812015801u ^ (unsigned)z * 2798796415u) * 1597334673u;
     n ^= n >> 15; n *= 2246822519u; n ^= n >> 13; n *= 3266489917u; n ^= n >> 16;
     return n;
 }
-static float NoiseValue(float x, float y, float z) {
-    float fx = std::floor(x), fy = std::floor(y), fz = std::floor(z);
-    int i = (int)fx, j = (int)fy, k = (int)fz;
-    float wx = x - fx, wy = y - fy, wz = z - fz;
-    float ux = wx * wx * (3 - 2 * wx), uy = wy * wy * (3 - 2 * wy), uz = wz * wz * (3 - 2 * wz);
-    auto h = [&](int a, int b, int c) { return (float)(NoiseHash(i + a, j + b, k + c) >> 8u) * (1.0f / 16777216.0f); };
-    auto mix = [](float a, float b, float t) { return a + (b - a) * t; };
-    return mix(mix(mix(h(0, 0, 0), h(1, 0, 0), ux), mix(h(0, 1, 0), h(1, 1, 0), ux), uy),
-               mix(mix(h(0, 0, 1), h(1, 0, 1), ux), mix(h(0, 1, 1), h(1, 1, 1), ux), uy), uz);
+static float NoiseHash1(int x, int y, int z) { return (float)(NoiseHash(x, y, z) >> 8u) * (1.0f / 16777216.0f); }
+struct F3 {
+    float x, y, z;
+    F3 operator+(const F3& o) const { return {x + o.x, y + o.y, z + o.z}; }
+    F3 operator+(float s) const { return {x + s, y + s, z + s}; }
+    F3 operator*(float s) const { return {x * s, y * s, z * s}; }
+};
+static float Mixf(float a, float b, float t) { return a + (b - a) * t; }
+static float Smoothf(float e0, float e1, float x) {
+    float t = std::max(0.0f, std::min(1.0f, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
 }
-// 地球の 1 分角より細かい山肌の高さ m（シェーダの earthBumps の値。オクターブはすべて）。p は単位球の点、s は傾き、h は標高 m
+static float NoiseValue(F3 q) {
+    float fx = std::floor(q.x), fy = std::floor(q.y), fz = std::floor(q.z);
+    int i = (int)fx, j = (int)fy, k = (int)fz;
+    float wx = q.x - fx, wy = q.y - fy, wz = q.z - fz;
+    float ux = wx * wx * (3 - 2 * wx), uy = wy * wy * (3 - 2 * wy), uz = wz * wz * (3 - 2 * wz);
+    auto h = [&](int a, int b, int c) { return NoiseHash1(i + a, j + b, k + c); };
+    return Mixf(Mixf(Mixf(h(0, 0, 0), h(1, 0, 0), ux), Mixf(h(0, 1, 0), h(1, 1, 0), ux), uy),
+                Mixf(Mixf(h(0, 0, 1), h(1, 0, 1), ux), Mixf(h(0, 1, 1), h(1, 1, 1), ux), uy), uz);
+}
+// 周波数 f の重み: sp より細かいものと、標高データにある fLo より粗いものは 0（bandW）
+static float BandW(float f, float sp, float fLo) { return (1 - Smoothf(0.15f, 0.5f, f * sp)) * Smoothf(0.5f, 1.0f, f / fLo); }
+// fbm（オクターブはすべて。fbm0）
+static float Fbm0(F3 p, float f, int oct, float gain, F3 o) {
+    float s = 0, a = 1;
+    for (int i = 0; i < oct; i++) {
+        s += a * (NoiseValue(p * f + o + (float)i * 7.13f) * 2 - 1);
+        a *= gain; f *= 2.03f;
+    }
+    return s;
+}
+// fbm の周波数 fLo より細かい部分（fbmBand）
+static float FbmBand(F3 p, float f, int oct, float gain, F3 o, float sp, float fLo) {
+    float s = 0, a = 1;
+    for (int i = 0; i < oct && f * sp < 0.5f; i++) {
+        float w = BandW(f, sp, fLo);
+        if (w > 0) s += a * w * (NoiseValue(p * f + o + (float)i * 7.13f) * 2 - 1);
+        a *= gain; f *= 2.03f;
+    }
+    return s;
+}
+// クレーターの層の周波数 fLo より細かい部分の高さ（cratersBand）
+static float CratersBand(F3 p, float density, float F0, F3 salt, float sp, float fLo) {
+    float s = 0, F = F0;
+    for (int i = 0; i < 16 && F * 1.7f * sp < 0.5f; i++, F *= 2.2f) {
+        F3 sl = salt + (float)i * 31.7f, q = p * F + sl;
+        float fx = std::floor(q.x), fy = std::floor(q.y), fz = std::floor(q.z);
+        int cx = (int)fx, cy = (int)fy, cz = (int)fz;
+        if (NoiseHash1(cx + 5, cy + 71, cz + 29) > density) continue;
+        float sz = NoiseHash1(cx + 41, cy + 13, cz + 97), r = Mixf(0.08f, 0.29f, sz * sz);
+        float ctr[3] = {r * 1.7f + NoiseHash1(cx + 1, cy + 2, cz + 3) * (1 - 3.4f * r), r * 1.7f + NoiseHash1(cx + 4, cy + 5, cz + 6) * (1 - 3.4f * r),
+                        r * 1.7f + NoiseHash1(cx + 7, cy + 8, cz + 9) * (1 - 3.4f * r)};
+        float dx = q.x - fx - ctr[0], dy = q.y - fy - ctr[1], dz = q.z - fz - ctr[2];
+        float x = std::sqrt(dx * dx + dy * dy + dz * dz) / r;
+        if (x >= 1.7f) continue;
+        float h = x < 1 ? x * x - 0.75f : 0.25f * std::exp(-((x - 1) * 3.5f) * ((x - 1) * 3.5f));
+        s += BandW(F / (2 * r), sp, fLo) * h * 0.4f * r / F;
+    }
+    return s;
+}
+// 岩石・氷天体の手続きの表面の値（rockyParams）
+static void RockyParams(F3 p, int style, F3 o, float* rough, float* dens, float* heart) {
+    *rough = 1; *dens = 0.55f; *heart = 0;
+    if (style == 1 || style == 2) {
+        float mare = Smoothf(0.05f, 0.25f, Fbm0(p, 1.3f, 4, 0.55f, o + 9.0f));
+        if (style == 2) mare *= 0.45f;
+        *dens = Mixf(0.6f, 0.22f, mare);
+        *rough = Mixf(1.0f, 0.3f, mare);
+    } else if (style == 3) { *dens = 0.35f; *rough = 1.3f; }
+    else if (style == 4) { *dens = 0; *rough = 0.6f; }
+    else if (style == 5) { *dens = 0.06f; *rough = 0.35f; }
+    else if (style == 6) *dens = 0.4f;
+    else if (style == 7) *dens = 0.85f;
+    else if (style == 10) *dens = 0.3f;
+    else if (style == 12) { *dens = 0.12f; *rough = 0.7f; }
+    else if (style == 24) { *dens = 0.02f; *rough = 0.8f; }
+    else if (style == 25) { *dens = 0.02f; *rough = 0.5f; }
+    if (style == 10) {
+        auto nz = [](float x, float y, float z) { float l = std::sqrt(x * x + y * y + z * z); return F3{x / l, y / l, z / l}; };
+        F3 h0 = nz(0.82f, 0.30f, 0.48f), h1 = nz(0.70f, 0.12f, 0.70f);
+        float edge = Fbm0(p, 9.0f, 4, 0.5f, o + 21.0f) * 0.012f;
+        float d0 = p.x * h0.x + p.y * h0.y + p.z * h0.z, d1 = p.x * h1.x + p.y * h1.y + p.z * h1.z;
+        *heart = std::max(Smoothf(0.955f, 0.965f, d0 + edge), Smoothf(0.935f, 0.945f, d1 + edge));
+        *rough *= 1 - 0.85f * *heart;
+    }
+}
+static float RockyBand(F3 p, int style, F3 o, float sp, float fLo) {
+    float rough, dens, heart;
+    RockyParams(p, style, o, &rough, &dens, &heart);
+    float T = FbmBand(p, 3.0f, 26, 0.48f, o, sp, fLo) * (0.022f * rough);
+    return T + (dens > 0 ? CratersBand(p, dens * (1 - heart), 5.0f, o * 0.37f, sp, fLo) : 0.0f);
+}
+// 月の海（暗い所）の割合（moonDark）。c は地表の色 0..1
+static float MoonDark(float r, float g, float b) {
+    float l = (std::pow(r, 1.3f) + std::pow(g, 1.3f) + std::pow(b, 1.3f)) * 1.25f / 3;
+    return 1 - Smoothf(0.12f, 0.3f, l);
+}
+// 地球の 1 分角より細かい山肌の高さ m（earthBumps の値）。p は単位球の点、s は傾き、h は標高 m
 static double EarthBumpsM(V3 p, double s, double h) {
-    const float seed = (float)(B_EARTH * 7.31);
+    const float seed = (float)(B_EARTH * 7.31), sp = (float)(BUMP_MIN_M / 6378137.0);
     float a = (float)((0.003 + 0.6 * std::min(s, 1.0)) / 3200.0 * std::max(0.0, std::min(1.0, h / 50.0))), f = 3200.0f, r = 0;
+    F3 q{(float)p.x, (float)p.y, (float)p.z}, o{seed, seed * 1.37f, seed * 0.71f};
     for (int i = 0; i < 7 && a > 0; i++) {
-        float o = (float)i * 7.13f;
-        float n = NoiseValue((float)p.x * f + seed + o, (float)p.y * f + seed * 1.37f + o, (float)p.z * f + seed * 0.71f + o);
-        r += a * (n * 2 - 1);
+        float w = 1 - Smoothf(0.15f, 0.5f, f * sp);
+        if (w <= 0) break;
+        r += a * w * (NoiseValue(q * f + o + (float)i * 7.13f) * 2 - 1);
         a *= 0.5f;
         f *= 2.03f;
     }
@@ -180,6 +289,23 @@ static const HazeWorld* HazeWorldOf(const BodyDef& d) {
 
 // 本体の座標系（X, 自転軸, Z）の向き o の地表の高さ km。楕円体の上の点は、向きを (x, y / (1 − 扁平率), z) にした
 // 球面の点で地図を引く（球のメッシュと同じ）
+// 月・地図のある天体の、データより細かい手続きの起伏（単位は半径。シェーダの bodyBumps と同じ）。uv は全球の画像の座標
+static float BodyBumps(const Terrain& T, V3 pd, double u, double v, float sp, float fLo) {
+    const float seed = (float)(T.body * 7.31);
+    F3 p{(float)pd.x, (float)pd.y, (float)pd.z}, o{seed, seed * 1.37f, seed * 0.71f};
+    if (T.bumps == 1) {   // 月: 海（暗い所）はクレーターが少なく平ら
+        float dark = T.aux.empty() ? 0.0f : MoonDark(T.Aux(u, v, 0), T.Aux(u, v, 1), T.Aux(u, v, 2));
+        return CratersBand(p, Mixf(0.55f, 0.2f, dark), 260.0f, o * 0.37f, sp, fLo) +
+               FbmBand(p, 600.0f, 20, 0.48f, o, sp, fLo) * (Mixf(0.004f, 0.0015f, dark) / 260.0f);
+    }
+    float cov = T.aux.empty() ? 1.0f : T.Aux(u, v, 0), fine = 0, ph = 0;
+    if (cov > 0) fine = CratersBand(p, 0.35f, 260.0f, o * 0.37f, sp, fLo) + FbmBand(p, 600.0f, 20, 0.48f, o, sp, fLo) * (0.003f / 260.0f);
+    if (cov < 1 || T.pattern) ph = RockyBand(p, T.style, o, sp, fLo);
+    float h = Mixf(ph, fine, cov);
+    if (T.liquid && !T.aux.empty()) h *= 1 - T.Aux(u, v, T.an - 1);   // 液体の湖・海は平ら
+    return h;
+}
+
 static double TerrainKm(const Body& b, V3 o) {
     const Terrain& T = g_terrain[b.terrain];
     V3 p = Norm(V3(o.x, o.y / (1 - b.d.flattening), o.z));
@@ -193,10 +319,16 @@ static double TerrainKm(const Body& b, V3 o) {
         return T.Km(j * T.w + i);
     };
     double km = (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy;
-    double lx, ly, w;
-    if (T.earth && (w = g_detail.Weight(lon / (2 * PI) + 0.5, 0.5 - lat / PI, &lx, &ly)) > 0) {   // 地球のカメラの周り
-        double hb = km * 1000 * (1 - w) + g_detail.Height(lx, ly) * w;
-        km = std::max(0.0, hb + EarthBumpsM(p, g_detail.Slope(lx, ly, lat), hb) * w) / 1000;
+    // カメラの周りの細かい標高（地球・月・火星）
+    double u = lon / (2 * PI) + 0.5, v = 0.5 - lat / PI, lx = 0, ly = 0, w = 0;
+    int k = DetailIndex(T.body);
+    const DetailMap* D = k >= 0 ? &g_detail[k] : nullptr;
+    if (D && (w = D->Weight(u, v, &lx, &ly)) > 0) km = km * (1 - w) + D->Height(lx, ly) / 1000 * w;
+    if (T.earth) {
+        if (w > 0) km = std::max(0.0, km * 1000 + EarthBumpsM(p, D->Slope(lx, ly, lat, 6378137.0), km * 1000) * w) / 1000;
+    } else if (T.bumps) {   // データより細かい手続きの起伏
+        double R = b.d.radius * 1000, fLo = T.h / (2 * PI) * (1 - w) + (D ? D->H / (2 * PI) * w : 0);
+        km += BodyBumps(T, p, u, v, (float)(BUMP_MIN_M / R), (float)fLo) * b.d.radius;
     }
     return km;
 }

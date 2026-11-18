@@ -46,13 +46,99 @@ vec4 noised(vec3 x) {
     return vec4(v, dv);
 }
 
+// 3D 格子のセルに 1 つずつ置く円形の模様（クレーター・火山・黒点）。無ければ false
+bool cellSpot(vec3 p, float F, float density, vec3 salt, float rmin, float rmax, out vec3 d, out float r, out float rnd) {
+    vec3 q = p * F + salt;
+    vec3 fl = floor(q);
+    ivec3 c = ivec3(fl);
+    vec3 f = q - fl;
+    d = vec3(0.0); r = 1.0; rnd = 0.0;
+    if (hash1(c + ivec3(5, 71, 29)) > density) return false;
+    float sz = hash1(c + ivec3(41, 13, 97));
+    r = mix(rmin, rmax, sz * sz);
+    vec3 ctr = vec3(r * 1.7) + vec3(hash1(c + ivec3(1, 2, 3)), hash1(c + ivec3(4, 5, 6)), hash1(c + ivec3(7, 8, 9))) * (1.0 - 3.4 * r);
+    d = f - ctr;
+    rnd = hash1(c + ivec3(11, 12, 13));
+    return true;
+}
+
 )"
 
-// 地球の陸の細かい標高（1 分角）。CPU がカメラの真下を中心に展開した窓（texture4。bodies.h の EarthDetail と同じ計算）
-#define EARTH_DETAIL_GLSL R"(
+// 標高データより細かい手続きの起伏の高さ（地形の格子の頂点用。値はフラグメントシェーダの陰影の起伏と同じ式の、周波数 fLo より
+// 細かい部分）。sp: 頂点の間隔（単位球の長さ）。それより細かいものは省く。bodies.h の CPU 版（BodyBumps）と同じ計算
+#define BUMPS_GLSL R"(
+float bandW(float f, float sp, float fLo) { return (1.0 - smoothstep(0.15, 0.5, f * sp)) * smoothstep(0.5, 1.0, f / fLo); }
+// fbm（オクターブはすべて）
+float fbm0(vec3 p, float f, int oct, float gain, vec3 o) {
+    float s = 0.0, a = 1.0;
+    for (int i = 0; i < oct; i++) {
+        s += a * (vnoise(p * f + o + float(i) * 7.13) * 2.0 - 1.0);
+        a *= gain; f *= 2.03;
+    }
+    return s;
+}
+float fbmBand(vec3 p, float f, int oct, float gain, vec3 o, float sp, float fLo) {
+    float s = 0.0, a = 1.0;
+    for (int i = 0; i < oct && f * sp < 0.5; i++) {
+        float w = bandW(f, sp, fLo);
+        if (w > 0.0) s += a * w * (vnoise(p * f + o + float(i) * 7.13) * 2.0 - 1.0);
+        a *= gain; f *= 2.03;
+    }
+    return s;
+}
+float cratersBand(vec3 p, float density, float F0, vec3 salt, float sp, float fLo) {
+    float s = 0.0, F = F0;
+    for (int i = 0; i < 16 && F * 1.7 * sp < 0.5; i++, F *= 2.2) {
+        vec3 d; float r, rnd;
+        if (!cellSpot(p, F, density, salt + float(i) * 31.7, 0.08, 0.29, d, r, rnd)) continue;
+        float x = length(d) / r;
+        if (x >= 1.7) continue;
+        float t = (x - 1.0) * 3.5, h = x < 1.0 ? x * x - 0.75 : 0.25 * exp(-t * t);
+        s += bandW(F / (2.0 * r), sp, fLo) * h * 0.4 * r / F;
+    }
+    return s;
+}
+// 岩石・氷天体の手続きの表面の値: 起伏の強さ・クレーターの多さ・月と水星の海・冥王星のハート
+void rockyParams(vec3 p, int style, vec3 o, out float rough, out float dens, out float mare, out float heart) {
+    rough = 1.0; dens = 0.55; mare = 0.0; heart = 0.0;
+    if (style == 1 || style == 2) {   // 月・水星: 海（平らで暗い溶岩平原）
+        mare = smoothstep(0.05, 0.25, fbm0(p, 1.3, 4, 0.55, o + 9.0));
+        if (style == 2) mare *= 0.45;
+        dens = mix(0.6, 0.22, mare);
+        rough = mix(1.0, 0.3, mare);
+    }
+    else if (style == 3) { dens = 0.35; rough = 1.3; }   // 火星
+    else if (style == 4) { dens = 0.0; rough = 0.6; }    // イオ: 火山活動でクレーターが無い
+    else if (style == 5) { dens = 0.06; rough = 0.35; }  // エウロパ: 若い氷の表面
+    else if (style == 6) { dens = 0.4; }
+    else if (style == 7) { dens = 0.85; }                // カリスト: クレーターだらけ
+    else if (style == 10) { dens = 0.3; }
+    else if (style == 12) { dens = 0.12; rough = 0.7; }
+    else if (style == 24) { dens = 0.02; rough = 0.8; }  // 金星: 若い溶岩平原でクレーターがほとんど無い
+    else if (style == 25) { dens = 0.02; rough = 0.5; }  // タイタン: 雨と風で削られ、クレーターがほとんど無い
+    if (style == 10) {   // 冥王星のハート（スプートニク平原）は平らでクレーターが無い
+        vec3 h0 = normalize(vec3(0.82, 0.30, 0.48)), h1 = normalize(vec3(0.70, 0.12, 0.70));
+        float edge = fbm0(p, 9.0, 4, 0.5, o + 21.0) * 0.012;
+        heart = max(smoothstep(0.955, 0.965, dot(p, h0) + edge), smoothstep(0.935, 0.945, dot(p, h1) + edge));
+        rough *= 1.0 - 0.85 * heart;
+    }
+}
+float rockyBand(vec3 p, int style, vec3 o, float sp, float fLo) {
+    float rough, dens, mare, heart;
+    rockyParams(p, style, o, rough, dens, mare, heart);
+    float T = fbmBand(p, 3.0, 26, 0.48, o, sp, fLo) * (0.022 * rough);
+    return T + (dens > 0.0 ? cratersBand(p, dens * (1.0 - heart), 5.0, o * 0.37, sp, fLo) : 0.0);
+}
+// 月の海（暗い所）の割合。c は地表の色
+float moonDark(vec3 c) { return 1.0 - smoothstep(0.12, 0.3, dot(pow(c, vec3(1.3)) * 1.25, vec3(0.333))); }
+)"
+
+// 細かい標高（地球 1 分角・月と火星 16 ピクセル/度）。CPU がカメラの真下を中心に展開した窓（texture4。bodies.h の DetailMap と
+// 同じ計算）
+#define DETAIL_GLSL R"(
 uniform sampler2D texture4;
 uniform vec4 detA;   // xy: 窓の左上（全球の 1 分角の画素）, z: 窓の一辺の画素数, w: 縁でなじませる幅（画素）
-uniform vec4 detB;   // xy: 全球の画素数, z: 1 で窓あり
+uniform vec4 detB;   // xy: 全球の画素数, z: 1 で窓あり, w: 値の形式（1 地球の高さコード, 2 上位・下位バイト 0.5 m 単位で −10000 m から）
 const float EARTH_RM = 6378137.0;
 // 窓の中の位置 l（画素）と重み（窓の外は 0、縁から detA.w 画素で 1）。uv は全球の画像の座標
 float detWeight(vec2 uv, out vec2 l) {
@@ -63,9 +149,10 @@ float detWeight(vec2 uv, out vec2 l) {
     vec2 e = min(l, detA.z - 1.0 - l);
     return clamp(min(e.x, e.y) / detA.w, 0.0, 1.0);
 }
-// 高さコード → m（陸 128..255 = 0..8900 m、海は海面）
-float detDecode(float c) {
-    float v = c * 255.0, s = (v - 128.0) / 127.0;
+// 窓の画像の値 → m（地球は陸 128..255 = 0..8900 m、海は海面）
+float detDecode(vec4 t) {
+    if (detB.w > 1.5) return (t.r * 255.0 * 256.0 + t.a * 255.0) * 0.5 - 10000.0;
+    float v = t.r * 255.0, s = (v - 128.0) / 127.0;
     return v >= 127.5 ? s * s * 8900.0 : 0.0;
 }
 // 窓の画素 l の標高 m（4 画素の双線形。CPU と同じ）
@@ -73,8 +160,8 @@ float detHeight(vec2 l) {
     ivec2 i = ivec2(floor(l)), n = ivec2(int(detA.z) - 1);
     vec2 f = l - floor(l);
     ivec2 a = clamp(i, ivec2(0), n), b = clamp(i + 1, ivec2(0), n);
-    float h00 = detDecode(texelFetch(texture4, a, 0).r), h10 = detDecode(texelFetch(texture4, ivec2(b.x, a.y), 0).r);
-    float h01 = detDecode(texelFetch(texture4, ivec2(a.x, b.y), 0).r), h11 = detDecode(texelFetch(texture4, b, 0).r);
+    float h00 = detDecode(texelFetch(texture4, a, 0)), h10 = detDecode(texelFetch(texture4, ivec2(b.x, a.y), 0));
+    float h01 = detDecode(texelFetch(texture4, ivec2(a.x, b.y), 0)), h11 = detDecode(texelFetch(texture4, b, 0));
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
 // 1 分角より細かい山肌（手続き。地形の格子の高さと陰影の両方に使う）。x: 高さ（単位球の長さ）, yzw: 勾配。
@@ -115,8 +202,14 @@ uniform vec4 terrStep[61];   // 輪 i の 1 周の頂点の間引き（2 の累�
 uniform vec4 terrB;      // xyz: 真下の向き c（本体の座標系の球面の点）, w: 極半径 / 赤道半径
 uniform vec4 terrC;      // xyz: c に垂直な向き, w: 1 m あたりの長さ（1 / 赤道半径 m）
 uniform vec4 terrD;      // x, y: 標高の画像の幅と高さ, z: 輪の数, w: 1 周の頂点の数
+uniform vec4 terrE;      // データより細かい手続きの起伏: x 半径 m, y 全球の標高の周波数, z 種類（0 なし, 1 月, 2 地図のある天体）,
+                         // w 細かい標高（窓）の周波数
+uniform sampler2D texture0;  // 月: 地表の色（海はクレーターが少ない）
 uniform sampler2D texture1;
+uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（R）と液体の湖・海（A）
 uniform vec4 params;     // z: 天体ごとのシード（フラグメントシェーダと同じ）
+uniform vec4 mapInfo;    // y: 地図の種類（2 模様だけ）
+uniform vec4 mapInfo2;   // x: 撮影されていない所の表面模様の種類, z: 1 なら撮影範囲の画像のアルファが液体
 out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
@@ -143,7 +236,7 @@ float terrHeight(vec3 d, float lod) {
     float h01 = terrDecode(texelFetch(texture1, ivec2(x0, y1), 0)), h11 = terrDecode(texelFetch(texture1, ivec2(x1, y1), 0));
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
-)" NOISE_GLSL EARTH_DETAIL_GLSL R"(
+)" NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
 // 地球: カメラの周り（1 分角の窓の中）は細かい標高と、それより細かい山肌を足した高さ m。sp は頂点の間隔、hm は全球の標高
 float earthDetailHeight(vec3 d, float sp, float hm) {
     float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
@@ -151,8 +244,9 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
     float w = detWeight(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l);
     if (w <= 0.0) return hm;
     float lod = log2(max(sp * detB.y / 3.1415927, 1.0));
-    float hd = lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod).r) : detHeight(l);
+    float hd = lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l);
     float hb = mix(hm, hd, w);
+    sp = max(sp, 20.0 / EARTH_RM);       // CPU と同じく 20 m より細かいオクターブは省く
     if (3200.0 * sp >= 0.5) return hb;   // 山肌の一番粗いオクターブも頂点の間隔より細かい
     // 傾き: 両隣の画素の差（CPU の EarthDetail::Slope と同じ）
     float dy = 3.1415927 * EARTH_RM / detB.y, dx = 6.2831853 * EARTH_RM / detB.x * max(cos(lat), 0.05);
@@ -160,6 +254,34 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
     float gy = (detHeight(l + vec2(0.0, 1.0)) - detHeight(l - vec2(0.0, 1.0))) / (2.0 * dy);
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     return max(0.0, hb + earthBumps(d, length(vec2(gx, gy)), hb, sp, 7, o).x * EARTH_RM * w);
+}
+// 地球以外: カメラの周り（月・火星の窓の中）は細かい標高。データより細かい手続きの起伏（クレーター・山肌）を足した高さ m
+float bodyHeight(vec3 d, float sp, float hm) {
+    float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l;
+    float w = detWeight(uv, l);
+    if (w > 0.0) {
+        float lod = log2(max(sp * detB.y / 3.1415927, 1.0));
+        hm = mix(hm, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w);
+    }
+    if (terrE.z < 0.5) return hm;
+    sp = max(sp, 20.0 / terrE.x);         // CPU と同じく 20 m より細かいものは省く
+    float fLo = mix(terrE.y, terrE.w, w);
+    vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
+    float h;
+    if (terrE.z < 1.5) {   // 月: 海（暗い所）はクレーターが少なく平ら
+        float dark = moonDark(textureLod(texture0, uv, 0.0).rgb);
+        h = cratersBand(d, mix(0.55, 0.2, dark), 260.0, o * 0.37, sp, fLo) +
+            fbmBand(d, 600.0, 20, 0.48, o, sp, fLo) * (mix(0.004, 0.0015, dark) / 260.0);
+    } else {               // 地図のある天体: 撮影された所は細かいクレーターと山肌、撮影されていない所は手続きの表面
+        vec4 m = textureLod(texture2, uv, 0.0);
+        float fine = 0.0, ph = 0.0;
+        if (m.r > 0.0) fine = cratersBand(d, 0.35, 260.0, o * 0.37, sp, fLo) + fbmBand(d, 600.0, 20, 0.48, o, sp, fLo) * (0.003 / 260.0);
+        if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(d, int(mapInfo2.x + 0.5), o, sp, fLo);
+        h = mix(ph, fine, m.r);
+        if (mapInfo2.z > 0.5) h *= 1.0 - m.a;   // 液体の湖・海は平ら
+    }
+    return hm + h * terrE.x;
 }
 
 void main() {
@@ -182,7 +304,7 @@ void main() {
         float lod = log2(max(sp * terrD.y / 3.1415927, 1.0));
         vec3 E = vec3(1.0, terrB.w, 1.0);
         float hm = terrHeight(d, lod);
-        if (terrA.w < 1.5) hm = earthDetailHeight(d, sp, hm);
+        hm = terrA.w < 1.5 ? earthDetailHeight(d, sp, hm) : bodyHeight(d, sp, hm);
         float h = hm * terrC.w;
         fragAlt = hm * 0.001;
         pos = E * (c * cm1 + t * st) + normalize(E * d) * h;
@@ -259,7 +381,7 @@ float fw;      // 1 画素の大きさ（単位球の長さ）
 float g_ray;   // 新しいクレーターの明るさ（光条）
 float g_liquid = 0.0;   // 液体の湖・海の割合（タイタン）
 
-)" NOISE_GLSL EARTH_DETAIL_GLSL R"(
+)" NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
 // 周波数 f の模様の重み: 画素より細かくなったら消す
 float lodW(float f) { return 1.0 - smoothstep(0.15, 0.5, f * fw); }
 
@@ -287,22 +409,6 @@ vec4 fbmD(vec3 p, float f, int oct, float gain, vec3 o) {
         a *= gain; f *= 2.03;
     }
     return s;
-}
-
-// 3D 格子のセルに 1 つずつ置く円形の模様（クレーター・火山・黒点）。無ければ false
-bool cellSpot(vec3 p, float F, float density, vec3 salt, float rmin, float rmax, out vec3 d, out float r, out float rnd) {
-    vec3 q = p * F + salt;
-    vec3 fl = floor(q);
-    ivec3 c = ivec3(fl);
-    vec3 f = q - fl;
-    d = vec3(0.0); r = 1.0; rnd = 0.0;
-    if (hash1(c + ivec3(5, 71, 29)) > density) return false;
-    float sz = hash1(c + ivec3(41, 13, 97));
-    r = mix(rmin, rmax, sz * sz);
-    vec3 ctr = vec3(r * 1.7) + vec3(hash1(c + ivec3(1, 2, 3)), hash1(c + ivec3(4, 5, 6)), hash1(c + ivec3(7, 8, 9))) * (1.0 - 3.4 * r);
-    d = f - ctr;
-    rnd = hash1(c + ivec3(11, 12, 13));
-    return true;
 }
 
 // クレーター 1 層 (x: 高さ[半径単位], yzw: 勾配)。お椀形の凹みと盛り上がった縁
@@ -344,32 +450,8 @@ float lonDiff(float a, float b) { float d = a - b; return d - 2.0 * PI * floor((
 vec4 rocky(vec3 p, int style, vec3 o, out vec3 base) {
     g_ray = 0.0;
     float macro = fbmL(p, 2.2, 5, 0.5, o + 3.0);
-    float rough = 1.0, dens = 0.55;
-    float mare = 0.0;
-    if (style == 1 || style == 2) {   // 月・水星: 海（平らで暗い溶岩平原）
-        mare = smoothstep(0.05, 0.25, fbmL(p, 1.3, 4, 0.55, o + 9.0));
-        if (style == 2) mare *= 0.45;
-        dens = mix(0.6, 0.22, mare);
-        rough = mix(1.0, 0.3, mare);
-    }
-    else if (style == 3) { dens = 0.35; rough = 1.3; }   // 火星
-    else if (style == 4) { dens = 0.0; rough = 0.6; }    // イオ: 火山活動でクレーターが無い
-    else if (style == 5) { dens = 0.06; rough = 0.35; }  // エウロパ: 若い氷の表面
-    else if (style == 6) { dens = 0.4; }
-    else if (style == 7) { dens = 0.85; }                // カリスト: クレーターだらけ
-    else if (style == 10) { dens = 0.3; }
-    else if (style == 12) { dens = 0.12; rough = 0.7; }
-    else if (style == 24) { dens = 0.02; rough = 0.8; }  // 金星: 若い溶岩平原でクレーターがほとんど無い
-    else if (style == 25) { dens = 0.02; rough = 0.5; }  // タイタン: 雨と風で削られ、クレーターがほとんど無い
-
-    // 冥王星のハート（スプートニク平原）は平らでクレーターが無い
-    float heart = 0.0;
-    if (style == 10) {
-        vec3 h0 = normalize(vec3(0.82, 0.30, 0.48)), h1 = normalize(vec3(0.70, 0.12, 0.70));
-        float edge = fbmL(p, 9.0, 4, 0.5, o + 21.0) * 0.012;
-        heart = max(smoothstep(0.955, 0.965, dot(p, h0) + edge), smoothstep(0.935, 0.945, dot(p, h1) + edge));
-        rough *= 1.0 - 0.85 * heart;
-    }
+    float rough, dens, mare, heart;   // 起伏の強さ・クレーターの多さ・月と水星の海・冥王星のハート（スプートニク平原）
+    rockyParams(p, style, o, rough, dens, mare, heart);
 
     vec4 T = fbmD(p, 3.0, 26, 0.48, o) * (0.022 * rough);
     vec4 C = dens > 0.0 ? craters(p, dens * (1.0 - heart), 5.0, o * 0.37) : vec4(0.0);
@@ -499,6 +581,25 @@ float earthClouds(vec3 p, vec3 o, float bias) {
     return smoothstep(0.15 + bias, 0.55 + bias, cl + wisp * 0.25 + 0.12 * cos(p.y * PI * 3.0)) * detail.w;
 }
 
+// カメラの周りの細かい標高の窓（地球・月・火星）の、uv の標高 m（hd）と勾配（sl: 東・北の向きの tan。半径 R m）。
+// 間隔は 1 画素か画面の 1 画素の大きい方。戻り値は窓の重み（窓の外は 0）
+float detGradient(vec2 uv, vec2 dx, vec2 dy, float lat, float R, out vec2 sl, out float hd) {
+    vec2 l;
+    float w = detWeight(uv, l);
+    sl = vec2(0.0); hd = 0.0;
+    if (w <= 0.0) return 0.0;
+    vec2 k = detB.xy / detA.z, gx = dx * k, gy = dy * k;
+    vec2 sd = max(1.0 / detB.xy, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
+    vec2 q = (l + 0.5) / detA.z, sq = sd * k;
+    float hE = detDecode(textureGrad(texture4, q + vec2(sq.x, 0.0), gx, gy));
+    float hW = detDecode(textureGrad(texture4, q - vec2(sq.x, 0.0), gx, gy));
+    float hN = detDecode(textureGrad(texture4, q - vec2(0.0, sq.y), gx, gy));
+    float hS = detDecode(textureGrad(texture4, q + vec2(0.0, sq.y), gx, gy));
+    hd = detDecode(textureGrad(texture4, q, gx, gy));
+    sl = vec2((hE - hW) / (2.0 * sd.x) / (2.0 * PI * max(cos(lat), 0.05)), (hN - hS) / (2.0 * sd.y) / PI) / R;
+    return w;
+}
+
 // 高さコード → m。陸 128..255 = 0..8900 m、海 127..0 = 0..-11000 m（平方根で詰めてある）
 float earthHeightM(float c) {
     float v = c * 255.0;
@@ -544,19 +645,9 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
     // カメラの周り（1 分角の窓の中）: 細かい標高の勾配。傾き s は細かい山肌の振幅に使う
-    vec2 dl;
-    float dw = detWeight(uv, dl), s = 0.0;
+    vec2 sl;
+    float dm, dw = detGradient(uv, dx, dy, lat, R, sl, dm), s = length(sl);
     if (dw > 0.0) {
-        vec2 k = detB.xy / detA.z, gx = dx * k, gy = dy * k;
-        vec2 sd = max(1.0 / detB.xy, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
-        vec2 q = (dl + 0.5) / detA.z, sq = sd * k;
-        float dE = detDecode(textureGrad(texture4, q + vec2(sq.x, 0.0), gx, gy).r);
-        float dW = detDecode(textureGrad(texture4, q - vec2(sq.x, 0.0), gx, gy).r);
-        float dN = detDecode(textureGrad(texture4, q - vec2(0.0, sq.y), gx, gy).r);
-        float dS = detDecode(textureGrad(texture4, q + vec2(0.0, sq.y), gx, gy).r);
-        float dm = detDecode(textureGrad(texture4, q, gx, gy).r);
-        vec2 sl = vec2((dE - dW) / (2.0 * sd.x) / (2.0 * PI * max(cos(lat), 0.05)), (dN - dS) / (2.0 * sd.y) / PI) / R;
-        s = length(sl);
         grad = mix(grad, (east * sl.x + north * sl.y) * EXAG, dw);
         if (hm > 0.0 || dm > 0.0) hm = mix(hm, dm, dw);
     }
@@ -667,8 +758,15 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
     vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
+    // カメラの周り（16 ピクセル/度の窓の中）: 細かい標高
+    vec2 sl;
+    float hd, dw = detGradient(uv, dx, dy, lat, R, sl, hd);
+    if (dw > 0.0) {
+        grad = mix(grad, (east * sl.x + north * sl.y) * EXAG, dw);
+        hm = mix(hm, hd, dw);
+    }
 
-    // 海（暗い所）はクレーターが少なく平ら
+    // 海（暗い所）はクレーターが少なく平ら（moonDark と同じ）
     float dark = 1.0 - smoothstep(0.12, 0.3, dot(tc, vec3(0.333)));
     vec4 C = craters(p, mix(0.55, 0.2, dark), 260.0, o * 0.37);
     vec4 T = fbmD(p, 600.0, 20, 0.48, o) * (mix(0.004, 0.0015, dark) / 260.0);
@@ -714,7 +812,14 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R;
         vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
         vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
-        h += vec4(hm / R, east * dhdLon / max(cos(lat), 0.05) + north * dhdLat);
+        vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
+        vec2 sl;   // カメラの周り（火星の 16 ピクセル/度の窓の中）: 細かい標高
+        float hd, dw = detGradient(uv, dx, dy, lat, R, sl, hd);
+        if (dw > 0.0) {
+            grad = mix(grad, east * sl.x + north * sl.y, dw);
+            hm = mix(hm, hd, dw);
+        }
+        h += vec4(hm / R, grad);
     }
     base = mix(pb, mb, cov) * (0.94 + 0.12 * (fbmL(p, 900.0, 16, 0.5, o + 5.0) * 0.5 + 0.5));
     if (mapInfo2.z > 0.5) {   // 液体の湖・海: 平らで暗い（光の映り込みは照明のところで）

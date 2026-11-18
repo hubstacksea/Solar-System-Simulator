@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.49.0 (2026-11-18)
+
+- Relief finer than the elevation data now goes into the shape of the terrain, not just its shading (the Moon, Mercury, Mars, Venus, Ceres, Vesta, Pluto, Charon and Titan). The parts of the procedural craters and slopes of the surface shading that are finer than the data are added (the lunar maria have fewer craters and are flat, and Titan's lakes and seas are flat; they do not match the real terrain). Altitude and collisions are measured from the same shape. The shape is detailed down to the spacing of the terrain grid's vertices, so kilometer-sized craters take shape near the camera (within about 10 km)
+- The Moon and Mars also use fine elevations around the camera near the surface: LOLA at 16 pixels per degree for the Moon (about 1.9 km, up from about 5.3 km; `assets/moon_detail.bin`, about 18 MB) and MOLA at 16 pixels per degree for Mars (about 3.7 km, up from about 15 km; `assets/mars_detail.bin`, about 15 MB), made by `tools/make_body_detail.py` (16-bit values stored as differences from a prediction from neighboring pixels, then compressed). The browser version loads them in the background after startup
+- The window of fine elevations is now moved under the ship at the start of every frame instead of when drawing (a scene placed near the surface by a share link measures altitude and collisions from the drawn terrain from the start)
+- README images: Mons Hadley on the Moon and Valles Marineris were retaken, and the Everest massif and the Alps seen from orbit were added
+
 ## 2.48.0 (2026-11-18)
 
 - Mountains on Earth now stand out as 3D relief near the surface. Land elevations are kept at the 1 arc-minute resolution of NOAA ETOPO 2022 (about 1.85 km, up from about 10 km; `assets/earth_detail.bin`, about 17 MB, made by `tools/make_earth_detail.py`), and only an area about 3,800 km across centered under the camera is unpacked and used for the terrain and its shading. In the data, Mount Fuji rises from about 1,730 m to about 3,360 m and Everest from about 6,560 m to about 8,210 m, so their shapes can be seen from the ground and from low altitude. The shading of mountain ranges seen from space is finer too
