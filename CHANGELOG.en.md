@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.51.1 (2026-11-19)
+
+- The browser version of 2.51.0 froze on the "Loading" screen in some environments. Computing the terrain vertices' relief from 8 lattice points at 2 levels wrote the heavy relief calculation 16 times into the shader, which apparently made it too large for the browser to finish translating (Chrome and Edge on Windows translate WebGL to Direct3D; it did not reproduce in headless Chrome on this PC). The calculation now appears once and runs in a loop. It looks the same as 2.51.0
+
 ## 2.51.0 (2026-11-18)
 
 - The procedural relief (craters and slopes) added to the terrain shape in 2.49.0 no longer ripples at its edges in flight (it stood out, for example, on the crater to the right as the Apollo 16 ascent stage leaves the Moon). The terrain grid's vertices slide over the ground with the camera, so computing the relief directly at the vertices caught and missed relief close to the vertex spacing, making edges jagged along the triangles and changing their shape from frame to frame. The relief is now computed at 3D lattice points fixed to the ground (spaced at a power of two times 20 m, no closer than the vertex spacing, blended smoothly with the next level) and interpolated, the same idea as the downscaled elevation images. The relief that takes shape is about as fine as before. Altitude and collisions interpolate the same way at the finest level (20 m). Earth's slopes work the same way. Near the surface of the Moon and Mars, a frame takes about 1.5 to 2 ms longer in the native version on this PC (Earth is about the same)

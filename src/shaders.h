@@ -266,23 +266,27 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     }
     return h;
 }
-// 手続きの起伏を地表に固定した 3 次元の格子点（間隔 L）で求め、点 d で 3 重線形に補間する
-float bumpLattice(vec3 d, float L, float fLo, vec3 o) {
-    vec3 g = d / L, i = floor(g), f = g - i;
-    float v000 = bumpAt(i * L, L, fLo, o), v100 = bumpAt((i + vec3(1, 0, 0)) * L, L, fLo, o);
-    float v010 = bumpAt((i + vec3(0, 1, 0)) * L, L, fLo, o), v110 = bumpAt((i + vec3(1, 1, 0)) * L, L, fLo, o);
-    float v001 = bumpAt((i + vec3(0, 0, 1)) * L, L, fLo, o), v101 = bumpAt((i + vec3(1, 0, 1)) * L, L, fLo, o);
-    float v011 = bumpAt((i + vec3(0, 1, 1)) * L, L, fLo, o), v111 = bumpAt((i + vec3(1, 1, 1)) * L, L, fLo, o);
-    return mix(mix(mix(v000, v100, f.x), mix(v010, v110, f.x), f.y), mix(mix(v001, v101, f.x), mix(v011, v111, f.x), f.y), f.z);
-}
 // 地形の格子の頂点の手続きの起伏。頂点はカメラと一緒に地表の上を滑るので、頂点の位置で直接求めると細かい起伏を拾ったり
 // 外したりして、飛ぶと縁が波打つ。標高の縮小画像と同じく、地表に固定した格子点（間隔は一番細かい Lmin の 2 の累乗倍で、
 // 頂点の間隔の LAT_K 倍以上）で求めて補間し、隣の段となめらかにつなぐ。sp: 頂点の間隔、Lmin: 20 m（CPU と同じ）
 const float LAT_K = 1.0;
+// 格子点（3 次元の格子、間隔 L）の値を 3 重線形に補間する。bumpAt を呼ぶ所は 1 つだけにする（8 点 × 2 段を別々に書くと、
+// ブラウザ（Windows の Chrome は WebGL を Direct3D に変換する）でシェーダの変換が終わらず起動しなくなった）
 float vertexBumps(vec3 d, float sp, float Lmin, float fLo, vec3 o) {
     float lv = log2(max(LAT_K * sp / Lmin, 1.0)), n = floor(lv), t = lv - n;
-    float L = Lmin * exp2(n), a = bumpLattice(d, L, fLo, o);
-    return t < 0.001 ? a : mix(a, bumpLattice(d, 2.0 * L, fLo, o), t);
+    int levels = t < 0.001 ? 1 : 2;
+    float r = 0.0;
+    for (int k = 0; k < 16; k++) {
+        int lvl = k >> 3;
+        if (lvl >= levels) break;
+        float L = Lmin * exp2(n + float(lvl));
+        vec3 g = d / L, i = floor(g), f = g - i;
+        vec3 c = vec3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1));
+        vec3 w3 = mix(1.0 - f, f, c);
+        float w = w3.x * w3.y * w3.z * (lvl == 0 ? 1.0 - (levels == 2 ? t : 0.0) : t);
+        r += w * bumpAt((i + c) * L, L, fLo, o);
+    }
+    return r;
 }
 // 地球: カメラの周り（1 分角の窓の中）は細かい標高と、それより細かい山肌を足した高さ m。sp は頂点の間隔、hm は全球の標高
 float earthDetailHeight(vec3 d, float sp, float hm) {
