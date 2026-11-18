@@ -26,7 +26,7 @@ NASA PDS の MGS MOLA MEGDR（4 ピクセル/度）、水星・金星・ケレ�
 
 使い方: python3 tools/make_planet_maps.py <作業ディレクトリ> [出力先=assets] [--hq]
   --hq: 高画質版（地図と標高の幅を下の HQ_WIDTH の値にし、火星の標高は MOLA の 16 ピクセル/度）
-必要なもの: Pillow, NumPy（ダウンロード 約 2.6 GB。うち標高データが約 2.5 GB）
+必要なもの: Pillow, NumPy（ダウンロード 約 3.2 GB。うち標高データが約 2.5 GB、地図の画像が約 0.6 GB）
 """
 import io
 import os
@@ -44,6 +44,9 @@ from PIL import Image, ImageFilter
 UA = "SolarSystemVoyager-asset-build/1.0 (https://github.com/hubstacksea/Solar-System-Simulator)"
 WMS = "https://planetarymaps.usgs.gov/cgi-bin/mapserv"
 WMS_MAX = 4096   # WMS が 1 回で返す画像の幅と高さの上限。それより大きい地図はタイルに分けて取ってつなぐ
+# WMS は目的の大きさに縮めるとき近い画素を拾うだけでギザギザになる（火星のマリネリス峡谷の崖がモザイク状に見えた）ので、
+# 幅 WMS_SS_MAX までの範囲で最大 4 倍の細かさで取り、撮影された画素だけを平均して縮める
+WMS_SS_MAX = 16384
 HQ = "--hq" in sys.argv
 # 英語名, 地図ファイル, レイヤー, 幅, 種類（0: カラー, 1: 白黒, 2: 模様だけ）, 元データ
 # イアペトゥスのモザイクは明暗がならされていて、暗い半球と明るい半球の差が残っていないので模様だけ使う。
@@ -158,16 +161,23 @@ def wms(work, mapfile, layer, w):
     if mapfile.startswith("jpl:"):
         name = mapfile[4:]
         return Image.open(fetch(work, "jpl_" + name, JPL_TMAPS + name)).convert("RGB")
-    nx, ny = (w + WMS_MAX - 1) // WMS_MAX, (w // 2 + WMS_MAX - 1) // WMS_MAX
+    ss = max(1, min(4, WMS_SS_MAX // w))
+    fw = w * ss
+    nx, ny = (fw + WMS_MAX - 1) // WMS_MAX, (fw // 2 + WMS_MAX - 1) // WMS_MAX
     out = Image.new("RGB", (w, w // 2))
     for ty in range(ny):
         for tx in range(nx):
-            tw, th = w // nx, w // 2 // ny
+            tw, th = fw // nx, fw // 2 // ny
             bbox = "%g,%g,%g,%g" % (-180 + 360 * tx / nx, 90 - 180 * (ty + 1) / ny, -180 + 360 * (tx + 1) / nx, 90 - 180 * ty / ny)
             q = {"map": "/maps/" + mapfile, "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetMap", "LAYERS": layer,
                  "STYLES": "", "SRS": "EPSG:4326", "BBOX": bbox, "WIDTH": str(tw), "HEIGHT": str(th), "FORMAT": "image/png"}
-            name = "%s_%s_%d%s.png" % (mapfile.split("/")[1].split("_")[0], layer, w, "_%d_%d" % (tx, ty) if nx * ny > 1 else "")
-            out.paste(Image.open(fetch(work, name, WMS + "?" + urllib.parse.urlencode(q))).convert("RGB"), (tx * tw, ty * th))
+            name = "%s_%s_%d%s.png" % (mapfile.split("/")[1].split("_")[0], layer, fw, "_%d_%d" % (tx, ty) if nx * ny > 1 else "")
+            t = np.asarray(Image.open(fetch(work, name, WMS + "?" + urllib.parse.urlencode(q))).convert("RGB"), np.float32)
+            # 撮影されていない所（真っ黒か真っ白。main と同じ判定）は平均に入れない。全部が撮影されていない画素は黒のまま
+            ok = ((t.mean(axis=2) > 0.01 * 255) & (t.min(axis=2) < 0.985 * 255)).astype(np.float32)
+            n = ok.reshape(th // ss, ss, tw // ss, ss).sum(axis=(1, 3))
+            c = (t * ok[:, :, None]).reshape(th // ss, ss, tw // ss, ss, 3).sum(axis=(1, 3)) / np.maximum(n, 1)[:, :, None]
+            out.paste(Image.fromarray((c + 0.5).astype(np.uint8), "RGB"), (tx * tw // ss, ty * th // ss))
     return out
 
 
@@ -432,7 +442,8 @@ def main():
         a[~valid] = a[valid].mean(axis=0) if valid.any() else 0.5
         filled = Image.fromarray((a * 255 + 0.5).astype(np.uint8), "RGB")
         buf = io.BytesIO()
-        (filled.convert("L") if kind else filled).save(buf, "JPEG", quality=85, optimize=True)
+        # カラーは色を間引かずに保存する（4:2:0 だと色の境目が 2 画素単位になる）
+        (filled.convert("L") if kind else filled).save(buf, "JPEG", quality=85, optimize=True, subsampling=0)
         jpg = buf.getvalue()
         m = Image.fromarray((valid * 255).astype(np.uint8), "L").resize((512, 256), Image.BILINEAR)
         m = m.filter(ImageFilter.GaussianBlur(1.5))

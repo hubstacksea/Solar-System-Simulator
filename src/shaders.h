@@ -777,6 +777,28 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
 // 探査機の画像による地図のある天体（水星・火星・ケレス・ベスタ・衛星・冥王星など）。月と同じ並びの地図を貼る。
 // 色は天体の色に合わせて明るさをそろえ、撮影されていない所は手続き的な表面にする。
 // 細かい起伏は手続き的に足す（撮影された範囲では大きなクレーターを作らず、地図の模様と食い違わないようにする）
+// 地図の色: 地図の 1 画素が画面の 1 画素より大きく写る近さでは、双線形補間だと画素の境目で明るさの傾きが折れて
+// 四角いモザイクに見えるので、Catmull-Rom の 3 次補間（双線形の 9 回の読み出しで求める）に切り替える
+vec3 mapColor(vec2 uv, vec2 dx, vec2 dy) {
+    vec2 ts = vec2(textureSize(texture0, 0));
+    vec3 c = textureGrad(texture0, uv, dx, dy).rgb;
+    float k = 1.0 - smoothstep(0.5, 1.0, max(length(dx * ts), length(dy * ts)));
+    if (k <= 0.0) return c;
+    vec2 sp = uv * ts;
+    vec2 t1 = floor(sp - 0.5) + 0.5, f = sp - t1;
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
+    vec2 w12 = w1 + w2;
+    vec2 a = (t1 - 1.0) / ts, b = (t1 + w2 / w12) / ts, e = (t1 + 2.0) / ts;
+    vec3 r = (textureLod(texture0, vec2(a.x, a.y), 0.0).rgb * w0.x + textureLod(texture0, vec2(b.x, a.y), 0.0).rgb * w12.x
+            + textureLod(texture0, vec2(e.x, a.y), 0.0).rgb * w3.x) * w0.y
+           + (textureLod(texture0, vec2(a.x, b.y), 0.0).rgb * w0.x + textureLod(texture0, vec2(b.x, b.y), 0.0).rgb * w12.x
+            + textureLod(texture0, vec2(e.x, b.y), 0.0).rgb * w3.x) * w12.y
+           + (textureLod(texture0, vec2(a.x, e.y), 0.0).rgb * w0.x + textureLod(texture0, vec2(b.x, e.y), 0.0).rgb * w12.x
+            + textureLod(texture0, vec2(e.x, e.y), 0.0).rgb * w3.x) * w3.y;
+    return mix(c, clamp(r, 0.0, 1.0), k);
+}
+
 vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     g_ray = 0.0;
     float lat = asin(clamp(p.y, -1.0, 1.0));
@@ -784,7 +806,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);
     dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
-    vec3 tc = textureGrad(texture0, uv, dx, dy).rgb;
+    vec3 tc = mapColor(uv, dx, dy);
     float cov = textureGrad(texture2, uv, dx, dy).r;
     // 手続き的な表面は撮影されていない所（cov < 1）か、明暗を手続き的に塗り分ける天体だけ、地図の細かい起伏は撮影
     // された所（cov > 0）だけ求める（混ぜる重みが 0 の側は結果に効かない。火星などほぼ全体が撮影された天体で重い rocky を省く）

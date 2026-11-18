@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.50.0 (2026-11-18)
+
+- The planet and moon maps were rebuilt to reduce the square mosaic seen up close from orbit (it stood out on the walls of Valles Marineris on Mars). The USGS map service picks the nearest pixels when asked for the target size, which makes the maps jagged, so `tools/make_planet_maps.py` now fetches them at 4 times the size and averages only the imaged pixels down. Color maps are stored as JPEG without chroma subsampling (color edges no longer come in 2-pixel steps). The maps are as detailed as before (about 5.2 km per pixel on Mars), and `assets/maps.bin` went from about 23.3 MB to about 23.0 MB. On Mars, the bluish-white pixels in the source data now show as well
+- When a map pixel covers more than a screen pixel, the map color is now read with cubic (Catmull-Rom) interpolation (bilinear interpolation bends the brightness slope at pixel edges and looks square)
+
 ## 2.49.0 (2026-11-18)
 
 - Relief finer than the elevation data now goes into the shape of the terrain, not just its shading (the Moon, Mercury, Mars, Venus, Ceres, Vesta, Pluto, Charon and Titan). The parts of the procedural craters and slopes of the surface shading that are finer than the data are added (the lunar maria have fewer craters and are flat, and Titan's lakes and seas are flat; they do not match the real terrain). Altitude and collisions are measured from the same shape. The shape is detailed down to the spacing of the terrain grid's vertices, so kilometer-sized craters take shape near the camera (within about 10 km)
