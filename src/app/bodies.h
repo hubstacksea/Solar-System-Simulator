@@ -301,14 +301,30 @@ static const HazeWorld* HazeWorldOf(const BodyDef& d) {
     return nullptr;
 }
 
-// 本体の座標系（X, 自転軸, Z）の向き o の地表の高さ km。楕円体の上の点は、向きを (x, y / (1 − 扁平率), z) にした
-// 球面の点で地図を引く（球のメッシュと同じ）
-// 月・地図のある天体の、データより細かい手続きの起伏（単位は半径。シェーダの bumpAt と同じ）。点 p で sp より細かいものを省く
-static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo) {
+// 地図（正距円筒図法）の緯度: 地球の地図は測地緯度（楕円体の法線の向き）、ほかの天体の地図（USGS・PDS）は惑星中心緯度
+// （中心からの向き）。本体の座標系の中心からの向き o の y にこの値を掛けると、地図の緯度の向きになる
+static double MapLatScale(const BodyDef& d) {
+    double e = 1 - d.flattening;
+    return std::strcmp(d.en, "Earth") == 0 ? 1 / (e * e) : 1;
+}
+// 本体の座標系の中心からの向き o の、地図の緯度 deg
+static double MapLatDeg(const BodyDef& d, V3 o) {
+    V3 m = Norm(V3(o.x, o.y * MapLatScale(d), o.z));
+    return std::asin(std::max(-1.0, std::min(1.0, m.y))) / DEG;
+}
+// 地図の緯度・経度 deg（東経が正）の点の、本体の座標系の中心からの向き
+static V3 MapLatLonDir(const BodyDef& d, double latDeg, double lonDeg) {
+    double la = latDeg * DEG, lo = lonDeg * DEG;
+    return Norm(V3(std::cos(la) * std::cos(lo), std::sin(la) / MapLatScale(d), -std::cos(la) * std::sin(lo)));
+}
+
+// 月・地図のある天体の、データより細かい手続きの起伏（単位は半径。シェーダの bumpAt と同じ）。点 p（楕円体では y を
+// 縮める前の球面の点）で sp より細かいものを省く。ms: 地図を引く時に p の y に掛ける値
+static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo, float ms) {
     const float seed = (float)(T.body * 7.31);
     const F3 o{seed, seed * 1.37f, seed * 0.71f};
-    float l = std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
-    double u = std::atan2(-p.z / l, p.x / l) / (2 * PI) + 0.5, v = 0.5 - std::asin(std::max(-1.0f, std::min(1.0f, p.y / l))) / PI;
+    float my = p.y * ms, l = std::sqrt(p.x * p.x + my * my + p.z * p.z);
+    double u = std::atan2(-p.z / l, p.x / l) / (2 * PI) + 0.5, v = 0.5 - std::asin(std::max(-1.0f, std::min(1.0f, my / l))) / PI;
     if (T.bumps == 1) {   // 月: 海（暗い所）はクレーターが少なく平ら
         float dark = T.aux.empty() ? 0.0f : MoonDark(T.Aux(u, v, 0), T.Aux(u, v, 1), T.Aux(u, v, 2));
         return CratersBand(p, Mixf(0.55f, 0.2f, dark), 260.0f, o * 0.37f, sp, fLo) +
@@ -322,10 +338,13 @@ static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo) {
     return h;
 }
 
+// 本体の座標系（X, 自転軸, Z）の向き o の地表の高さ km。地図は地図の緯度（MapLatScale）で引き、手続きの起伏は向きを
+// (x, y / (1 − 扁平率), z) にした球面の点で求める（球のメッシュと同じ）
 static double TerrainKm(const Body& b, V3 o) {
     const Terrain& T = g_terrain[b.terrain];
-    V3 p = Norm(V3(o.x, o.y / (1 - b.d.flattening), o.z));
-    double lat = std::asin(std::max(-1.0, std::min(1.0, p.y))), lon = std::atan2(-p.z, p.x);
+    double e = 1 - b.d.flattening;
+    V3 p = Norm(V3(o.x, o.y / e, o.z));
+    double lat = MapLatDeg(b.d, o) * DEG, lon = std::atan2(-p.z, p.x);
     double x = (lon / (2 * PI) + 0.5) * T.w - 0.5, y = (0.5 - lat / PI) * T.h - 0.5;
     int x0 = (int)std::floor(x), y0 = (int)std::floor(y);
     double fx = x - x0, fy = y - y0;
@@ -345,7 +364,8 @@ static double TerrainKm(const Body& b, V3 o) {
     } else if (T.bumps) {   // データより細かい手続きの起伏
         double R = b.d.radius * 1000, fLo = T.h / (2 * PI) * (1 - w) + (D ? D->H / (2 * PI) * w : 0);
         float L = (float)(BUMP_MIN_M / R);   // 地形の格子と同じく、地表に固定した一番細かい格子点の段で求める
-        km += BumpLattice(p, L, [&](F3 q) { return BodyBumps(T, q, L, (float)fLo); }) * b.d.radius;
+        float ms = (float)(e * MapLatScale(b.d));
+        km += BumpLattice(p, L, [&](F3 q) { return BodyBumps(T, q, L, (float)fLo, ms); }) * b.d.radius;
     }
     return km;
 }

@@ -188,7 +188,7 @@ struct App {
     int beltCount = 0;
     struct BodyMap { std::string name; int kind = 0; bool height = false, wide = false, liquid = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
     std::vector<BodyMap> maps;            // 探査機の画像による地図（assets/maps.bin）
-    int locMapInfo = -1, locMapInfo2 = -1;
+    int locMapInfo = -1, locMapInfo2 = -1, locMapLatK = -1;
     Shader skyShader{};                   // 大気の中から見た空
     int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1, locSkySunVis = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
@@ -286,13 +286,13 @@ static void WarpTo(App& app, int ti, bool land) {
     else Toast(app, std::string(land ? T(UI_LAND) : T(UI_WARP)) + ": " + TR(b.d.jp, b.d.en));
 }
 
-// 天体の緯度・経度（東経が正）・高度に置き、北の地平線のやや手前を見下ろす
+// 天体の緯度（地図の緯度。MapLatScale）・経度（東経が正）・高度に置き、北の地平線のやや手前を見下ろす
 static void PlaceAt(App& app, int ti, double lat, double lon, double altKm) {
     const Body& b = app.B[ti];
     double cs = std::cos(b.spin), sn = std::sin(b.spin);
     V3 X = b.ex * cs - b.ez * sn, Z = b.ex * sn + b.ez * cs;  // 本体座標の X 軸（経度 0）と Z 軸
-    double la = lat * DEG, lo = lon * DEG;
-    V3 dir = X * (std::cos(la) * std::cos(lo)) + b.pole * std::sin(la) - Z * (std::cos(la) * std::sin(lo));
+    V3 o = MapLatLonDir(b.d, lat, lon);
+    V3 dir = X * o.x + b.pole * o.y + Z * o.z;
     app.ship.ref = ti;
     app.ship.speed = 0;
     double r0 = SurfaceRadius(b, dir), alt = std::max(altKm, MinAltitude(b));

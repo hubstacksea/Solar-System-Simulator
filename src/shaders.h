@@ -210,10 +210,15 @@ uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（R
 uniform vec4 params;     // z: 天体ごとのシード（フラグメントシェーダと同じ）
 uniform vec4 mapInfo;    // y: 地図の種類（2 模様だけ）
 uniform vec4 mapInfo2;   // x: 撮影されていない所の表面模様の種類, z: 1 なら撮影範囲の画像のアルファが液体
+uniform float mapLatK;
 out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
 out float fragAlt;   // 地形の高さ km（金星のもやの計算に使う。地形でなければ 0）
+
+// 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
+// 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
+vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
 
 float terrDecode(vec4 t) {
     if (terrA.w < 1.5) {   // 陸 128..255 = 0..8900 m（平方根で詰めてある）。海は海面（0）
@@ -225,7 +230,7 @@ float terrDecode(vec4 t) {
 }
 // 標高 m。頂点の間隔が画素より細かい所は CPU 側と同じく 4 画素の値から双線形に補間し、粗い所は縮小した画像を使う
 float terrHeight(vec3 d, float lod) {
-    float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
     vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927);
     if (lod > 0.0) return terrDecode(textureLod(texture1, uv, lod));
     vec2 xy = uv * terrD.xy - 0.5, f = fract(xy);
@@ -249,7 +254,7 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
         }
         return r;
     }
-    vec3 n = normalize(q);
+    vec3 n = mapDir(q);
     vec2 uv = vec2(atan(-n.z, n.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(n.y, -1.0, 1.0)) / 3.1415927);
     float h;
     if (terrE.z < 1.5) {   // 月: 海（暗い所）はクレーターが少なく平ら
@@ -290,7 +295,7 @@ float vertexBumps(vec3 d, float sp, float Lmin, float fLo, vec3 o) {
 }
 // 地球: カメラの周り（1 分角の窓の中）は細かい標高と、それより細かい山肌を足した高さ m。sp は頂点の間隔、hm は全球の標高
 float earthDetailHeight(vec3 d, float sp, float hm) {
-    float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
     vec2 l;
     float w = detWeight(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l);
     if (w <= 0.0) return hm;
@@ -308,7 +313,7 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
 }
 // 地球以外: カメラの周り（月・火星の窓の中）は細かい標高。データより細かい手続きの起伏（クレーター・山肌）を足した高さ m
 float bodyHeight(vec3 d, float sp, float hm) {
-    float lat = asin(clamp(d.y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
     vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l;
     float w = detWeight(uv, l);
     if (w > 0.0) {
@@ -476,6 +481,11 @@ vec4 craters(vec3 p, float density, float F0, vec3 salt) {
     }
     return s;
 }
+
+uniform float mapLatK;
+// 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
+// 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
+vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
 
 // 緯度・経度 (lon は -PI..PI)
 vec2 latLon(vec3 p) { return vec2(asin(clamp(p.y, -1.0, 1.0)), atan(p.z, p.x)); }
@@ -646,7 +656,7 @@ float earthHeightM(float c) {
 // 実データの地球。大陸・標高・夜景は NASA のデータ、テクスチャより細かい部分は手続きで補う
 vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out float lights, out float cloud) {
     // 本体座標: X 軸がグリニッジ子午線、Y 軸が北極、東経は -Z 方向
-    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
     float lon = atan(-p.z, p.x);
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     // 経度 ±180° の継ぎ目で微分が跳ばないようにする
@@ -774,7 +784,7 @@ float mapHeightM(vec4 t) { return mapInfo.z > 1.5 ? (t.r * 255.0 * 256.0 + t.a *
 vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     g_ray = 0.0;
     // 本体座標: X 軸が経度 0°（地球を向く側）、Y 軸が北極、東経は -Z 方向
-    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
     float lon = atan(-p.z, p.x);
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);
@@ -837,7 +847,7 @@ vec3 mapColor(vec2 uv, vec2 dx, vec2 dy) {
 
 vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     g_ray = 0.0;
-    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
     float lon = atan(-p.z, p.x);
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);
@@ -891,7 +901,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
 // 地図のあるガス惑星（木星・土星）: 雲の模様を貼る。撮影されていない所は手続き的な雲。地図は mapInfo2.y だけ回す（大赤斑を今の経度に合わせる）
 vec3 gasMap(vec3 p, vec3 o) {
     vec3 pb = gas(p, int(mapInfo2.x + 0.5), o);
-    float lat = asin(clamp(p.y, -1.0, 1.0));
+    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
     float lon = atan(-p.z, p.x) + mapInfo2.y;
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);

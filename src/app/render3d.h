@@ -548,8 +548,8 @@ static void UpdateDetailWindows(App& app) {
         if (!g_detail[k].file || dist > b.d.radius * 8 || dist <= 0) continue;
         double cw = std::cos(b.spin), sw = std::sin(b.spin);
         V3 X = b.ex * cw - b.ez * sw, Z = b.ex * sw + b.ez * cw, up = rel * (1.0 / dist);
-        V3 c = Norm(V3(Dot(up, X), Dot(up, b.pole) / (1 - b.d.flattening), Dot(up, Z)));   // 真下の向き（球面の点）
-        UpdateDetail(app, k, std::asin(std::max(-1.0, std::min(1.0, c.y))), std::atan2(-c.z, c.x));
+        V3 o(Dot(up, X), Dot(up, b.pole), Dot(up, Z));   // 真下の向き（本体の座標系）
+        UpdateDetail(app, k, MapLatDeg(b.d, o) * DEG, std::atan2(-o.z, o.x));
     }
 }
 
@@ -1203,6 +1203,8 @@ static void DrawBodies(App& app) {
         SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locAtm, &atm, SHADER_UNIFORM_VEC3);
         SetShaderValue(app.shader, app.locParams, params, SHADER_UNIFORM_VEC4);
+        float mapLatK = (float)((1 - d.flattening) * MapLatScale(d) - 1);   // シェーダの mapDir
+        SetShaderValue(app.shader, app.locMapLatK, &mapLatK, SHADER_UNIFORM_FLOAT);
         // 模様の細かさは 1 画素の大きさで決める。地球の雲は高度 10〜35 km で消える（地表付近で地面が白く覆われないように）
         float cloudK = (float)std::min(1.0, std::max(0.0, (alt - d.radius * 0.0015) / (d.radius * 0.004)));
         int style = d.style;

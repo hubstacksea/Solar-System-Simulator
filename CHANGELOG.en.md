@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.52.0 (2026-11-19)
+
+- Maps and terrain on oblate bodies were shifted in latitude. Maps and elevation data were looked up at a latitude halfway between the direction from the center and the map's latitude, shifting Earth's surface poleward by about 0.09° at mid-latitudes (about 10 km; the summit of Mt. Fuji was about 10 km north) and Jupiter's and Saturn's by about 2–3°. Maps are now looked up in each body's latitude convention (geodetic for Earth, planetocentric for the other maps, per the Saturn map's label and the description of the Jupiter map PIA07782), in the terrain, shading, altitude and collision calculations and the fine elevation windows alike
+- Earth's displayed latitude (the position at the lower left, share links and bookmarks, the ground view) and the places that turn a latitude into a position (going to a city, `--at`, eclipse locations) now use geodetic latitude too (before, they used the latitude of the direction from the center, showing N35.2° at the summit of Mt. Fuji)
+
 ## 2.51.2 (2026-11-19)
 
 - `tools/run_checks.py` now checks the browser version's shader: the vertex shader must call the procedural relief `bumpAt` from one place only (writing it in several places, as in 2.51.0, kept the browser from finishing the shader translation, so it never started). The 2.51.0 shader counts 8 places and fails. The app behaves the same as 2.51.1

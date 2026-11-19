@@ -63,7 +63,7 @@ static std::string BookmarkLabel(const App& app, const Bookmark& bm) {
     double alt = r - SurfaceRadius(b, X * dir.x + b.pole * dir.y + Z * dir.z);
     char buf[160];
     snprintf(buf, sizeof buf, "%s  %s %.1f°  %s %.1f°  %s", TR(b.d.jp, b.d.en), dir.y >= 0 ? "N" : "S",
-             std::fabs(std::asin(std::max(-1.0, std::min(1.0, dir.y))) / DEG), std::atan2(-dir.z, dir.x) >= 0 ? "E" : "W",
+             std::fabs(MapLatDeg(b.d, dir)), std::atan2(-dir.z, dir.x) >= 0 ? "E" : "W",
              std::fabs(std::atan2(-dir.z, dir.x) / DEG), FmtDist(std::max(0.0, alt)).c_str());
     return buf;
 }

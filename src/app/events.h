@@ -13,11 +13,11 @@ static void ShadowAxis(V3 sun, V3 caster, V3 target, double* along, double* perp
     *perp = Len(d - u * *along);
 }
 
-// 地球の天体固定座標での緯度・経度 deg
+// 地球の天体固定座標での緯度（地図の緯度。MapLatScale）・経度 deg
 static void LatLonOf(const Body& b, V3 dir, double* lat, double* lon) {
     V3 X, Z;
     BodyFixedAxes(b, &X, &Z);
-    *lat = std::asin(std::max(-1.0, std::min(1.0, Dot(dir, b.pole)))) / DEG;
+    *lat = MapLatDeg(b.d, V3(Dot(dir, X), Dot(dir, b.pole), Dot(dir, Z)));
     *lon = std::atan2(-Dot(dir, Z), Dot(dir, X)) / DEG;
 }
 
@@ -1021,9 +1021,9 @@ static double SupernovaMag(int k, double t) {
 // 地球の緯度・経度 deg の地上の位置（太陽中心の描画座標。B は時刻 t に更新済み）
 static V3 EarthSite(const std::vector<Body>& B, double lat, double lon) {
     const Body& e = B[B_EARTH];
-    double cs = std::cos(e.spin), sn = std::sin(e.spin), la = lat * DEG, lo = lon * DEG;
-    V3 X = e.ex * cs - e.ez * sn, Z = e.ex * sn + e.ez * cs;
-    return e.pos + (X * (std::cos(la) * std::cos(lo)) + e.pole * std::sin(la) - Z * (std::cos(la) * std::sin(lo))) * e.d.radius;
+    double cs = std::cos(e.spin), sn = std::sin(e.spin);
+    V3 X = e.ex * cs - e.ez * sn, Z = e.ex * sn + e.ez * cs, o = MapLatLonDir(e.d, lat, lon);
+    return e.pos + (X * o.x + e.pole * o.y + Z * o.z) * e.d.radius;
 }
 
 // 歴史上の日食・月食（HISTORY）を、史実の日付の前後 2 日で探す

@@ -1293,7 +1293,7 @@ static void DrawGroundView(const App& app) {
     }
     // パネル: 場所と時刻、ターゲットの高度・方位、出・南中・入り
     V3 f = GroundFixed(app, g);
-    double lat = std::asin(std::max(-1.0, std::min(1.0, f.y / Len(f)))) / DEG, lon = std::atan2(-f.z, f.x) / DEG;
+    double lat = MapLatDeg(app.B[g].d, f), lon = std::atan2(-f.z, f.x) / DEG;
     // 検索の「地上」で選んだ都市の近く（50 km 以内）にいる間は、その都市の標準時で表示する
     bool tzOk = app.groundTzOk && app.groundTzBody == g && Len(f - app.groundTzPlace) < 50;
     double tz = tzOk ? app.groundTz : 0;
