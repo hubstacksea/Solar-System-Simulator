@@ -9,9 +9,11 @@
   3. 歴史: イベント一覧の「歴史」のページの件数
   4. 探査機の旅: 全機体の行程が時刻の順に並び、出発から到達までそろっているか
   5. ブラウザ版のフォント: web/NotoSansJP-subset.ttf に、画面に出る文字（src の文字列と星の名前）がすべて入っているか
-  6. ワープ（画面が要る）: すべての天体へワープ演出を通してワープし、着いた後にターゲットが正面（2.5° 以内）にあり、
+  6. ブラウザ版のシェーダ: 頂点シェーダで手続きの起伏（bumpAt）を呼ぶ所が 1 つだけか（何か所にも書くと、Windows の
+     Chrome（WebGL を Direct3D に変換する）でシェーダの変換が終わらず起動しなくなる。2.51.0 で起きた）
+  7. ワープ（画面が要る）: すべての天体へワープ演出を通してワープし、着いた後にターゲットが正面（2.5° 以内）にあり、
      1 秒間で機首が動かず、位置が数値として壊れていないか
-  7. 地表すれすれの光速飛行（画面が要る）: 扁平な惑星の北緯 45° の高度 20 km から光速エンジンで飛び出し、
+  8. 地表すれすれの光速飛行（画面が要る）: 扁平な惑星の北緯 45° の高度 20 km から光速エンジンで飛び出し、
      まだ地表すれすれ（高度 30 km 以下）にいる間に、画面の下側の明るさが急に落ちる（表面が消える）フレームがないか。
      （上昇して地平線が画面から外れたことによる暗さは数えない）
 
@@ -167,6 +169,14 @@ def check_webfont(exe):
         else "%d characters" % len(shown_chars())
 
 
+def check_shader(exe):
+    # 頂点シェーダ（src/shaders.h の PLANET_VS。コメントは除く）で bumpAt を呼ぶ所の数（定義は数えない）
+    src = open("src/shaders.h", encoding="utf-8").read()
+    vs = re.sub(r"//[^\n]*", "", src[src.index('PLANET_VS = R"('):src.index('PLANET_FS = R"(')])
+    n = len(re.findall(r"\bbumpAt\s*\(", vs)) - len(re.findall(r"\bfloat\s+bumpAt\s*\(", vs))
+    return n == 1, "bumpAt called from %d place(s) in PLANET_VS%s" % (n, "" if n == 1 else " (must be 1)")
+
+
 def body_count(exe):
     out = run(exe, ["--check-assets"])
     m = re.search(r"bodies (\d+)", out)
@@ -256,7 +266,7 @@ def main():
     display = "--no-display" not in args
     jobs = int(args[args.index("--jobs") + 1]) if "--jobs" in args else 3
     checks = [("assets", check_assets), ("eclipses", check_eclipses), ("history", check_history), ("voyages", check_voyages),
-              ("webfont", check_webfont)]
+              ("webfont", check_webfont), ("shader", check_shader)]
     if display:
         checks += [("voyagelink", check_voyage_link), ("warps", lambda e: check_warps(e, jobs)), ("skim", lambda e: check_skim(e, jobs))]
     failed = 0

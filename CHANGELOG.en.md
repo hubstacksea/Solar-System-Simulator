@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.51.2 (2026-11-19)
+
+- `tools/run_checks.py` now checks the browser version's shader: the vertex shader must call the procedural relief `bumpAt` from one place only (writing it in several places, as in 2.51.0, kept the browser from finishing the shader translation, so it never started). The 2.51.0 shader counts 8 places and fails. The app behaves the same as 2.51.1
+
 ## 2.51.1 (2026-11-19)
 
 - The browser version of 2.51.0 froze on the "Loading" screen in some environments. Computing the terrain vertices' relief from 8 lattice points at 2 levels wrote the heavy relief calculation 16 times into the shader, which apparently made it too large for the browser to finish translating (Chrome and Edge on Windows translate WebGL to Direct3D; it did not reproduce in headless Chrome on this PC). The calculation now appears once and runs in a loop. It looks the same as 2.51.0
