@@ -795,11 +795,17 @@ static void UpdateShip(App& app, double dt) {
 
 // 地表近く（高度 100 km 以下）で止まっている時は、天体の自転と一緒に回る（地上から空を見る・着陸した時に地面が流れない）。
 // spin0 は時刻を進める前の自転角
+static bool HeldByGround(const App& app, int ref) {
+    const Ship& s = app.ship;
+    if (app.physics || app.autopilot || app.warpT >= 0 || s.speed != 0 || s.thrusting || s.ref != ref) return false;
+    const Body& b = app.B[ref];
+    return b.d.kind != KIND_PROBE && SurfaceDist(b, ShipWorld(app)) <= 100;
+}
+
 static void CoRotateWithGround(App& app, int ref, double spin0) {
     Ship& s = app.ship;
-    if (app.physics || app.autopilot || app.warpT >= 0 || s.speed != 0 || s.thrusting || s.ref != ref) return;
+    if (!HeldByGround(app, ref)) return;
     const Body& b = app.B[ref];
-    if (b.d.kind == KIND_PROBE || SurfaceDist(b, ShipWorld(app)) > 100) return;
     double a = b.spin - spin0;
     if (a == 0) return;
     double x = Dot(s.local, b.ex), y = Dot(s.local, b.pole), z = Dot(s.local, b.ez), c = std::cos(a), sn = std::sin(a);

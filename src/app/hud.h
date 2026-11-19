@@ -1374,14 +1374,53 @@ static void DrawMiniGlobe(const App& app, int bi, double alt, float top) {
         y = std::max(y, row.y + row.height + 10);
     }
     ctr[2] = D;
+    V3 sr = app.B[B_SUN].pos - b.pos, sd = Norm(V3(Dot(sr, X), Dot(sr, b.pole), Dot(sr, Z)));
+    float sun[4] = {(float)sd.x, (float)sd.y, (float)sd.z, earth ? 0.105f : 0.02f};   // 地球は薄明（太陽高度 -6° まで）をぼかす
     BeginShaderMode(app.miniShader);
     SetShaderValue(app.miniShader, app.locMiniCenter, ctr, SHADER_UNIFORM_VEC4);
     SetShaderValue(app.miniShader, app.locMiniTint, &tint, SHADER_UNIFORM_VEC3);
+    SetShaderValue(app.miniShader, app.locMiniSun, sun, SHADER_UNIFORM_VEC4);
     if (earth) SetShaderValueTexture(app.miniShader, app.locMiniData, app.earthData);
     DrawTexturePro(tex, {0, 0, (float)tex.width, (float)tex.height}, {x, y, D, D}, {0, 0}, 0, WHITE);
     EndShaderMode();
     Vector2 m = {x + D * 0.5f, y + D * 0.5f};
     DrawCircleLinesV(m, D * 0.5f + 1, {110, 150, 200, 200});
+    // 進む先: 今の速度のまま 3 時間進んだ時に真下になる地点を、天体の自転を入れて球の表側の端まで（重力モードは天体の重力だけで惰性飛行）
+    if (bi == app.ship.ref && !HeldByGround(app, bi)) {
+        const Ship& s = app.ship;
+        double rp = d.rotPeriod == 0 ? d.moonPeriod : d.rotPeriod, w = 2 * PI / (rp * 86400), gm = G_KM * d.mass;
+        if (app.timeReverse) w = -w;   // 逆再生では天体だけ逆に回る
+        double sl0 = std::sin(ctr[0]), cl0 = std::cos(ctr[0]), t = 0;
+        V3 p = s.local, v = app.physics ? s.vel : ShipFwd(s) * s.speed;
+        Vector2 last = m;
+        bool hit = false;
+        for (int k = 0; k < 2000 && t < 3 * 3600; k++) {
+            double R = Len(p), dt = std::min(36.0, 0.01 / std::max(Len(v) / R, std::fabs(w)));   // 1 歩で 0.6° ほど
+            if (app.physics) {
+                v = v + p * (-gm / (R * R * R) * dt * 0.5);
+                p = p + v * dt;
+                R = Len(p);
+                v = v + p * (-gm / (R * R * R) * dt * 0.5);
+            } else p = p + v * dt;
+            t += dt;
+            double cw = std::cos(w * t), sw = std::sin(w * t);
+            V3 Xt = X * cw - Z * sw, Zt = X * sw + Z * cw, ot(Dot(p, Xt), Dot(p, b.pole), Dot(p, Zt));
+            double la = MapLatDeg(d, ot) * DEG, dl = std::atan2(-ot.z, ot.x) - ctr[1];
+            double sl = std::sin(la), cl = std::cos(la);
+            if (sl0 * sl + cl0 * cl * std::cos(dl) < 0) break;   // 球の裏側へ回った
+            Vector2 q = {m.x + (float)(cl * std::sin(dl)) * D * 0.5f, m.y - (float)(cl0 * sl - sl0 * cl * std::cos(dl)) * D * 0.5f};
+            hit = R < SurfaceRadius(b, p * (1.0 / R));
+            if (hit || Vector2Distance(q, last) > 2) {
+                DrawLineEx(last, q, 2, {255, 215, 110, 210});
+                last = q;
+            }
+            if (hit) break;
+        }
+        if (hit) {   // 地面に当たる所
+            DrawLineEx({last.x - 4, last.y - 4}, {last.x + 4, last.y + 4}, 2, {255, 120, 90, 240});
+            DrawLineEx({last.x - 4, last.y + 4}, {last.x + 4, last.y - 4}, 2, {255, 120, 90, 240});
+        }
+    }
     float pulse = 0.5f + 0.5f * std::sin((float)GetTime() * 5);
     DrawCircleV(m, 6 + 3 * pulse, {255, 70, 50, (unsigned char)(70 * (1 - pulse) + 40)});
     DrawCircleV(m, 3.5f, {255, 90, 60, 255});

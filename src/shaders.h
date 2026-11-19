@@ -1322,6 +1322,7 @@ uniform sampler2D texture0;
 uniform sampler2D texture1;   // 地球: 陸と海（地表のシェーダの earthData。b が陸、r が標高、a が海氷）
 uniform vec4 miniCenter;   // x: 中心の緯度, y: 中心の経度（東経が正、rad）, z: 球の直径（画素）, w: 1 なら地球
 uniform vec3 miniTint;     // 白黒の地図は天体の色で着色
+uniform vec4 miniSun;      // xyz: 天体の座標系での太陽の向き, w: 薄明の幅（太陽高度の sin）
 out vec4 finalColor;
 void main() {
     vec2 q = vec2(fragTexCoord.x * 2.0 - 1.0, 1.0 - fragTexCoord.y * 2.0);   // 右が東、上が北
@@ -1342,6 +1343,10 @@ void main() {
         vec3 oc = mix(mix(vec3(0.08, 0.24, 0.34), vec3(0.03, 0.07, 0.20), depth), vec3(0.88, 0.91, 0.95), td.a);
         c = mix(oc, c, smoothstep(0.45, 0.55, td.b));
     }
+    // 昼と夜: 地図の緯度は面の向き（地球は測地緯度）なので、その向きと太陽の向きで太陽高度が決まる
+    vec3 nrm = vec3(cos(lat) * cos(lon), sin(lat), -cos(lat) * sin(lon));
+    float day = smoothstep(-miniSun.w, 0.0, dot(nrm, miniSun.xyz));
+    c *= mix(vec3(0.50, 0.56, 0.72), vec3(1.0), day);   // 夜も地形が分かる明るさに
     c *= 0.55 + 0.45 * sqrt(cz);   // 縁を暗く
     finalColor = vec4(c, 0.7 * (1.0 - smoothstep(1.0 - aa, 1.0 + aa, r)));   // 少し透かして後ろの景色を見せる
 }

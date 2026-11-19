@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.54.0 (2026-11-19)
+
+- The globe minimap now shows day and night (the Sun's altitude at each point is found from the Sun's direction and the night side is darkened; on Earth the twilight down to a solar altitude of -6° is blended)
+- The globe minimap now shows where you are heading (the points below you over the next 3 hours at your current velocity, including the body's rotation, up to the edge of the visible side; in gravity mode the coasting path under that body's gravity alone; a cross where you would hit the ground; future thrust is not included; hidden while you are stopped within 100 km of the ground and turning with it)
+
 ## 2.53.0 (2026-11-19)
 
 - Flying near the surface of a body with a map (up to an altitude of 10% of its radius) now shows a globe minimap with a dot at your position below the top-left panel (an orthographic view centered on your position with north up, slightly see-through). It appears for Earth, the Moon, Mars, Mercury, Ceres, Vesta, Pluto, Charon, Titan, the moons of Jupiter and Saturn and others (not for Jupiter and Saturn, which have no surface, nor Venus and Iapetus, which have no visible-light map). Earth's oceans are painted from the land and sea data. It is hidden in photo mode and on voyages, and placed clear of the left buttons with touch controls

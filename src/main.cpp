@@ -453,6 +453,7 @@ int main(int argc, char** argv) {
     app.miniShader = LoadShaderFromMemory(GlslForPlatform(MINIGLOBE_VS).c_str(), GlslForPlatform(MINIGLOBE_FS).c_str());
     app.locMiniCenter = GetShaderLocation(app.miniShader, "miniCenter");
     app.locMiniTint = GetShaderLocation(app.miniShader, "miniTint");
+    app.locMiniSun = GetShaderLocation(app.miniShader, "miniSun");
     app.locMiniData = GetShaderLocation(app.miniShader, "texture1");
     app.locSkyUp = GetShaderLocation(app.skyShader, "up");
     app.locSkySun = GetShaderLocation(app.skyShader, "sunDir");
