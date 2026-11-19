@@ -955,8 +955,6 @@ inline Mesh GenProbeMesh(int model) {
         ApolloLM(mb, tip - 0.35f - 5.4f, 1, true, true, false, 1, -1);
         break;
     }
-    case PM_APOLLO_CM:
-    case PM_CM_DROGUE:
     case PM_HUYGENS_ENTRY:
     case PM_HUYGENS_MAIN:
     case PM_HUYGENS_STAB:
@@ -1122,6 +1120,8 @@ inline Mesh GenProbeMesh(int model) {
         mb.Tube({0, 0, 0}, {0, 0, -1}, 0.02f, 4, {60, 60, 60, 255}, SM_PAINT);
         break;
     }
+    case PM_APOLLO_CM:
+    case PM_CM_DROGUE:
     case PM_CM_MAIN: {
         float tip = ApolloCM(mb, 1.5f);
         const Color canopy = {232, 112, 48, 255}, white2 = {236, 236, 232, 255}, line = {200, 200, 196, 255};

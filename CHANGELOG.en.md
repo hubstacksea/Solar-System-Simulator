@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.54.2 (2026-11-20)
+
+- Fixed the Apollo command module after service module jettison, and under its drogue parachutes, being drawn as the Huygens descent module (since 2.42.0)
+
 ## 2.54.1 (2026-11-19)
 
 - Fixed the ship sometimes being pushed up by tens of meters right after warping to a probe on the ground (such as Perseverance), which moved the probe off the center of the screen (the fine terrain where you arrive is now loaded before probes are placed back on the terrain)
