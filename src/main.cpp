@@ -688,13 +688,15 @@ int main(int argc, char** argv) {
             app.paused = true;
             Toast(app, T(UI_TIME_LIMIT));
         }
+        // 細かい地形は天体を動かす前に読む: 地表の探査機が同じフレームのうちに新しい地形の上へ置き直され、
+        // 自機が古い地形の上の探査機に合わせて置かれたまま地面に押し上げられることがない（ワープした直後など）
+        UpdateDetailWindows(app);
         int spinRef = app.ship.ref;
         double spin0 = app.B[spinRef].spin;
         UpdateBodies(app.B, app.tDays);
         ApolloTdeShiftBodies(app);
         ApolloDockPort(app);
         CoRotateWithGround(app, spinRef, spin0);
-        UpdateDetailWindows(app);
         UpdateMeteors(app, dt, simDt);
         UpdateShip(app, simDt);
         UpdateVoyage(app, dt);

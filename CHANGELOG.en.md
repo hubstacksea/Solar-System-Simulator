@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.54.1 (2026-11-19)
+
+- Fixed the ship sometimes being pushed up by tens of meters right after warping to a probe on the ground (such as Perseverance), which moved the probe off the center of the screen (the fine terrain where you arrive is now loaded before probes are placed back on the terrain)
+
 ## 2.54.0 (2026-11-19)
 
 - The globe minimap now shows day and night (the Sun's altitude at each point is found from the Sun's direction and the night side is darkened; on Earth the twilight down to a solar altitude of -6° is blended)
