@@ -184,6 +184,8 @@ struct App {
     std::vector<Texture2D> ringTex;       // 環の半径方向の不透明度（RingSets() と同じ並び）
     int locRingInfo = -1;
     Shader beltShader{};                  // 小惑星などの粒を GPU で計算して描く
+    Shader miniShader{};                  // 地表の近くの球のミニマップ
+    int locMiniCenter = -1, locMiniTint = -1, locMiniData = -1;
     unsigned int beltVao = 0, beltVbo = 0;
     int beltCount = 0;
     struct BodyMap { std::string name; int kind = 0; bool height = false, wide = false, liquid = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };

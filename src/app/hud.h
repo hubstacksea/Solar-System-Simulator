@@ -1343,6 +1343,51 @@ static void DrawGroundView(const App& app) {
     }
 }
 
+// 地表の近く（高度が半径の 10% まで）を飛ぶ時、地図のある天体の球のミニマップと今いる所の光点を、左上のパネルの下に出す。
+// 正射図法で、今いる所が中心、北が上（地図の緯度・経度。MapLatScale）
+static void DrawMiniGlobe(const App& app, int bi, double alt, float top) {
+    const Body& b = app.B[bi];
+    const BodyDef& d = b.d;
+    if (!app.miniShader.id || alt > d.radius * 0.1 || (d.kind != KIND_ROCKY && d.kind != KIND_EARTH)) return;
+    Texture2D tex{};
+    Vector3 tint = {1, 1, 1};
+    bool earth = d.style == S_EARTH && app.earthTex;
+    if (earth) tex = app.earthColor;
+    else if (d.style == S_MOON && app.moonTex) tex = app.moonColor;
+    else if (b.map >= 0 && app.maps[b.map].kind != 2) {
+        tex = app.maps[b.map].color;
+        if (app.maps[b.map].kind == 1) {   // 白黒: 天体の色で着色（明るさは地図のまま）
+            float m = std::max({d.c1.r, d.c1.g, d.c1.b, 0.01f});
+            tint = {d.c1.r / m, d.c1.g / m, d.c1.b / m};
+        }
+    }
+    if (!tex.id || tex.width < 256) return;   // 金星は目に見える光の地図がない
+    V3 X, Z;
+    BodyFixedAxes(b, &X, &Z);
+    V3 r = ShipWorld(app) - b.pos, o(Dot(r, X), Dot(r, b.pole), Dot(r, Z));
+    float ctr[4] = {(float)(MapLatDeg(d, o) * DEG), (float)std::atan2(-o.z, o.x), 0, earth ? 1.0f : 0.0f};
+    const Cam& c = app.cam;
+    float D = std::min(150.0f, c.H * 0.24f), x = 10, y = top;
+    if (app.touchUI) {   // 指で操作する時は、左のボタンの列とパネルの下のボタンの段を避ける
+        Rectangle t = TouchButtonRect(c, TB_TARGET), row = TouchButtonRect(c, TB_TOUR);
+        x = t.x + t.width + 12;
+        y = std::max(y, row.y + row.height + 10);
+    }
+    ctr[2] = D;
+    BeginShaderMode(app.miniShader);
+    SetShaderValue(app.miniShader, app.locMiniCenter, ctr, SHADER_UNIFORM_VEC4);
+    SetShaderValue(app.miniShader, app.locMiniTint, &tint, SHADER_UNIFORM_VEC3);
+    if (earth) SetShaderValueTexture(app.miniShader, app.locMiniData, app.earthData);
+    DrawTexturePro(tex, {0, 0, (float)tex.width, (float)tex.height}, {x, y, D, D}, {0, 0}, 0, WHITE);
+    EndShaderMode();
+    Vector2 m = {x + D * 0.5f, y + D * 0.5f};
+    DrawCircleLinesV(m, D * 0.5f + 1, {110, 150, 200, 200});
+    float pulse = 0.5f + 0.5f * std::sin((float)GetTime() * 5);
+    DrawCircleV(m, 6 + 3 * pulse, {255, 70, 50, (unsigned char)(70 * (1 - pulse) + 40)});
+    DrawCircleV(m, 3.5f, {255, 90, 60, 255});
+    DrawCircleLinesV(m, 4.5f, {255, 240, 220, 230});
+}
+
 static void DrawHUD(App& app) {
     const Cam& c = app.cam;
     if (app.photoMode > 0) {   // 写真モード: 一覧・入力欄と、切り替えの知らせだけ
@@ -1441,6 +1486,7 @@ static void DrawHUD(App& app) {
     DrawGroundView(app);
     DrawSpeedometer(app);
     DrawEngineBar(app);
+    DrawMiniGlobe(app, nearest, nearestAlt, app.physics && Massive(app.B[s.ref]) ? lh * 6 + 58 : lh * 6 + 26);   // 地平線と方位の上に
 
     if (app.autopilot) {
         std::string ap = std::string(T(UI_AP)) + " >> " + TR(tb.d.jp, tb.d.en) + "   " + T((UiId)app.apPhase) + "   " +

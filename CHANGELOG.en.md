@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.53.0 (2026-11-19)
+
+- Flying near the surface of a body with a map (up to an altitude of 10% of its radius) now shows a globe minimap with a dot at your position below the top-left panel (an orthographic view centered on your position with north up, slightly see-through). It appears for Earth, the Moon, Mars, Mercury, Ceres, Vesta, Pluto, Charon, Titan, the moons of Jupiter and Saturn and others (not for Jupiter and Saturn, which have no surface, nor Venus and Iapetus, which have no visible-light map). Earth's oceans are painted from the land and sea data. It is hidden in photo mode and on voyages, and placed clear of the left buttons with touch controls
+
 ## 2.52.0 (2026-11-19)
 
 - Maps and terrain on oblate bodies were shifted in latitude. Maps and elevation data were looked up at a latitude halfway between the direction from the center and the map's latitude, shifting Earth's surface poleward by about 0.09° at mid-latitudes (about 10 km; the summit of Mt. Fuji was about 10 km north) and Jupiter's and Saturn's by about 2–3°. Maps are now looked up in each body's latitude convention (geodetic for Earth, planetocentric for the other maps, per the Saturn map's label and the description of the Jupiter map PIA07782), in the terrain, shading, altitude and collision calculations and the fine elevation windows alike

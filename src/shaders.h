@@ -1302,3 +1302,47 @@ in vec4 vColor;
 out vec4 finalColor;
 void main() { finalColor = vColor; }
 )";
+
+// 左上のパネルの下の球のミニマップ（地表の近くを飛ぶ時）: 正射図法で、中心が今いる所、北が上。地図（正距円筒図法）を引く
+static const char* MINIGLOBE_VS = R"(
+#version 330
+in vec3 vertexPosition;
+in vec2 vertexTexCoord;
+uniform mat4 mvp;
+out vec2 fragTexCoord;
+void main() {
+    fragTexCoord = vertexTexCoord;
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+)";
+static const char* MINIGLOBE_FS = R"(
+#version 330
+in vec2 fragTexCoord;
+uniform sampler2D texture0;
+uniform sampler2D texture1;   // 地球: 陸と海（地表のシェーダの earthData。b が陸、r が標高、a が海氷）
+uniform vec4 miniCenter;   // x: 中心の緯度, y: 中心の経度（東経が正、rad）, z: 球の直径（画素）, w: 1 なら地球
+uniform vec3 miniTint;     // 白黒の地図は天体の色で着色
+out vec4 finalColor;
+void main() {
+    vec2 q = vec2(fragTexCoord.x * 2.0 - 1.0, 1.0 - fragTexCoord.y * 2.0);   // 右が東、上が北
+    float r = length(q), aa = 2.0 / miniCenter.z;
+    if (r > 1.0 + aa) discard;
+    vec2 qc = q / max(r, 1.0);
+    float cz = sqrt(max(1.0 - dot(qc, qc), 0.0));   // 中心から見た角度の cos
+    float s0 = sin(miniCenter.x), c0 = cos(miniCenter.x);
+    float lat = asin(clamp(cz * s0 + qc.y * c0, -1.0, 1.0));
+    float lon = miniCenter.y + atan(qc.x, cz * c0 - qc.y * s0);
+    vec2 uv = vec2(fract(lon / 6.2831853 + 0.5), 0.5 - lat / 3.1415927);
+    vec2 dx = dFdx(uv), dy = dFdy(uv);
+    dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
+    vec3 c = textureGrad(texture0, uv, dx, dy).rgb * miniTint;
+    if (miniCenter.w > 0.5) {   // 地球の色の画像は海を周りの陸の色で埋めてあるので、海は陸と海のデータで塗る
+        vec4 td = textureGrad(texture1, uv, dx, dy);
+        float depth = clamp((127.0 - td.r * 255.0) / 60.0, 0.0, 1.0);
+        vec3 oc = mix(mix(vec3(0.08, 0.24, 0.34), vec3(0.03, 0.07, 0.20), depth), vec3(0.88, 0.91, 0.95), td.a);
+        c = mix(oc, c, smoothstep(0.45, 0.55, td.b));
+    }
+    c *= 0.55 + 0.45 * sqrt(cz);   // 縁を暗く
+    finalColor = vec4(c, 0.7 * (1.0 - smoothstep(1.0 - aa, 1.0 + aa, r)));   // 少し透かして後ろの景色を見せる
+}
+)";

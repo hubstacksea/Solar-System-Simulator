@@ -450,6 +450,10 @@ int main(int argc, char** argv) {
     app.locMapLatK = GetShaderLocation(app.shader, "mapLatK");
     app.skyShader = LoadShaderFromMemory(GlslForPlatform(SKY_VS).c_str(), GlslForPlatform(SKY_FS).c_str());
     app.beltShader = LoadShaderFromMemory(GlslForPlatform(BELT_VS).c_str(), GlslForPlatform(BELT_FS).c_str());
+    app.miniShader = LoadShaderFromMemory(GlslForPlatform(MINIGLOBE_VS).c_str(), GlslForPlatform(MINIGLOBE_FS).c_str());
+    app.locMiniCenter = GetShaderLocation(app.miniShader, "miniCenter");
+    app.locMiniTint = GetShaderLocation(app.miniShader, "miniTint");
+    app.locMiniData = GetShaderLocation(app.miniShader, "texture1");
     app.locSkyUp = GetShaderLocation(app.skyShader, "up");
     app.locSkySun = GetShaderLocation(app.skyShader, "sunDir");
     app.locSkyBeta = GetShaderLocation(app.skyShader, "beta");
@@ -906,6 +910,7 @@ int main(int argc, char** argv) {
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
     UnloadShader(app.skyShader);
+    UnloadShader(app.miniShader);
     UnloadShader(app.beltShader);
     if (app.beltVao) rlUnloadVertexArray(app.beltVao);
     if (app.beltVbo) rlUnloadVertexBuffer(app.beltVbo);

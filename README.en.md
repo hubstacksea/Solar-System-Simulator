@@ -301,6 +301,7 @@ The values can be changed in the `ENGINES` table in `src/app/bodies.h`. Switchin
 - **Heading indicator** (top center): near a body (within 30 times its radius), heading, pitch and roll with that body's rotation axis as north. Farther away, ecliptic longitude and latitude. The yellow ▲ marks the target's bearing
 - **Body markers**: name and distance to the surface for the Sun and every planet. Off-screen bodies are shown as arrows at the screen edge. Moons are shown when near their parent. Bodies more than 1 light-year away other than stars, and asteroids, spacecraft and satellites more than 1 AU away, are not shown (the target always is)
 - **Resume**: the place, view and target are saved when you quit (and every 30 seconds in the browser version) and the next launch starts there. The settings offer "Place only (current time)" (default), "Place and time" and "Off". A share link takes precedence
+- **Globe minimap** (below the top-left panel): near the surface of a body with a map (Earth, the Moon, Mars, Mercury, moons, etc.; up to an altitude of 10% of its radius), a globe of the map centered on your position with north up, with a dot marking where you are
 - **Target info** (top right): distance, estimated arrival time at current speed, light travel time, and travel time at top speed. With a time scale applied, it also shows how many seconds of real time you will wait
 
 ## Spacecraft voyages
