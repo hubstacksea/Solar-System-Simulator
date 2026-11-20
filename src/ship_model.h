@@ -1338,6 +1338,12 @@ uniform vec3 engineColor;
 uniform float engineGlow; // 0..1
 uniform float navBlink;   // 0..1
 out vec4 finalColor;
+uniform float exposure;    // 明るさの自動調整の倍率（UpdateExposure）。0.75 までは掛けたまま、それより明るい所はなめらかに 1 へ寄せる（白く飛ばない）
+vec3 expo(vec3 c) {
+    if (exposure <= 1.0) return c;
+    vec3 e = c * exposure;
+    return mix(e, 0.75 + 0.25 * (1.0 - exp(-(e - 0.75) / 0.25)), step(0.75, e));
+}
 
 void main() {
     vec3 N = normalize(fragNormal);
@@ -1387,6 +1393,6 @@ void main() {
         col = mix(col, env + sunColor * pow(max(dot(R, L), 0.0), 400.0) * 3.0, fres);
     }
     col = col / (1.0 + 0.15 * col);   // ハイライトの白飛びを抑える
-    finalColor = vec4(col, 1.0);
+    finalColor = vec4(expo(col), 1.0);
 }
 )";

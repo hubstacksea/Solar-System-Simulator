@@ -419,6 +419,12 @@ uniform vec3 hazeSky;    // 層の下の空の明るさ（色ごと。雲と厚�
 uniform vec4 hazeBeta;   // 空気のレイリー散乱（地表、1/km、色ごと）, w: 空気の濃さが 1/e になる高さ km
 uniform vec3 camUp;
 out vec4 finalColor;
+uniform float exposure;    // 明るさの自動調整の倍率（UpdateExposure）。0.75 までは掛けたまま、それより明るい所はなめらかに 1 へ寄せる（白く飛ばない）
+vec3 expo(vec3 c) {
+    if (exposure <= 1.0) return c;
+    vec3 e = c * exposure;
+    return mix(e, 0.75 + 0.25 * (1.0 - exp(-(e - 0.75) / 0.25)), step(0.75, e));
+}
 
 const float PI = 3.14159265;
 float fw;      // 1 画素の大きさ（単位球の長さ）
@@ -972,7 +978,15 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     else if (mapInfo.y > 0.5) mb = color1 * tc.r * mapInfo.x;  // 白黒: 天体の色で着色
     else mb = tc * L1 * mapInfo.x;                             // カラー: 明るさだけ天体に合わせる
     // 火星の極冠: 白い所（緯度 60° より極側）。表面が若くクレーターがほとんど無いので、手続きのクレーターを消す
-    if (int(mapInfo2.x + 0.5) == 3) g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));
+    if (int(mapInfo2.x + 0.5) == 3) {
+        g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));
+        // 火星の地図（Viking MDIM 2.1 に NASA Ames が色を付けたもの）は暗い地域が青灰色に塗られているので、色合いだけを明るさに
+        // 応じた反射スペクトルの目安に置き換える（反射率の比 赤:緑:青 は明るい塵 1 : 0.55 : 0.29、暗い砂 1 : 0.73 : 0.55。Mars
+        // Pathfinder・ローバーのパノラマカメラなどの観測の概数。地図と同じ画面の色の値（sRGB、およそ 1/2.2 乗）に直して使う）。
+        // 明るさ（3 色の平均）は地図のまま。極冠の氷は変えない
+        vec3 hue = mix(vec3(1.0, 0.87, 0.76), vec3(1.0, 0.76, 0.57), smoothstep(0.6, 1.1, dot(tc, vec3(0.333)) * mapInfo.x));
+        mb = mix(hue * (dot(mb, vec3(0.333)) / dot(hue, vec3(0.333))), mb, g_ice);
+    }
     // 火星: TES の夜の熱慣性と地図の明るさから素材を見分け、細かい起伏を足す。熱慣性が低い所は細かい塵が積もって小さな凹凸が
     // 埋まり、中ほどで暗い所は砂（さざ波 波長 25 m・砂丘 300 m）、高い所は岩・岩盤（岩塊 直径 1〜12 m）
     vec4 mat = vec4(0.0);
@@ -1340,6 +1354,8 @@ void main() {
     float rim = pow(1.0 - mu, 3.0) * params.w;
     col += atmColor * rim * clamp(ndlG + 0.25, 0.0, 1.0);
 
+    // 露出は地面の照り返しだけに掛ける（かすみは空と同じ明るさのまま重ね、地平線で空とつながるように）
+    col = expo(col);
     // 大気の中から見た地面のかすみ: 遠いほど地面の色が薄れ、空と同じ光（SKY_FS と同じ近似）が重なる
     if (atmHaze.x > 0.0) {
         float air = atmHaze.x * length(fragWorld) * atmHaze.y / atmHaze.z;

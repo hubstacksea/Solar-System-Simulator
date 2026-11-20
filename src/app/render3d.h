@@ -938,6 +938,53 @@ static double SkyDaylight(const App& app) {
     return std::min(1.0, density * 2.0) * light;
 }
 
+// 明るさの自動調整（露出）: 地表の近くでは、真下の地面に当たる光（直射 + 空の光。シェーダの sunTint・skyL と同じ式、太陽が
+// 真上の時を 1）が弱いほど画面を明るくし、白い物が白く写るようにする（光の -0.7 乗、最大 2.2 倍）。場面の平均で決めると雪原が
+// 灰色に写るので、光の強さで決める。目は明るい夕焼けの空にも合わせるので、太陽高度 2〜12° で弱めて日の入りで 1。宇宙からと夜は 1
+static double ExposureTarget(const App& app) {
+    const Cam& c = app.cam;
+    int best = -1;
+    double bestK = 1e300;
+    for (size_t i = 0; i < app.B.size(); i++) {
+        const BodyDef& d = app.B[i].d;
+        if (d.kind != KIND_ROCKY && d.kind != KIND_EARTH) continue;
+        double k = SurfaceDist(app.B[i], c.pos) / d.radius;
+        if (k < bestK) { bestK = k; best = (int)i; }
+    }
+    if (best < 0 || bestK > 0.01 || HazeWorldOf(app.B[best].d)) return 1;
+    const Body& b = app.B[best];
+    V3 up = Norm(c.pos - b.pos);
+    double el = Dot(up, Norm(app.B[HostStar(app.B, best)].pos - c.pos));
+    double e = std::max(el, 0.0), illum = e;
+    for (const SkyAtmosphere& a : SKY_ATM)
+        if (a.body == best) {
+            double m = std::min(1.0 / (e + 0.06), 7.0), ext[3] = {a.ext.x, a.ext.y, a.ext.z}, alb[3] = {a.alb.x, a.alb.y, a.alb.z};
+            double w[3] = {0.3, 0.59, 0.11};
+            illum = 0;
+            for (int k = 0; k < 3; k++) {
+                double tz = std::exp(-ext[k]), dz = a.down * alb[k] * (1 - tz) / tz;
+                double sky = a.down * alb[k] * (1 - std::exp(-ext[k] * m)) / tz * e;
+                illum += w[k] * (e * std::exp(-ext[k] * std::max(m - 1, 0.0)) + sky) / (1 + dz);
+            }
+        }
+    double g = std::min(2.2, std::pow(std::max(illum, 0.1), -0.7));
+    double day = std::max(0.0, std::min(1.0, (el - 0.035) / 0.17));
+    double near = 1 - std::max(0.0, std::min(1.0, (bestK - 0.002) / 0.008));
+    return 1 + (g - 1) * day * near;
+}
+
+// 露出の倍率を求めて、天体と自機のシェーダに渡す（3D を描く前に毎フレーム。シェーダの expo で掛ける）。空の明るさは見た目に
+// 合わせた値で、明るい空にも目が合うので掛けない
+static void UpdateExposure(App& app, float dt) {
+    double t = ExposureTarget(app);
+    static V3 last(1e300, 0, 0);   // ワープ・共有リンクなどで 1 フレームに 100 km 以上動いた時はすぐ合わせる
+    if (Len(app.cam.pos - last) > 100) app.exposure = (float)t;
+    else app.exposure += (float)((t - app.exposure) * std::min(1.0, dt * 1.5));   // 目の順応のようにゆっくり
+    last = app.cam.pos;
+    SetShaderValue(app.shader, app.locExposure, &app.exposure, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(app.shipShader, app.locShipExposure, &app.exposure, SHADER_UNIFORM_FLOAT);
+}
+
 static void DrawSkyAtmosphere(const App& app) {
     double density, sunEl;
     V3 up;

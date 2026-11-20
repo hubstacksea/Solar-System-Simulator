@@ -452,6 +452,7 @@ int main(int argc, char** argv) {
     app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");
     app.locMapLatK = GetShaderLocation(app.shader, "mapLatK");
     app.locOppB0 = GetShaderLocation(app.shader, "oppB0");
+    app.locExposure = GetShaderLocation(app.shader, "exposure");
     app.skyShader = LoadShaderFromMemory(GlslForPlatform(SKY_VS).c_str(), GlslForPlatform(SKY_FS).c_str());
     app.beltShader = LoadShaderFromMemory(GlslForPlatform(BELT_VS).c_str(), GlslForPlatform(BELT_FS).c_str());
     app.miniShader = LoadShaderFromMemory(GlslForPlatform(MINIGLOBE_VS).c_str(), GlslForPlatform(MINIGLOBE_FS).c_str());
@@ -479,6 +480,12 @@ int main(int argc, char** argv) {
     StartDeferredAssetDownloads();   // 地図・形・月などは、起動してから裏で読み込む
 #endif
     app.shipShader = LoadShaderFromMemory(GlslForPlatform(SHIP_VS).c_str(), GlslForPlatform(SHIP_FS).c_str());
+    app.locShipExposure = GetShaderLocation(app.shipShader, "exposure");
+    {   // 露出の倍率は毎フレーム UpdateExposure で渡す。それより前に描いても暗くならないよう 1 にしておく
+        float one = 1;
+        SetShaderValue(app.shader, app.locExposure, &one, SHADER_UNIFORM_FLOAT);
+        SetShaderValue(app.shipShader, app.locShipExposure, &one, SHADER_UNIFORM_FLOAT);
+    }
     app.locSunDir = GetShaderLocation(app.shipShader, "sunDir");
     app.locSunColor = GetShaderLocation(app.shipShader, "sunColor");
     app.locFillDir = GetShaderLocation(app.shipShader, "fillDir");
@@ -793,6 +800,7 @@ int main(int argc, char** argv) {
             rlScalef(rk, rk, 1);
         }
         ClearBackground({1, 2, 6, 255});
+        UpdateExposure(app, (float)dt);
         {
             Camera3D sky = {{0, 0, 0}, {0, 0, -1}, {0, 1, 0}, 60, CAMERA_PERSPECTIVE};
             BeginMode3D(sky);

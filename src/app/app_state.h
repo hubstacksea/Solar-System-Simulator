@@ -196,6 +196,8 @@ struct App {
     int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1, locSkySunVis = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
     float autoRes = 1;                    // ブラウザ版: 描くのが重い時に 3D の解像度に掛ける倍率（UpdateAutoRes）
+    float exposure = 1;                   // 明るさの自動調整の倍率（UpdateExposure）
+    int locExposure = -1, locShipExposure = -1;
     RenderTexture2D lowRes{};             // 画質「低」で 3D を描く縮小バッファ
     int locRelBeta = -1, locRelDir = -1, locSunInfo = -1;
     int locLight = -1, locLightObj = -1, locC1 = -1, locC2 = -1, locAtm = -1, locParams = -1, locDetail = -1;

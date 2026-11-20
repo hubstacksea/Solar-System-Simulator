@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.58.0 (2026-11-20)
+
+- Near the ground the brightness is now adjusted automatically (the weaker the light falling on the ground, direct plus skylight, the brighter the ground and the ship are shown: the light to the power -0.7, at most 2.2 times, changing slowly; values above 0.75 level off smoothly so nothing blows out; the sky and haze are left as they are; since the eye also adapts to a bright sunset sky, it fades out between solar altitudes of 12° and 2° and is off at sunset; off from space and at night). Antarctic snow at midday is white and the Moon under a low Sun is easier to see
+- Fixed the hues of the Mars map (the colors NASA Ames gave Viking MDIM 2.1 paint the dark sandy regions bluish gray, which made the ground look purple in the evening; the brightness stays as in the map and the hue is replaced by estimated reflectance colors by brightness: red:green:blue reflectance of 1 : 0.55 : 0.29 for bright dust and 1 : 0.73 : 0.55 for dark sand, rounded from observations; the polar caps are unchanged; USGS's Viking global color mosaic was also compared but its dark regions are even bluer)
+- Retook the README images of dusk over the Pacific and the Martian daytime sky (they had been taken at the PC's current time, so the dates are now fixed), Mars, Valles Marineris, Mons Hadley, Everest, the Apollo 15 landing and Perseverance's sky crane (the fine Mars elevations had changed the craft's height so it was out of view from the old position). The shots are in tools/retake_gallery.py
+
 ## 2.57.0 (2026-11-20)
 
 - The ground on Earth and Mars now receives light from the sky (sunlight scattered down by the atmosphere, more on surfaces facing up). The direct sunlight plus skylight with the Sun overhead is taken as white, so midday colors and brightness are unchanged, shade receives sky-colored light, and in the morning and evening the light shifts toward the sky's color as the direct sunlight weakens. Antarctic snow at midday turned from yellowish gray to nearly white, and the lee sides of dunes are no longer pitch black
