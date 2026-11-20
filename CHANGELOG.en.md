@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.60.0 (2026-11-20)
+
+- The ripple (25 m wavelength) and dune (300 m) stripes on Mars are now drawn only where observations show dune fields. They used to be drawn everywhere the thermal inertia was moderate and the ground dark (about 65% of the surface), but moderate thermal inertia does not always mean sand; it is often indurated ground. The dune fields are the polygons of the USGS Mars Global Digital Dune Database (Hayward et al. 2007, 2010, 2012; moderate to large dune fields, about 0.7% of the surface, most of it the sand sea around the north pole), painted into the alpha channel of `assets/mars_ti.png`. In dune fields, small craters, which young active dunes lack, and boulders, which the sand covers, are no longer drawn. Small dunes and transverse aeolian ridges (TARs) missing from the database are not drawn
+- `tools/make_surface_props.py` now also makes the dune fields (for the polar regions it reads only the polygon files out of multi-GB zips with range requests)
+- Retook the README image of the Martian surface
+
 ## 2.59.0 (2026-11-20)
 
 - When the Sun is low (below 20°), mountains and crater rims now cast shadows on the ground (Earth, the Moon and bodies with elevation maps: the elevations are traced 16 steps along the ground toward the Sun, up to 150 km or the length of a shadow from an 8 km mountain, and the point is shadowed where the ground rises above the ray to the Sun; the ray height includes the fall of the curved surface, and the edges are softened by the Sun's apparent radius and the height uncertainty of one elevation pixel; only direct sunlight is blocked, skylight still comes in). Computing this per pixel made drawing about twice as slow, so it is computed per vertex of the terrain grid near the ground and interpolated (16.7 to 18.6 ms per frame near the Moon's surface)

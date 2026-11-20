@@ -1032,22 +1032,24 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         vec3 hue = mix(vec3(1.0, 0.87, 0.76), vec3(1.0, 0.76, 0.57), smoothstep(0.6, 1.1, dot(tc, vec3(0.333)) * mapInfo.x));
         mb = mix(hue * (dot(mb, vec3(0.333)) / dot(hue, vec3(0.333))), mb, g_ice);
     }
-    // 火星: TES の夜の熱慣性と地図の明るさから素材を見分け、細かい起伏を足す。熱慣性が低い所は細かい塵が積もって小さな凹凸が
-    // 埋まり、中ほどで暗い所は砂（さざ波 波長 25 m・砂丘 300 m）、高い所は岩・岩盤（岩塊 直径 1〜12 m）
+    // 火星: TES の夜の熱慣性から素材を見分け、細かい起伏を足す。熱慣性が低い所は細かい塵が積もって小さな凹凸が埋まり、
+    // 高い所は岩・岩盤（岩塊 直径 1〜12 m）。砂の波（さざ波 波長 25 m・砂丘 300 m）は、観測で砂丘地帯と分かっている所
+    // （USGS の砂丘データベース。地図のアルファ）だけ（熱慣性が中ほどでも、砂とは限らず固まった地面のことも多い）。
+    // 砂丘は動いて新しいので、小さなクレーターは描かない
     vec4 mat = vec4(0.0);
-    float dust = 0.0;
+    float dust = 0.0, sand = 0.0;
     if (int(mapInfo2.x + 0.5) == 3 && mapInfo2.w > 0.5) {
-        float ti = 20.0 * pow(125.0, textureGrad(texture3, uv, dx, dy).r);
-        float rel = dot(tc, vec3(0.333)) * mapInfo.x;   // 地図の明るさ（全体の平均が 1）
+        vec2 tm = textureGrad(texture3, uv, dx, dy).ra;
+        float ti = 20.0 * pow(125.0, tm.x);
         dust = 1.0 - smoothstep(120.0, 220.0, ti);
-        float rock = smoothstep(350.0, 700.0, ti);
-        float sand = (1.0 - dust) * (1.0 - rock) * (1.0 - smoothstep(0.8, 1.0, rel)) * (1.0 - g_ice);
+        sand = smoothstep(0.1, 0.5, tm.y) * (1.0 - g_ice);
+        float rock = smoothstep(350.0, 700.0, ti) * (1.0 - sand);   // 砂丘の砂は岩を覆う
         float Rm = mapInfo.w * 1000.0;
         if (rock > 0.0) mat = boulders(p, Rm / 20.0, 0.12 * rock * (1.0 - g_ice), 0.6, o * 0.53);
         if (sand > 0.0) mat += sandWaves(p, 6.2832 * Rm / 25.0, 0.1, 6.2832 * Rm / 300.0, 0.35, o + 61.0) * sand;
     }
     vec4 fine = vec4(0.0);
-    if (cov > 0.0) fine = (craters(p, 0.35, 260.0, o * 0.37) * (1.0 - g_ice) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0)) * (1.0 - 0.6 * dust) + mat;
+    if (cov > 0.0) fine = (craters(p, 0.35, 260.0, o * 0.37) * (1.0 - g_ice) * (1.0 - sand) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0)) * (1.0 - 0.6 * dust) + mat;
     vec4 h = mix(ph, fine, cov);
     if (mapInfo.z > 0.5) {
         vec2 texel = 1.0 / vec2(textureSize(texture1, 0));

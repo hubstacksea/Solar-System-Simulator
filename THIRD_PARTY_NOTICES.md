@@ -178,6 +178,10 @@ Node data (U.S. Government works, public domain):
   J. Geophys. Res. 116, E00H02).
 - Mars: MGS TES-derived nighttime thermal inertia, GLOBAL_TI_NIGHT_2007 (Putzig, N. E., Mellon, M. T., 2007,
   Apparent thermal inertia and the surface heterogeneity of Mars, Icarus 191, 68–94).
+- Mars dune fields (the alpha channel of mars_ti.png): USGS Mars Global Digital Dune Database (U.S. Government work,
+  public domain), dune field polygons (geocentric) from Hayward, R. K., et al. 2007, Open-File Report 2007-1158
+  (MC2–MC29); Hayward, R. K., et al. 2010, Open-File Report 2010-1170 (MC-1); Hayward, R. K., et al. 2012, Open-File
+  Report 2012-1259 (MC-30).
 
 ## Saturn's rings (assets/saturn_rings.png)
 
