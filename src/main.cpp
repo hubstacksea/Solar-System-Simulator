@@ -448,6 +448,7 @@ int main(int argc, char** argv) {
     app.locMapInfo = GetShaderLocation(app.shader, "mapInfo");
     app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");
     app.locMapLatK = GetShaderLocation(app.shader, "mapLatK");
+    app.locOppB0 = GetShaderLocation(app.shader, "oppB0");
     app.skyShader = LoadShaderFromMemory(GlslForPlatform(SKY_VS).c_str(), GlslForPlatform(SKY_FS).c_str());
     app.beltShader = LoadShaderFromMemory(GlslForPlatform(BELT_VS).c_str(), GlslForPlatform(BELT_FS).c_str());
     app.miniShader = LoadShaderFromMemory(GlslForPlatform(MINIGLOBE_VS).c_str(), GlslForPlatform(MINIGLOBE_FS).c_str());

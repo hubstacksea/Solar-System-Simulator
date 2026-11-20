@@ -1205,6 +1205,8 @@ static void DrawBodies(App& app) {
         SetShaderValue(app.shader, app.locParams, params, SHADER_UNIFORM_VEC4);
         float mapLatK = (float)((1 - d.flattening) * MapLatScale(d) - 1);   // シェーダの mapDir
         SetShaderValue(app.shader, app.locMapLatK, &mapLatK, SHADER_UNIFORM_FLOAT);
+        float oppB0 = d.atmStrength > 0 ? 0.0f : 1.0f;   // 衝効果は大気の無い天体だけ（シェーダの oppB0）
+        SetShaderValue(app.shader, app.locOppB0, &oppB0, SHADER_UNIFORM_FLOAT);
         // 模様の細かさは 1 画素の大きさで決める。地球の雲は高度 10〜35 km で消える（地表付近で地面が白く覆われないように）
         float cloudK = (float)std::min(1.0, std::max(0.0, (alt - d.radius * 0.0015) / (d.radius * 0.004)));
         int style = d.style;

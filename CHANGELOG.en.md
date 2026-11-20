@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.55.0 (2026-11-20)
+
+- Airless bodies now show the opposition effect (the ground brightens when the Sun is behind you because the shadows between grains are hidden; Hapke's shadow-hiding term B0 / (1 + tan(g/2) / h) with the lunar values B0 = 1 and h = 0.06 used for all bodies; unchanged at a phase angle of 45°, 1.77 times brighter at 0°)
+- Earth's ice sheets, snow and sea ice and the Martian polar caps get forward scattering that brightens them when you look toward the Sun at a low angle, plus a sheen from the smooth surface (ice is judged from the white color of the map; on Mars only poleward of latitude 60°)
+- The Martian polar caps no longer get small procedural craters (the cap surfaces are young and have hardly any; the large craters in the elevation data remain)
+
 ## 2.54.2 (2026-11-20)
 
 - Fixed the Apollo command module after service module jettison, and under its drogue parachutes, being drawn as the Huygens descent module (since 2.42.0)

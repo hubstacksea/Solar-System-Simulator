@@ -381,6 +381,7 @@ uniform vec3 lightDir;     // ワールド空間（カメラ相対）での太�
 uniform vec3 lightDirObj;  // 本体（自転込み）/ 環の座標系での太陽方向
 uniform float relBeta;     // 光速に近い時の見え方の β と進む向き（頂点シェーダと同じ。色のドップラー効果に使う）
 uniform vec3 relDir;
+uniform float oppB0;       // 衝効果の強さ B0（大気の無い天体は 1、ほかは 0）
 uniform vec4 sunInfo;      // 太陽の黒点: x 活動の強さ（負なら既定の模様）, y 黒点の平均の緯度 deg, z 緯度の広がり deg
 uniform vec4 scars[20];    // 木星の衝突痕（シューメーカー・レビー第 9 彗星）: xyz 本体座標の向き, w 半径 rad
 uniform vec4 scarInfo;     // x 衝突痕の数, y 濃さ
@@ -421,6 +422,13 @@ const float PI = 3.14159265;
 float fw;      // 1 画素の大きさ（単位球の長さ）
 float g_ray;   // 新しいクレーターの明るさ（光条）
 float g_liquid = 0.0;   // 液体の湖・海の割合（タイタン）
+float g_ice = 0.0;      // 氷と雪の割合（地球の氷床・海氷、火星の極冠）
+
+// 地図の色が白い（明るく色みが少ない）割合。氷と雪の目安
+float whiteness(vec3 c) {
+    float mx = max(max(c.r, c.g), c.b), mn = min(min(c.r, c.g), c.b);
+    return smoothstep(0.55, 0.75, mn) * (1.0 - smoothstep(0.12, 0.25, (mx - mn) / max(mx, 1e-3)));
+}
 
 )" NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
 // 周波数 f の模様の重み: 画素より細かくなったら消す
@@ -714,6 +722,7 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     oc = mix(oc, vec3(0.88, 0.91, 0.95), clamp(ice, 0.0, 1.0));
     base = mix(oc, lc, land);
     specMask = (1.0 - land) * (1.0 - ice);
+    g_ice = max(clamp(ice, 0.0, 1.0) * (1.0 - land), whiteness(tc) * land);   // 海氷と、白い陸（氷床・積雪）
 
     // 夜景: 実データ。近づくと街の明かりの粒に分かれる
     lights = td.g * land > 0.0 ? td.g * land * clamp(1.0 + 1.2 * fbmL(p, 900.0, 12, 0.6, o + 13.0), 0.0, 2.0) : 0.0;
@@ -864,8 +873,10 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     if (mapInfo.y > 1.5) mb = pb * tc.r * mapInfo.x;          // 模様だけ（明暗は手続き的な塗り分け）
     else if (mapInfo.y > 0.5) mb = color1 * tc.r * mapInfo.x;  // 白黒: 天体の色で着色
     else mb = tc * L1 * mapInfo.x;                             // カラー: 明るさだけ天体に合わせる
+    // 火星の極冠: 白い所（緯度 60° より極側）。表面が若くクレーターがほとんど無いので、手続きのクレーターを消す
+    if (int(mapInfo2.x + 0.5) == 3) g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));
     vec4 fine = vec4(0.0);
-    if (cov > 0.0) fine = craters(p, 0.35, 260.0, o * 0.37) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0);
+    if (cov > 0.0) fine = craters(p, 0.35, 260.0, o * 0.37) * (1.0 - g_ice) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0);
     vec4 h = mix(ph, fine, cov);
     if (mapInfo.z > 0.5) {
         vec2 texel = 1.0 / vec2(textureSize(texture1, 0));
@@ -1154,11 +1165,22 @@ void main() {
     if (kind == 1 && style != 3) {
         // 大気の無い天体: ランベルトとロンメル・ゼーリガーの中間（満月が縁まで明るく見える）
         float ls = 2.0 * ndl / (ndl + muN);
-        col = base * (mix(ndl, ls * 0.5, 0.5) * 1.15 * sunTint + 0.012);
+        // 衝効果: 砂粒の影が太陽を背にすると隠れて急に明るくなる（Hapke の影隠しの項 B0 / (1 + tan(g/2) / h)。
+        // 月の目安 B0 = 1, h = 0.06。位相角 45° で 1 になるよう割る）。大気のある天体（火星）は oppB0 = 0
+        float tg = tan(acos(clamp(dot(L, V), -1.0, 1.0)) * 0.5);
+        float opp = (1.0 + oppB0 / (1.0 + tg / 0.06)) / (1.0 + oppB0 / (1.0 + 0.41421 / 0.06));
+        col = base * (mix(ndl, ls * 0.5, 0.5) * 1.15 * opp * sunTint + 0.012);
     } else if (kind == 2) {
         col = base * (ndl * 1.05 + 0.015) * (0.8 + 0.2 * sqrt(mu));
     } else {
         col = base * (ndl * 1.05 * sunTint + 0.012);
+    }
+
+    if (g_ice > 0.0) {
+        // 氷と雪: 太陽の方を（逆光で）浅く見るほど明るい前方散乱（雪の反射の強い向き）と、なめらかな面の照り返し
+        float fwdS = pow(max(-dot(L, V), 0.0), 3.0) * (1.0 - muN);
+        float nh = max(dot(N, normalize(L + V)), 0.0);
+        col += (base * fwdS * 1.5 + pow(nh, 60.0) * 0.12) * sunTint * ndl * g_ice;
     }
 
     if (kind == 3) {

@@ -190,7 +190,7 @@ struct App {
     int beltCount = 0;
     struct BodyMap { std::string name; int kind = 0; bool height = false, wide = false, liquid = false; float mean = 0.5f; Texture2D color{}, mask{}, data{}; };
     std::vector<BodyMap> maps;            // 探査機の画像による地図（assets/maps.bin）
-    int locMapInfo = -1, locMapInfo2 = -1, locMapLatK = -1;
+    int locMapInfo = -1, locMapInfo2 = -1, locMapLatK = -1, locOppB0 = -1;
     Shader skyShader{};                   // 大気の中から見た空
     int locSkyUp = -1, locSkySun = -1, locSkyBeta = -1, locSkyMie = -1, locSkyOzone = -1, locSkyDensity = -1, locSkySunVis = -1;
     int quality = 2;                      // 画質 0: 低, 1: 中, 2: 高
