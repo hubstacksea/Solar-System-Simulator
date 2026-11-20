@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.57.0 (2026-11-20)
+
+- The ground on Earth and Mars now receives light from the sky (sunlight scattered down by the atmosphere, more on surfaces facing up). The direct sunlight plus skylight with the Sun overhead is taken as white, so midday colors and brightness are unchanged, shade receives sky-colored light, and in the morning and evening the light shifts toward the sky's color as the direct sunlight weakens. Antarctic snow at midday turned from yellowish gray to nearly white, and the lee sides of dunes are no longer pitch black
+- The dimming of sunlight on the ground now comes from estimated optical depths rather than the sky-color values (Earth: Rayleigh scattering plus 0.1 of aerosols, 0.15, 0.20 and 0.32 in red, green and blue, so the ground reddens a little less at dawn and dusk; Mars: dust of 0.5 in every color, scattering 0.97, 0.92 and 0.80 of the light, so the Martian ground no longer turns bluish purple from the sunlight in the evening). The sky colors are unchanged
+- Retook the README images whose look changed: the Moon, the horizon from 10 km, Valles Marineris, Everest and the Apollo 15 landing
+
 ## 2.56.0 (2026-11-20)
 
 - Near the ground, relief finer than the maps is now shaded by surface material (terrain heights and collisions are unchanged)

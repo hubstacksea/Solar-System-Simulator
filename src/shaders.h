@@ -408,6 +408,8 @@ uniform vec4 mapInfo2;       // 地図: x 撮影されていない所に使う�
 // atmHaze: x カメラの位置の空気の濃さ（0 ならかすみなし）, y 描画座標 1 あたりの km, z スケールハイト km,
 //          w 見えている太陽の割合（日食）
 uniform vec3 atmBeta;
+uniform vec4 atmExt;     // 地面の照らし方: xyz 日光を遮る天頂方向の光学的厚さ（色ごと）, w 散らされた光のうち地面へ向かう割合
+uniform vec3 atmAlb;     // 散らす割合（単一散乱アルベド。火星の塵は青い光を吸収する）
 uniform vec3 atmMie;
 uniform vec3 atmOzone;
 uniform vec4 atmHaze;
@@ -1267,9 +1269,20 @@ void main() {
     vec3 N = normalize(Ng + (nb - n0));
     float ndl = max(dot(N, L), 0.0) * smoothstep(-0.06, 0.02, ndlG) * sh;
     float muN = max(dot(N, V), 0.05);
-    // 大気を通ってきた日光の色（太陽が真上の時を白として、朝夕は赤い）
-    vec3 sunTint = exp(-atmBeta * max(min(1.0 / (max(ndlG, 0.0) + 0.06), 7.0) - 1.0, 0.0)
-                       - atmOzone * max(min(1.0 / (max(ndlG, 0.0) + 0.03), 25.0) - 1.0, 0.0));
+    // 大気を通ってきた日光（太陽が真上の時を白として、低いほど道のりが長く弱まる。地球は青が散らされて朝夕は赤く、
+    // 火星は塵が色によらず遮るのでほぼ白いまま暗くなる）
+    float am = min(1.0 / (max(ndlG, 0.0) + 0.06), 7.0);
+    vec3 sunTint = exp(-atmExt.xyz * max(am - 1.0, 0.0) - atmOzone * max(min(1.0 / (max(ndlG, 0.0) + 0.03), 25.0) - 1.0, 0.0));
+    // 空からの光: 遮られた日光のうち散らされて地面へ向かう分（1 回散乱の目安。地球は青く、火星は塵が青を吸収して赤茶）。
+    // 上を向いた面ほど多く受ける。太陽が真上の時の直射と空の光の和を色ごとに白とする（カメラが晴れた昼の光に色を合わせる
+    // のと同じ。真昼の地面の色と明るさは今までと同じで、日陰は空の色、朝夕は直射が弱まって空の光の色に寄る）
+    vec3 skyL = vec3(0.0), gnorm = vec3(1.0);
+    if (atmExt.w > 0.0) {
+        vec3 tz = exp(-atmExt.xyz);
+        gnorm = 1.0 / (1.0 + atmExt.w * atmAlb * (1.0 - tz) / tz);
+        float el = max(ndlG, 0.0) + 0.02 * smoothstep(-0.1, 0.0, ndlG);   // 日が沈んだ後も薄明の空がしばらく照らす
+        skyL = atmExt.w * atmAlb * (1.0 - exp(-atmExt.xyz * am)) / tz * el * (0.5 + 0.5 * dot(N, n0)) * sh;
+    }
 
     vec3 col;
     if (kind == 1 && style != 3) {
@@ -1279,11 +1292,11 @@ void main() {
         // 月の目安 B0 = 1, h = 0.06。位相角 45° で 1 になるよう割る）。大気のある天体（火星）は oppB0 = 0
         float tg = tan(acos(clamp(dot(L, V), -1.0, 1.0)) * 0.5);
         float opp = (1.0 + oppB0 / (1.0 + tg / 0.06)) / (1.0 + oppB0 / (1.0 + 0.41421 / 0.06));
-        col = base * (mix(ndl, ls * 0.5, 0.5) * 1.15 * opp * sunTint + 0.012);
+        col = base * ((mix(ndl, ls * 0.5, 0.5) * 1.15 * opp * sunTint + skyL) * gnorm + 0.012);
     } else if (kind == 2) {
         col = base * (ndl * 1.05 + 0.015) * (0.8 + 0.2 * sqrt(mu));
     } else {
-        col = base * (ndl * 1.05 * sunTint + 0.012);
+        col = base * ((ndl * 1.05 * sunTint + skyL) * gnorm + 0.012);
     }
 
     if (g_ice > 0.0) {

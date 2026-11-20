@@ -898,11 +898,16 @@ static double SunCover(const App& app, V3 from) {
     return std::min(1.0, best);
 }
 
-// beta: レイリー散乱（火星は塵）, mie: 太陽のまわりの光の色, ozone: オゾンの吸収（地球だけ）
-struct SkyAtmosphere { int body; double top, H; Vector3 beta, mie, ozone; };
+// beta: レイリー散乱（火星は塵）, mie: 太陽のまわりの光の色, ozone: オゾンの吸収（地球だけ）。
+// 地面の照らし方: ext は日光を遮る天頂方向の光学的厚さ（色ごと）、alb は散らす割合（単一散乱アルベド）、down は散らされた光の
+// うち地面へ向かう割合。地球は晴れた日の目安で、レイリー散乱（光学的厚さ 650・550・450 nm で 0.05・0.10・0.22。空の色の beta は
+// 見た目に合わせた値で、これより大きい）にエアロゾル 0.1（色によらない。散らす割合 0.9、前へ強く散らす）を足したもの。火星の塵は光の波長より大きな粒で、日光を色に
+// よらずほぼ同じだけ遮り（光学的厚さ 0.5 は目安。季節と砂嵐で 0.3〜1 以上に変わる）、青い光を吸収する（アルベドは Tomasko
+// ほか 1999 などの目安）。前へ強く散らすので地面へ向かう割合は 0.75 とする
+struct SkyAtmosphere { int body; double top, H; Vector3 beta, mie, ozone, ext, alb; float down; };
 static const SkyAtmosphere SKY_ATM[] = {
-    {B_EARTH, 120, 8.5, {0.10f, 0.23f, 0.56f}, {1.0f, 0.95f, 0.9f}, {0.05f, 0.08f, 0.003f}},
-    {B_MARS, 80, 11.1, {0.16f, 0.11f, 0.07f}, {0.45f, 0.65f, 1.0f}, {0, 0, 0}},   // 塵で昼は黄褐色、夕方は太陽のまわりが青白い
+    {B_EARTH, 120, 8.5, {0.10f, 0.23f, 0.56f}, {1.0f, 0.95f, 0.9f}, {0.05f, 0.08f, 0.003f}, {0.15f, 0.20f, 0.32f}, {0.93f, 0.95f, 0.97f}, 0.6f},
+    {B_MARS, 80, 11.1, {0.16f, 0.11f, 0.07f}, {0.45f, 0.65f, 1.0f}, {0, 0, 0}, {0.5f, 0.5f, 0.5f}, {0.97f, 0.92f, 0.80f}, 0.75f},   // 塵で昼は黄褐色、夕方は太陽のまわりが青白い
 };
 
 // カメラのいる大気（なければ nullptr）と、空気の濃さ・その場所の真上・太陽の高さ（sin）
@@ -1255,13 +1260,16 @@ static void DrawBodies(App& app) {
         SetShaderValue(app.shader, app.locDetail, detail, SHADER_UNIFORM_VEC4);
         // 大気のある天体: 日光の色と、カメラが同じ大気の中にいる時のかすみ
         {
-            Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, ozone = {0, 0, 0}, up = {0, 1, 0};
+            Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, ozone = {0, 0, 0}, up = {0, 1, 0}, alb = {0, 0, 0};
+            float ext[4] = {0, 0, 0, 0};
             float haze[4] = {0, (float)(1.0 / s), 1, 1};
             for (const SkyAtmosphere& a : SKY_ATM)
                 if (a.body == it.i) {
                     beta = a.beta;
                     mie = a.mie;
                     ozone = a.ozone;
+                    ext[0] = a.ext.x, ext[1] = a.ext.y, ext[2] = a.ext.z, ext[3] = a.down;
+                    alb = a.alb;
                     double density, sunEl;
                     V3 u;
                     if (CameraAtmosphere(app, &density, &u, &sunEl) == &a) {
@@ -1274,6 +1282,8 @@ static void DrawBodies(App& app) {
             SetShaderValue(app.shader, app.locAtmBeta, &beta, SHADER_UNIFORM_VEC3);
             SetShaderValue(app.shader, app.locAtmMie, &mie, SHADER_UNIFORM_VEC3);
             SetShaderValue(app.shader, app.locAtmOzone, &ozone, SHADER_UNIFORM_VEC3);
+            SetShaderValue(app.shader, app.locAtmExt, ext, SHADER_UNIFORM_VEC4);
+            SetShaderValue(app.shader, app.locAtmAlb, &alb, SHADER_UNIFORM_VEC3);
             SetShaderValue(app.shader, app.locAtmHaze, haze, SHADER_UNIFORM_VEC4);
             SetShaderValue(app.shader, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
         }
