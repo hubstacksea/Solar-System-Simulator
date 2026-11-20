@@ -149,6 +149,7 @@ int main(int argc, char** argv) {
         struct { const char* name; EmbeddedFile f; } files[] = {
             {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
             {"earth_clouds.jpg", EarthCloudsJpg()}, {"earth_detail.bin", EarthDetailBin()}, {"moon_detail.bin", MoonDetailBin()}, {"mars_detail.bin", MarsDetailBin()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
+            {"moon_rock.png", MoonRockPng()}, {"mars_ti.png", MarsTiPng()},
             {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"landers.bin", LandersBin()}, {"sky.txt", SkyTxt()},
             {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},
             {"saturn_rings.png", SaturnRingsPng()}, {"milkyway.jpg", MilkyWayJpg()}};
@@ -922,6 +923,8 @@ int main(int argc, char** argv) {
     if (app.earthMonths.id) UnloadTexture(app.earthMonths);
     if (app.earthClouds.id) UnloadTexture(app.earthClouds);
     if (app.moonTex) { UnloadTexture(app.moonColor); UnloadTexture(app.moonData); }
+    if (app.moonRock.id) UnloadTexture(app.moonRock);
+    if (app.marsTi.id) UnloadTexture(app.marsTi);
     if (app.milkyWay.id) UnloadTexture(app.milkyWay);
     for (Texture2D& t : app.deepSkyTex) UnloadTexture(t);
     for (Texture2D& t : app.ringTex)

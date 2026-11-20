@@ -178,6 +178,7 @@ struct App {
     Texture2D earthMonths{}, earthClouds{};  // 地球の 12 か月の地表の色と雲（読めなければ 4 月の色と手続きの雲）
     bool earthTex = false;
     Texture2D moonColor{}, moonData{};    // 月の実データ
+    Texture2D moonRock{}, marsTi{};       // 地表の素材: 月の岩の多さ、火星の熱慣性（tools/make_surface_props.py）
     bool moonTex = false;
     Texture2D milkyWay{};                 // 天の川の光（赤道座標の全天画像）
     std::vector<Texture2D> deepSkyTex;    // 星雲・銀河・星団の絵（DEEP_SKY の順）

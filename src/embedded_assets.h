@@ -18,6 +18,8 @@ EmbeddedFile MoonDetailBin();   // 月の細かい標高 (NASA SVS / LOLA)。形
 EmbeddedFile MarsDetailBin();   // 火星の細かい標高 (NASA PDS MGS MOLA)。形式は tools/make_body_detail.py
 EmbeddedFile MoonColorJpg();   // 月の地表の色 (NASA SVS / LROC)
 EmbeddedFile MoonDataPng();    // 月の標高 16 bit: グレー=上位, アルファ=下位 (NASA SVS / LOLA)
+EmbeddedFile MoonRockPng();    // 月の岩の多さ (NASA PDS / LRO Diviner)。形式は tools/make_surface_props.py
+EmbeddedFile MarsTiPng();      // 火星の熱慣性 (NASA PDS / MGS TES)。形式は tools/make_surface_props.py
 EmbeddedFile IconPng();         // ウィンドウのアイコン (256px)
 EmbeddedFile StarsBin();        // 恒星 (ヒッパルコス星表、8 等級まで)。形式は tools/make_sky_assets.py
 EmbeddedFile ProbesBin();       // 探査機の軌跡 (JPL Horizons)。形式は tools/make_probe_assets.py

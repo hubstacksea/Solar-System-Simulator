@@ -741,6 +741,7 @@ static void LoadBodyMaps(App& app) {
         app.maps.push_back(m);
     }
     LoadDetail(app, 2, MarsDetailBin());
+    if (MarsTiPng().data) app.marsTi = LoadEmbeddedTexture(MarsTiPng(), ".png");
 }
 
 static void LoadMoonTextures(App& app) {
@@ -751,6 +752,7 @@ static void LoadMoonTextures(App& app) {
         TraceLog(LOG_WARNING, "Moon textures unavailable, using procedural surface");
         return;
     }
+    if (MoonRockPng().data) app.moonRock = LoadEmbeddedTexture(MoonRockPng(), ".png");
     // 地形の格子のクレーター（海は少ない）を CPU 側でも同じに求めるため、地表の色を持つ
     if (app.B[B_MOON].terrain >= 0) {
         Terrain& T = g_terrain[app.B[B_MOON].terrain];
@@ -1229,6 +1231,10 @@ static void DrawBodies(App& app) {
             style = S_MOON_TEX;
             app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.moonColor;
             app.mat.maps[MATERIAL_MAP_SPECULAR].texture = app.moonData;
+            // 岩の多さ（texture2。mapInfo2.w が 1 の時だけ使う）
+            app.mat.maps[MATERIAL_MAP_NORMAL].texture = app.moonRock;
+            float info2[4] = {0, 0, 0, app.moonRock.id ? 1.0f : 0.0f};
+            SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         } else if (b.map >= 0) {
             const App::BodyMap& m = app.maps[b.map];
             style = S_MAPPED;
@@ -1238,7 +1244,10 @@ static void DrawBodies(App& app) {
             float info[4] = {1.0f / std::max(0.05f, m.mean), (float)m.kind, m.height ? (m.wide ? 2.0f : 1.0f) : 0.0f, (float)d.radius};
             // 木星の地図は大赤斑が経度 0° にあるので、大赤斑の今の西経（体系 II）だけ回す
             float shift = it.i == B_JUPITER ? (float)(GreatRedSpotLon(app.tDays) * DEG) : 0.0f;
-            float info2[4] = {(float)d.style, shift, m.liquid ? 1.0f : 0.0f, 0};
+            // 火星: 熱慣性（texture3。mapInfo2.w が 1 の時だけ使う）
+            bool ti = it.i == B_MARS && app.marsTi.id;
+            if (ti) app.mat.maps[MATERIAL_MAP_ROUGHNESS].texture = app.marsTi;
+            float info2[4] = {(float)d.style, shift, m.liquid ? 1.0f : 0.0f, ti ? 1.0f : 0.0f};
             SetShaderValue(app.shader, app.locMapInfo, info, SHADER_UNIFORM_VEC4);
             SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         }

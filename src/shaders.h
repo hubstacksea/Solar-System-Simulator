@@ -490,6 +490,73 @@ vec4 craters(vec3 p, float density, float F0, vec3 salt) {
     return s;
 }
 
+// ---- 地表の素材ごとの、地図より細かい起伏（陰影だけで、地形の格子の高さには入れない）。値は vec4(高さ, p についての勾配)（単位球の長さ）
+// 岩塊・樹冠: 格子のセルに 1 つずつ置く丸い塊（3 段の大きさ。小さい段ほど数が多い）。F: 一番大きい段のセルの細かさ,
+// cover: 地表を覆う割合（セルに置く確率 × 塊の体積の割合 ≒ 0.033。断面の面積の割合は体積の割合に等しい）, tall: 高さ / 半径
+vec4 boulders(vec3 p, float F, float cover, float tall, vec3 salt) {
+    vec4 s = vec4(0.0);
+    float f = F, dens = cover * 30.0;
+    for (int k = 0; k < 3; k++) {
+        float w = lodW(f);
+        if (w <= 0.0 || dens <= 0.0) break;
+        vec3 d; float r, rnd;
+        if (cellSpot(p, f, min(dens, 1.0), salt + float(k) * 17.3, 0.12, 0.3, d, r, rnd)) {
+            float q = r * r - dot(d, d);
+            if (q > 0.0) {
+                float z = sqrt(q);
+                s += w * vec4(z * tall / f, -d * tall / max(z, r * 0.15));
+            }
+        }
+        f *= 2.3;
+    }
+    return s;
+}
+
+// 砂の波（さざ波・砂丘）: 決まった 2 つの向きの波を、場所ごとにゆっくり変わる重みで混ぜる（向きそのものを場所で変えると、
+// 細かい波の位相が乱れるため）。断面は風下側が急な非対称。峰は数波長ごとに曲がり、高さは峰の曲がりと同じノイズでむらにする。
+// 大小 2 つの波（さざ波と砂丘）をまとめて求める。F1, F2: 波数（単位球の長さあたり、波長 = 2π / F）、k1, k2: 傾きの大きさ
+// （値の傾きは最大でこの 1.6 倍ほど）
+vec4 sandWaves(vec3 p, float F1, float k1, float F2, float k2, vec3 o) {
+    float m = smoothstep(0.45, 0.55, vnoise(p * 6.0 + o + 3.0));   // 向きの切り替わりは狭く（重なると格子に見える）
+    vec4 bend = noised(p * (F2 * 0.05) + o);   // 峰の曲がり（大きい波の約 3 波長ごと。小さい波も同じ曲がりで重さを抑える）
+    vec4 s = vec4(0.0);
+    for (int j = 0; j < 2; j++) {
+        float F = j == 0 ? F1 : F2, w = lodW(F * 0.16);
+        if (w <= 0.0) continue;
+        float amp = (j == 0 ? k1 : k2) * w * (0.3 + 1.4 * bend.x);
+        for (int k = 0; k < 2; k++) {
+            vec3 a = normalize(k == 0 ? vec3(0.8, 0.15, 0.58) : vec3(-0.3, 0.2, 0.93));
+            float ph = dot(p, a) * F + bend.x * 5.0 * F / F2;   // 峰は大小の波で同じ距離だけずれる
+            float h = sin(ph) + 0.3 * sin(2.0 * ph), dh = cos(ph) + 0.6 * cos(2.0 * ph);
+            s += (k == 0 ? m : 1.0 - m) * amp * vec4(h / F, dh * (a + bend.yzw * 0.25));
+        }
+    }
+    return s;
+}
+
+// 樹冠: 丸い冠がすき間なく並ぶ凹凸（値ノイズの山を 2 段）。F: 細かさ（冠の大きさ ≒ 単位球の長さ 1 / F）
+vec4 canopy(vec3 p, float F, vec3 o) {
+    vec4 s = vec4(0.0);
+    float a = 1.0;
+    for (int k = 0; k < 2; k++) {
+        float w = lodW(F);
+        if (w <= 0.0) break;
+        vec4 n = noised(p * F + o + float(k) * 5.3);
+        s += a * w * vec4(n.x / F, n.yzw);
+        a *= 0.5; F *= 2.1;
+    }
+    return s;
+}
+
+// 雪の風紋（サスツルギ）: 風の向き a に沿って伸ばしたノイズ。F: 細かさ
+vec4 sastrugi(vec3 p, float F, vec3 a, vec3 o) {
+    float w = lodW(F);
+    if (w <= 0.0) return vec4(0.0);
+    vec3 q = p * F;
+    vec4 n = noised(q - a * (dot(q, a) * 0.85) + o);
+    return w * vec4((n.x - 0.5) / F, n.yzw - a * (dot(n.yzw, a) * 0.85));
+}
+
 uniform float mapLatK;
 // 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
 // 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
@@ -741,6 +808,28 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     // 窓の中は 1 分角より細かい山肌（地形の格子の高さと同じ。陰影は画素まで細かく）
     if (land > 0.0) h += mix(dw < 1.0 ? fbmD(p, 700.0, 18, 0.5, o) * rough : vec4(0.0),
                              dw > 0.0 ? earthBumps(p, s, max(hm, 0.0), fw, 16, o) : vec4(0.0), dw) * land;
+    // 地表の色から素材を推定して細かい起伏を足す（土地被覆の実測ではなく色からの推定）: 明るい黄褐色は砂（砂丘 波長 120 m・800 m）、
+    // 暗い緑は森（樹冠 約 8 m と 4 m の凹凸。くぼみは暗い）、白い所は雪と氷（風に沿って伸びた風紋 約 20 m と 5 m）
+    if (land > 0.0) {
+        float lum = dot(tc, vec3(0.333));
+        float sand = smoothstep(0.38, 0.5, lum) * smoothstep(0.1, 0.2, tc.r - tc.b) * (1.0 - g_ice);
+        float forest = (1.0 - smoothstep(0.16, 0.26, lum)) * smoothstep(-0.03, 0.02, tc.g - tc.r);
+        vec4 m = vec4(0.0);
+        if (sand > 0.0)
+            m += sandWaves(p, 6.2832 * R / 120.0, 0.12, 6.2832 * R / 800.0, 0.35, o + 61.0) * sand;
+        if (forest > 0.0) {
+            vec4 cr = canopy(p, R / 8.0, o * 0.61);
+            m += cr * (0.5 * forest);
+            base *= mix(1.0, 0.6 + 0.35 * clamp(cr.x * (R / 8.0), 0.0, 1.4), forest * land);
+        }
+        if (g_ice > 0.0) {
+            vec3 e = cross(vec3(0.0, 1.0, 0.0), p);
+            e = length(e) > 1e-3 ? normalize(e) : vec3(1.0, 0.0, 0.0);
+            vec3 wa = normalize(e * 0.6 + cross(p, e) * 0.8);
+            m += (sastrugi(p, R / 20.0, wa, o + 71.0) * 0.2 + sastrugi(p, R / 5.0, wa, o + 73.0) * 0.3) * g_ice;
+        }
+        h += m * land;
+    }
     if (land < 1.0) h += fbmD(p, 20000.0, 14, 0.55, o + 31.0) * (1.5e-6 * (1.0 - land));
     return h;
 }
@@ -826,7 +915,14 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     vec4 C = craters(p, mix(0.55, 0.2, dark), 260.0, o * 0.37);
     vec4 T = fbmD(p, 600.0, 20, 0.48, o) * (mix(0.004, 0.0015, dark) / 260.0);
     base = tc * (0.92 + 0.16 * (fbmL(p, 900.0, 16, 0.5, o + 5.0) * 0.5 + 0.5)) * (1.0 + g_ray * 0.35);
-    return vec4(hm / R * EXAG, grad) + C + T;
+    // 岩塊: Diviner の岩の多さ（地表を 1 m ほどより大きな岩が覆う割合）だけ置く。直径 1〜12 m。新しい岩は砂より明るい
+    vec4 Bk = vec4(0.0);
+    if (mapInfo2.w > 0.5) {
+        float ra = pow(textureGrad(texture2, uv, dx, dy).r, 2.0) * 0.5;
+        Bk = boulders(p, R / 20.0, ra, 0.6, o * 0.53);
+        base *= 1.0 + 0.2 * step(1e-10, Bk.x);
+    }
+    return vec4(hm / R * EXAG, grad) + C + T + Bk;
 }
 
 // 探査機の画像による地図のある天体（水星・火星・ケレス・ベスタ・衛星・冥王星など）。月と同じ並びの地図を貼る。
@@ -875,8 +971,22 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     else mb = tc * L1 * mapInfo.x;                             // カラー: 明るさだけ天体に合わせる
     // 火星の極冠: 白い所（緯度 60° より極側）。表面が若くクレーターがほとんど無いので、手続きのクレーターを消す
     if (int(mapInfo2.x + 0.5) == 3) g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));
+    // 火星: TES の夜の熱慣性と地図の明るさから素材を見分け、細かい起伏を足す。熱慣性が低い所は細かい塵が積もって小さな凹凸が
+    // 埋まり、中ほどで暗い所は砂（さざ波 波長 25 m・砂丘 300 m）、高い所は岩・岩盤（岩塊 直径 1〜12 m）
+    vec4 mat = vec4(0.0);
+    float dust = 0.0;
+    if (int(mapInfo2.x + 0.5) == 3 && mapInfo2.w > 0.5) {
+        float ti = 20.0 * pow(125.0, textureGrad(texture3, uv, dx, dy).r);
+        float rel = dot(tc, vec3(0.333)) * mapInfo.x;   // 地図の明るさ（全体の平均が 1）
+        dust = 1.0 - smoothstep(120.0, 220.0, ti);
+        float rock = smoothstep(350.0, 700.0, ti);
+        float sand = (1.0 - dust) * (1.0 - rock) * (1.0 - smoothstep(0.8, 1.0, rel)) * (1.0 - g_ice);
+        float Rm = mapInfo.w * 1000.0;
+        if (rock > 0.0) mat = boulders(p, Rm / 20.0, 0.12 * rock * (1.0 - g_ice), 0.6, o * 0.53);
+        if (sand > 0.0) mat += sandWaves(p, 6.2832 * Rm / 25.0, 0.1, 6.2832 * Rm / 300.0, 0.35, o + 61.0) * sand;
+    }
     vec4 fine = vec4(0.0);
-    if (cov > 0.0) fine = craters(p, 0.35, 260.0, o * 0.37) * (1.0 - g_ice) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0);
+    if (cov > 0.0) fine = (craters(p, 0.35, 260.0, o * 0.37) * (1.0 - g_ice) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0)) * (1.0 - 0.6 * dust) + mat;
     vec4 h = mix(ph, fine, cov);
     if (mapInfo.z > 0.5) {
         vec2 texel = 1.0 / vec2(textureSize(texture1, 0));

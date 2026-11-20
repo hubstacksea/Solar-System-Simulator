@@ -4,6 +4,15 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.56.0 (2026-11-20)
+
+- Near the ground, relief finer than the maps is now shaded by surface material (terrain heights and collisions are unchanged)
+  - Moon: boulders 1–12 m across in proportion to the LRO Diviner rock abundance (Bandfield et al. 2011; about 18% on the rim of Tycho, typically 0.3%)
+  - Mars: from the MGS TES nighttime thermal inertia (Putzig & Mellon 2007) and the map brightness, subdued small relief where there is dust, ripples (25 m wavelength) and dunes (300 m) on dark sand, and boulders on rocky ground
+  - Earth: judged from the map colors, dunes (120 m and 800 m wavelength) in sand deserts, a bumpy canopy with darker hollows in forests, and wind-carved ridges (about 20 m and 5 m) on snow and ice
+  - Where each material is comes from measurements (Moon, Mars) or from the colors (Earth); shapes finer than a few hundred meters are procedural, sized after real ones. The relief shows best when the Sun is low
+- Added the data assets/moon_rock.png and assets/mars_ti.png and the tool that makes them, tools/make_surface_props.py (NASA PDS Geosciences Node, public domain)
+
 ## 2.55.0 (2026-11-20)
 
 - Airless bodies now show the opposition effect (the ground brightens when the Sun is behind you because the shadows between grains are hidden; Hapke's shadow-hiding term B0 / (1 + tan(g/2) / h) with the lunar values B0 = 1 and h = 0.06 used for all bodies; unchanged at a phase angle of 45°, 1.77 times brighter at 0°)
