@@ -215,6 +215,9 @@ out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
 out float fragAlt;   // 地形の高さ km（金星のもやの計算に使う。地形でなければ 0）
+out float fragShade; // 地形の影: 日なたの割合（地形の格子の頂点で求めて補間する。地形でなければ 1）
+uniform vec3 lightDirObj;  // 本体（自転込み）の座標系での太陽方向
+uniform float sunAng;      // 太陽の視半径 rad
 
 // 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
 // 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
@@ -324,11 +327,51 @@ float bodyHeight(vec3 d, float sp, float hm) {
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     return hm + vertexBumps(d, sp, 20.0 / terrE.x, mix(terrE.y, terrE.w, w), o) * terrE.x;
 }
+// 地形の影に使う標高 m: 全球の標高と細かい標高の窓だけ（手続きの起伏は入れない。bumpAt を呼ぶ所を増やさないためでもある）。
+// s: 調べる間隔（単位球の長さ）。それに合わせて縮小した画像から引く
+float dataHeight(vec3 d, float s) {
+    float h = terrHeight(d, log2(max(s * terrD.y / 3.1415927, 1.0)));
+    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    vec2 l;
+    float w = detWeight(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l);
+    if (w > 0.0) {
+        float lod = log2(max(s * detB.y / 3.1415927, 1.0));
+        h = mix(h, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w);
+    }
+    return h;
+}
+// 地形の影（太陽高度 20° より低い時）: 頂点から太陽の方向へ地面に沿って 16 歩たどり（歩幅は頂点の間隔か標高の 1 画素から
+// 広げ、最大で 150 km か高さ 8 km の山の影の長さまで）、太陽へ向かう光線より高い所があれば影にする。光線の高さは球面が
+// 下がる分も入れ、影の縁は太陽の視半径と標高の 1 画素分の高さの不確かさでぼかす。高さは実際の値（陰影の起伏の強調は入れない）。
+// 画素ごとに求めると描画が 2 倍ほど重くなったので頂点で求める。d: 頂点の向き（単位球）、sp: 頂点の間隔。戻り値は日なたの割合
+float vertexShadow(vec3 d, float sp) {
+    vec3 Lo = normalize(lightDirObj);
+    float se = dot(d, Lo);
+    if (se > 0.34 || se < -0.03) return 1.0;
+    vec3 sh = Lo - d * se;
+    float ce = length(sh);
+    if (ce < 1e-4) return 1.0;
+    sh /= ce;
+    float te = se / ce, R = terrE.x;
+    float pxm = max(sp, 3.1415927 / (detB.z > 0.5 ? max(detB.y, terrD.y) : terrD.y)) * R;
+    float h0 = dataHeight(d, pxm / R);
+    float dmax = max(min(150000.0, 8000.0 / max(te, 0.01)), pxm * 2.0), q = pow(dmax / pxm, 1.0 / 15.0), dist = pxm, lit = 1.0;
+    for (int k = 0; k < 16; k++) {
+        float a = dist / R;
+        vec3 dk = d * cos(a) + sh * sin(a);
+        float hr = h0 + dist * te + dist * dist / (2.0 * R);
+        lit = min(lit, clamp(0.5 + (hr - dataHeight(dk, dist * (1.0 - 1.0 / q) / R)) / (dist * 2.0 * sunAng + 0.15 * pxm), 0.0, 1.0));
+        if (lit <= 0.0) break;
+        dist *= q;
+    }
+    return lit;
+}
 
 void main() {
     vec3 pos = vertexPosition, nrm = vertexNormal;
     fragObj = vertexPosition;
     fragAlt = 0.0;
+    fragShade = 1.0;
     if (terrA.x > 0.5) {
         int ri = int(vertexPosition.x * terrD.z + 0.5);
         int si = int(vertexPosition.y / 6.2831853 * terrD.w + 0.5), stp = int(terrStep[ri >> 2][ri & 3] + 0.5);
@@ -351,6 +394,7 @@ void main() {
         pos = E * (c * cm1 + t * st) + normalize(E * d) * h;
         nrm = vec3(d.x, d.y / terrB.w, d.z);
         fragObj = d;
+        fragShade = vertexShadow(d, sp);
     }
     fragWorld = vec3(matModel * vec4(pos, 1.0));
     fragNormal = normalize(vec3(matNormal * vec4(nrm, 0.0)));
@@ -418,6 +462,7 @@ uniform vec4 hazeAir;    // 金星の雲・タイタンのもやの下の地表:
 uniform vec3 hazeSky;    // 層の下の空の明るさ（色ごと。雲と厚い大気で散らされた日光）
 uniform vec4 hazeBeta;   // 空気のレイリー散乱（地表、1/km、色ごと）, w: 空気の濃さが 1/e になる高さ km
 uniform vec3 camUp;
+in float fragShade;  // 地形の影（頂点シェーダの vertexShadow）
 out vec4 finalColor;
 uniform float exposure;    // 明るさの自動調整の倍率（UpdateExposure）。0.75 までは掛けたまま、それより明るい所はなめらかに 1 へ寄せる（白く飛ばない）
 vec3 expo(vec3 c) {
@@ -1282,6 +1327,7 @@ void main() {
     vec3 nb = normalize(mat3(matNormal) * normalize(p - gt));
     vec3 N = normalize(Ng + (nb - n0));
     float ndl = max(dot(N, L), 0.0) * smoothstep(-0.06, 0.02, ndlG) * sh;
+    ndl *= fragShade;   // 地形の影（頂点シェーダ）
     float muN = max(dot(N, V), 0.05);
     // 大気を通ってきた日光（太陽が真上の時を白として、低いほど道のりが長く弱まる。地球は青が散らされて朝夕は赤く、
     // 火星は塵が色によらず遮るのでほぼ白いまま暗くなる）

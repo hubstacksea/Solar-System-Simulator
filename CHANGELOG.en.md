@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.59.0 (2026-11-20)
+
+- When the Sun is low (below 20°), mountains and crater rims now cast shadows on the ground (Earth, the Moon and bodies with elevation maps: the elevations are traced 16 steps along the ground toward the Sun, up to 150 km or the length of a shadow from an 8 km mountain, and the point is shadowed where the ground rises above the ray to the Sun; the ray height includes the fall of the curved surface, and the edges are softened by the Sun's apparent radius and the height uncertainty of one elevation pixel; only direct sunlight is blocked, skylight still comes in). Computing this per pixel made drawing about twice as slow, so it is computed per vertex of the terrain grid near the ground and interpolated (16.7 to 18.6 ms per frame near the Moon's surface)
+
 ## 2.58.0 (2026-11-20)
 
 - Near the ground the brightness is now adjusted automatically (the weaker the light falling on the ground, direct plus skylight, the brighter the ground and the ship are shown: the light to the power -0.7, at most 2.2 times, changing slowly; values above 0.75 level off smoothly so nothing blows out; the sky and haze are left as they are; since the eye also adapts to a bright sunset sky, it fades out between solar altitudes of 12° and 2° and is off at sunset; off from space and at night). Antarctic snow at midday is white and the Moon under a low Sun is easier to see
