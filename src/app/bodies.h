@@ -90,7 +90,7 @@ struct Terrain {
 };
 static std::vector<Terrain> g_terrain;
 
-// 細かい標高（地球 assets/earth_detail.bin 1 分角・月 moon_detail.bin 16 ピクセル/度・火星 mars_detail.bin 16 ピクセル/度）。
+// 細かい標高（地球 assets/earth_detail.bin 1 分角・月 moon_detail.bin 16 ピクセル/度・火星 mars_detail.bin 32 ピクセル/度）。
 // 区画に分けて持ち、カメラの真下を中心にした N 画素四方の窓だけを展開して GPU に載せ（texture4）、窓の中では全球の標高の
 // 代わりに使う。窓の縁 MARGIN 画素で全球の標高へなじませる。シェーダ（shaders.h の DETAIL_GLSL）と同じ計算
 struct DetailMap {
@@ -189,20 +189,23 @@ static float FbmBand(F3 p, float f, int oct, float gain, F3 o, float sp, float f
     return s;
 }
 // クレーターの層の周波数 fLo より細かい部分の高さ（cratersBand）
-static float CratersBand(F3 p, float density, float F0, F3 salt, float sp, float fLo) {
-    float s = 0, F = F0;
-    for (int i = 0; i < 16 && F * 1.7f * sp < 0.5f; i++, F *= 2.2f) {
+// worn = 1（火星）はほとんどが崩れて浅く、小さいものほど少ない（craterShape・craterFresh・craterLayerK）
+static float CratersBand(F3 p, float density, float F0, F3 salt, float sp, float fLo, float worn) {
+    float s = 0, F = F0, dk = density;
+    for (int i = 0; i < 16 && F * 1.7f * sp < 0.5f; i++, F *= 2.2f, dk *= Mixf(1.0f, 0.8f, worn)) {
         F3 sl = salt + (float)i * 31.7f, q = p * F + sl;
         float fx = std::floor(q.x), fy = std::floor(q.y), fz = std::floor(q.z);
         int cx = (int)fx, cy = (int)fy, cz = (int)fz;
-        if (NoiseHash1(cx + 5, cy + 71, cz + 29) > density) continue;
+        if (NoiseHash1(cx + 5, cy + 71, cz + 29) > dk) continue;
         float sz = NoiseHash1(cx + 41, cy + 13, cz + 97), r = Mixf(0.08f, 0.29f, sz * sz);
         float ctr[3] = {r * 1.7f + NoiseHash1(cx + 1, cy + 2, cz + 3) * (1 - 3.4f * r), r * 1.7f + NoiseHash1(cx + 4, cy + 5, cz + 6) * (1 - 3.4f * r),
                         r * 1.7f + NoiseHash1(cx + 7, cy + 8, cz + 9) * (1 - 3.4f * r)};
         float dx = q.x - fx - ctr[0], dy = q.y - fy - ctr[1], dz = q.z - fz - ctr[2];
         float x = std::sqrt(dx * dx + dy * dy + dz * dz) / r;
         if (x >= 1.7f) continue;
-        float h = x < 1 ? x * x - 0.75f : 0.25f * std::exp(-((x - 1) * 3.5f) * ((x - 1) * 3.5f));
+        float rnd = NoiseHash1(cx + 11, cy + 12, cz + 13), fr = Mixf(1.0f, rnd * rnd, worn);
+        float k = Mixf(0.3f, 1.0f, fr), rim = 0.25f * Mixf(0.3f, 1.0f, fr), fl = (1 - fr) * 0.55f;
+        float h = (x < 1 ? std::max(x * x, fl) - 1 + rim : rim * std::exp(-((x - 1) * 3.5f) * ((x - 1) * 3.5f))) * k;
         s += BandW(F / (2 * r), sp, fLo) * h * 0.4f * r / F;
     }
     return s;
@@ -237,7 +240,7 @@ static float RockyBand(F3 p, int style, F3 o, float sp, float fLo) {
     float rough, dens, heart;
     RockyParams(p, style, o, &rough, &dens, &heart);
     float T = FbmBand(p, 3.0f, 26, 0.48f, o, sp, fLo) * (0.022f * rough);
-    return T + (dens > 0 ? CratersBand(p, dens * (1 - heart), 5.0f, o * 0.37f, sp, fLo) : 0.0f);
+    return T + (dens > 0 ? CratersBand(p, dens * (1 - heart), 5.0f, o * 0.37f, sp, fLo, 0.0f) : 0.0f);
 }
 // 月の海（暗い所）の割合（moonDark）。c は地表の色 0..1
 static float MoonDark(float r, float g, float b) {
@@ -327,11 +330,11 @@ static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo, float ms) {
     double u = std::atan2(-p.z / l, p.x / l) / (2 * PI) + 0.5, v = 0.5 - std::asin(std::max(-1.0f, std::min(1.0f, my / l))) / PI;
     if (T.bumps == 1) {   // 月: 海（暗い所）はクレーターが少なく平ら
         float dark = T.aux.empty() ? 0.0f : MoonDark(T.Aux(u, v, 0), T.Aux(u, v, 1), T.Aux(u, v, 2));
-        return CratersBand(p, Mixf(0.55f, 0.2f, dark), 260.0f, o * 0.37f, sp, fLo) +
+        return CratersBand(p, Mixf(0.55f, 0.2f, dark), 260.0f, o * 0.37f, sp, fLo, 0.0f) +
                FbmBand(p, 600.0f, 20, 0.48f, o, sp, fLo) * (Mixf(0.004f, 0.0015f, dark) / 260.0f);
     }
     float cov = T.aux.empty() ? 1.0f : T.Aux(u, v, 0), fine = 0, ph = 0;
-    if (cov > 0) fine = CratersBand(p, 0.35f, 260.0f, o * 0.37f, sp, fLo) + FbmBand(p, 600.0f, 20, 0.48f, o, sp, fLo) * (0.003f / 260.0f);
+    if (cov > 0) fine = CratersBand(p, 0.35f, 260.0f, o * 0.37f, sp, fLo, T.style == S_MARS ? 1.0f : 0.0f) + FbmBand(p, 600.0f, 20, 0.48f, o, sp, fLo) * (0.003f / 260.0f);
     if (cov < 1 || T.pattern) ph = RockyBand(p, T.style, o, sp, fLo);
     float h = Mixf(ph, fine, cov);
     if (T.liquid && !T.aux.empty()) h *= 1 - T.Aux(u, v, T.an - 1);   // 液体の湖・海は平ら

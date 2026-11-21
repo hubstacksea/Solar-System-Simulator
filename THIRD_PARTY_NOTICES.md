@@ -142,8 +142,11 @@ U.S. Government (NASA / USGS) except where noted; use does not imply endorsement
   color at half strength, and the band from the equator to 6° S is dropped. Credit: NASA/JPL-Caltech/Space Science
   Institute.
 - Mars elevation: Mars Global Surveyor MOLA Mission Experiment Gridded Data Record (MEGDR), 4 pixels per degree,
-  NASA PDS Geosciences Node (https://pds-geosciences.wustl.edu/missions/mgs/megdr.html). The 16 pixels-per-degree MEGDR
-  is used for the elevations around the camera (`assets/mars_detail.bin`, made by `tools/make_body_detail.py`).
+  NASA PDS Geosciences Node (https://pds-geosciences.wustl.edu/missions/mgs/megdr.html). For the elevations around the
+  camera (`assets/mars_detail.bin`, made by `tools/make_body_detail.py`), the Mars MGS MOLA - MEX HRSC Blended DEM Global
+  200m v2 (Fergason, R. L., Hare, T. M., Laura, J., 2018, USGS Astrogeology Science Center,
+  https://astrogeology.usgs.gov/search/map/mars_mgs_mola_mex_hrsc_blended_dem_global_200m) is averaged down to 32 pixels
+  per degree (about 1.85 km). Credit: NASA/JPL/GSFC (MOLA), ESA/DLR/FU Berlin (HRSC), USGS.
 
 ## ISS and Hubble orbital elements (src/solar_data.h, SATELLITES)
 

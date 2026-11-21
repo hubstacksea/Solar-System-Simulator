@@ -86,14 +86,28 @@ float fbmBand(vec3 p, float f, int oct, float gain, vec3 o, float sp, float fLo)
     }
     return s;
 }
-float cratersBand(vec3 p, float density, float F0, vec3 salt, float sp, float fLo) {
-    float s = 0.0, F = F0;
-    for (int i = 0; i < 16 && F * 1.7 * sp < 0.5; i++, F *= 2.2) {
+// クレーターの断面: x（中心からの距離 / 半径）の高さと傾き dh（深さ 1 あたり）。s: 新しさ。1 は新しいお椀形（深さ / 直径
+// 約 0.2）。小さいほど崩れて浅く（0 で 0.3 倍）、底は埋まって平らに、縁は低くなる（火星: 風で運ばれた塵・砂が積もり、削られる）
+float craterShape(float x, float s, out float dh) {
+    float k = mix(0.3, 1.0, s), rim = 0.25 * mix(0.3, 1.0, s), fl = (1.0 - s) * 0.55;
+    if (x < 1.0) { dh = x * x > fl ? 2.0 * x * k : 0.0; return (max(x * x, fl) - 1.0 + rim) * k; }
+    float t = (x - 1.0) * 3.5, e = exp(-t * t);
+    dh = -rim * 7.0 * t * e * k;
+    return rim * e * k;
+}
+// クレーターの新しさ: worn = 0 はすべて新しい。worn = 1（火星）はほとんどが崩れていて、新しいものは 4 分の 1 ほど（rnd^2 > 0.56 は
+// rnd > 0.75 で、光条のある新しいクレーターと同じもの）
+float craterFresh(float rnd, float worn) { return mix(1.0, rnd * rnd, worn); }
+// クレーターの多さに層ごと（小さい層へ）に掛ける値: worn = 1 では小さいものほど埋まって消え、0.8 倍ずつ（目安）
+float craterLayerK(float worn) { return mix(1.0, 0.8, worn); }
+float cratersBand(vec3 p, float density, float F0, vec3 salt, float sp, float fLo, float worn) {
+    float s = 0.0, F = F0, dk = density;
+    for (int i = 0; i < 16 && F * 1.7 * sp < 0.5; i++, F *= 2.2, dk *= craterLayerK(worn)) {
         vec3 d; float r, rnd;
-        if (!cellSpot(p, F, density, salt + float(i) * 31.7, 0.08, 0.29, d, r, rnd)) continue;
+        if (!cellSpot(p, F, dk, salt + float(i) * 31.7, 0.08, 0.29, d, r, rnd)) continue;
         float x = length(d) / r;
         if (x >= 1.7) continue;
-        float t = (x - 1.0) * 3.5, h = x < 1.0 ? x * x - 0.75 : 0.25 * exp(-t * t);
+        float dh, h = craterShape(x, craterFresh(rnd, worn), dh);
         s += bandW(F / (2.0 * r), sp, fLo) * h * 0.4 * r / F;
     }
     return s;
@@ -127,13 +141,13 @@ float rockyBand(vec3 p, int style, vec3 o, float sp, float fLo) {
     float rough, dens, mare, heart;
     rockyParams(p, style, o, rough, dens, mare, heart);
     float T = fbmBand(p, 3.0, 26, 0.48, o, sp, fLo) * (0.022 * rough);
-    return T + (dens > 0.0 ? cratersBand(p, dens * (1.0 - heart), 5.0, o * 0.37, sp, fLo) : 0.0);
+    return T + (dens > 0.0 ? cratersBand(p, dens * (1.0 - heart), 5.0, o * 0.37, sp, fLo, 0.0) : 0.0);
 }
 // 月の海（暗い所）の割合。c は地表の色
 float moonDark(vec3 c) { return 1.0 - smoothstep(0.12, 0.3, dot(pow(c, vec3(1.3)) * 1.25, vec3(0.333))); }
 )"
 
-// 細かい標高（地球 1 分角・月と火星 16 ピクセル/度）。CPU がカメラの真下を中心に展開した窓（texture4。bodies.h の DetailMap と
+// 細かい標高（地球 1 分角・月 16 ピクセル/度・火星 32 ピクセル/度）。CPU がカメラの真下を中心に展開した窓（texture4。bodies.h の DetailMap と
 // 同じ計算）
 #define DETAIL_GLSL R"(
 uniform sampler2D texture4;
@@ -262,12 +276,13 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     float h;
     if (terrE.z < 1.5) {   // 月: 海（暗い所）はクレーターが少なく平ら
         float dark = moonDark(textureLod(texture0, uv, 0.0).rgb);
-        h = cratersBand(q, mix(0.55, 0.2, dark), 260.0, o * 0.37, L, fLo) +
+        h = cratersBand(q, mix(0.55, 0.2, dark), 260.0, o * 0.37, L, fLo, 0.0) +
             fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (mix(0.004, 0.0015, dark) / 260.0);
     } else {               // 地図のある天体: 撮影された所は細かいクレーターと山肌、撮影されていない所は手続きの表面
         vec4 m = textureLod(texture2, uv, 0.0);
         float fine = 0.0, ph = 0.0;
-        if (m.r > 0.0) fine = cratersBand(q, 0.35, 260.0, o * 0.37, L, fLo) + fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (0.003 / 260.0);
+        if (m.r > 0.0) fine = cratersBand(q, 0.35, 260.0, o * 0.37, L, fLo, int(mapInfo2.x + 0.5) == 3 ? 1.0 : 0.0) +
+                              fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (0.003 / 260.0);
         if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(q, int(mapInfo2.x + 0.5), o, L, fLo);
         h = mix(ph, fine, m.r);
         if (mapInfo2.z > 0.5) h *= 1.0 - m.a;   // 液体の湖・海は平ら
@@ -476,6 +491,7 @@ float fw;      // 1 画素の大きさ（単位球の長さ）
 float g_ray;   // 新しいクレーターの明るさ（光条）
 float g_liquid = 0.0;   // 液体の湖・海の割合（タイタン）
 float g_ice = 0.0;      // 氷と雪の割合（地球の氷床・海氷、火星の極冠）
+float g_floor = 0.0;    // 崩れたクレーターの埋まった平らな底の割合（火星。暗い砂がたまる）
 
 // 地図の色が白い（明るく色みが少ない）割合。氷と雪の目安
 float whiteness(vec3 c) {
@@ -514,16 +530,15 @@ vec4 fbmD(vec3 p, float f, int oct, float gain, vec3 o) {
 }
 
 // クレーター 1 層 (x: 高さ[半径単位], yzw: 勾配)。お椀形の凹みと盛り上がった縁
-vec4 craterLayer(vec3 p, float F, float density, vec3 salt) {
+vec4 craterLayer(vec3 p, float F, float density, vec3 salt, float worn) {
     vec3 d; float r, rnd;
     if (!cellSpot(p, F, density, salt, 0.08, 0.29, d, r, rnd)) return vec4(0.0);
     float dist = length(d);
     float x = dist / r;
     if (x >= 1.7) return vec4(0.0);
-    float h, dh;
-    if (x < 1.0) { h = x * x - 0.75; dh = 2.0 * x; }
-    else { float t = (x - 1.0) * 3.5; float e = exp(-t * t); h = 0.25 * e; dh = -0.25 * 2.0 * t * 3.5 * e; }
+    float fr = craterFresh(rnd, worn), dh, h = craterShape(x, fr, dh);
     float w = lodW(F / (2.0 * r));
+    if (x * x < (1.0 - fr) * 0.55) g_floor += w * (1.0 - fr);
     float depth = 0.4 * r;
     // 若いクレーターほど明るい（内部と周囲の噴出物）
     if (rnd > 0.75) g_ray += w * (x < 1.0 ? 0.5 : 0.8 * exp(-(x - 1.0) * 3.0)) * (rnd - 0.75) * 4.0;
@@ -532,12 +547,13 @@ vec4 craterLayer(vec3 p, float F, float density, vec3 salt) {
     return w * vec4(h * depth / F, dh / r * depth * dir);
 }
 
-vec4 craters(vec3 p, float density, float F0, vec3 salt) {
+vec4 craters(vec3 p, float density, float F0, vec3 salt, float worn) {
     vec4 s = vec4(0.0);
-    float F = F0;
+    float F = F0, dk = density;
     for (int i = 0; i < 16; i++) {
         if (lodW(F * 1.7) <= 0.0) break;
-        s += craterLayer(p, F, density, salt + float(i) * 31.7);
+        s += craterLayer(p, F, dk, salt + float(i) * 31.7, worn);
+        dk *= craterLayerK(worn);
         F *= 2.2;
     }
     return s;
@@ -628,7 +644,7 @@ vec4 rocky(vec3 p, int style, vec3 o, out vec3 base) {
     rockyParams(p, style, o, rough, dens, mare, heart);
 
     vec4 T = fbmD(p, 3.0, 26, 0.48, o) * (0.022 * rough);
-    vec4 C = dens > 0.0 ? craters(p, dens * (1.0 - heart), 5.0, o * 0.37) : vec4(0.0);
+    vec4 C = dens > 0.0 ? craters(p, dens * (1.0 - heart), 5.0, o * 0.37, 0.0) : vec4(0.0);
     float tone = clamp(0.5 + macro * 0.6 + T.x * 6.0, 0.0, 1.0);
     vec3 c1 = color1, c2 = color2;
     base = mix(c2, c1, tone);
@@ -965,7 +981,7 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
 
     // 海（暗い所）はクレーターが少なく平ら（moonDark と同じ）
     float dark = 1.0 - smoothstep(0.12, 0.3, dot(tc, vec3(0.333)));
-    vec4 C = craters(p, mix(0.55, 0.2, dark), 260.0, o * 0.37);
+    vec4 C = craters(p, mix(0.55, 0.2, dark), 260.0, o * 0.37, 0.0);
     vec4 T = fbmD(p, 600.0, 20, 0.48, o) * (mix(0.004, 0.0015, dark) / 260.0);
     base = tc * (0.92 + 0.16 * (fbmL(p, 900.0, 16, 0.5, o + 5.0) * 0.5 + 0.5)) * (1.0 + g_ray * 0.35);
     // 岩塊: Diviner の岩の多さ（地表を 1 m ほどより大きな岩が覆う割合）だけ置く。直径 1〜12 m。新しい岩は砂より明るい
@@ -1022,34 +1038,54 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     if (mapInfo.y > 1.5) mb = pb * tc.r * mapInfo.x;          // 模様だけ（明暗は手続き的な塗り分け）
     else if (mapInfo.y > 0.5) mb = color1 * tc.r * mapInfo.x;  // 白黒: 天体の色で着色
     else mb = tc * L1 * mapInfo.x;                             // カラー: 明るさだけ天体に合わせる
-    // 火星の極冠: 白い所（緯度 60° より極側）。表面が若くクレーターがほとんど無いので、手続きのクレーターを消す
-    if (int(mapInfo2.x + 0.5) == 3) {
-        g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));
-        // 火星の地図（Viking MDIM 2.1 に NASA Ames が色を付けたもの）は暗い地域が青灰色に塗られているので、色合いだけを明るさに
-        // 応じた反射スペクトルの目安に置き換える（反射率の比 赤:緑:青 は明るい塵 1 : 0.55 : 0.29、暗い砂 1 : 0.73 : 0.55。Mars
-        // Pathfinder・ローバーのパノラマカメラなどの観測の概数。地図と同じ画面の色の値（sRGB、およそ 1/2.2 乗）に直して使う）。
-        // 明るさ（3 色の平均）は地図のまま。極冠の氷は変えない
-        vec3 hue = mix(vec3(1.0, 0.87, 0.76), vec3(1.0, 0.76, 0.57), smoothstep(0.6, 1.1, dot(tc, vec3(0.333)) * mapInfo.x));
-        mb = mix(hue * (dot(mb, vec3(0.333)) / dot(hue, vec3(0.333))), mb, g_ice);
-    }
+    bool mars = int(mapInfo2.x + 0.5) == 3;
     // 火星: TES の夜の熱慣性から素材を見分け、細かい起伏を足す。熱慣性が低い所は細かい塵が積もって小さな凹凸が埋まり、
     // 高い所は岩・岩盤（岩塊 直径 1〜12 m）。砂の波（さざ波 波長 25 m・砂丘 300 m）は、観測で砂丘地帯と分かっている所
     // （USGS の砂丘データベース。地図のアルファ）だけ（熱慣性が中ほどでも、砂とは限らず固まった地面のことも多い）。
-    // 砂丘は動いて新しいので、小さなクレーターは描かない
-    vec4 mat = vec4(0.0);
-    float dust = 0.0, sand = 0.0;
-    if (int(mapInfo2.x + 0.5) == 3 && mapInfo2.w > 0.5) {
-        vec2 tm = textureGrad(texture3, uv, dx, dy).ra;
-        float ti = 20.0 * pow(125.0, tm.x);
-        dust = 1.0 - smoothstep(120.0, 220.0, ti);
-        sand = smoothstep(0.1, 0.5, tm.y) * (1.0 - g_ice);
-        float rock = smoothstep(350.0, 700.0, ti) * (1.0 - sand);   // 砂丘の砂は岩を覆う
+    // 砂丘は動いて新しいので、小さなクレーターは描かない。クレーターは塵・砂で埋まり削られて、ほとんどが浅く崩れている
+    // （craterFresh）。極冠は表面が若くクレーターがほとんど無い
+    vec4 mat = vec4(0.0), C = vec4(0.0);
+    float dust = 0.0, sand = 0.0, rock = 0.0;
+    g_floor = 0.0;
+    if (mars) {
+        g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));   // 極冠: 白い所（緯度 60° より極側）
+        if (mapInfo2.w > 0.5) {
+            vec2 tm = textureGrad(texture3, uv, dx, dy).ra;
+            float ti = 20.0 * pow(125.0, tm.x);
+            dust = 1.0 - smoothstep(120.0, 220.0, ti);
+            sand = smoothstep(0.1, 0.5, tm.y) * (1.0 - g_ice);
+            rock = smoothstep(350.0, 700.0, ti) * (1.0 - sand);   // 砂丘の砂は岩を覆う
+        }
+    }
+    if (cov > 0.0) C = craters(p, 0.35, 260.0, o * 0.37, mars ? 1.0 : 0.0) * (1.0 - g_ice) * (1.0 - sand);
+    vec4 Tn = fbmD(p, 600.0, 20, 0.48, o);
+    if (mars) {
+        // 地図（1 画素 約 5 km）より細かい明るさのむら mot（値はどれも HiRISE などの画像の見た目からの目安）:
+        //  - 暗い砂の吹きだまり: 低い所（手続きの起伏の谷）にたまる、境目のはっきりした斑（地表の 4 分の 1 ほど、周りの 0.85 倍）。
+        //    塵の積もった所には無い
+        //  - 崩れたクレーターの埋まった底: 暗い砂がたまる（0.75 倍）
+        //  - 岩塊・砂丘の砂: 玄武岩で周りより暗い（0.82 倍・0.85 倍）
+        //  - ゆるやかなむら ±8%
+        // 地図の画素の平均の明るさが変わらないよう、斑の分は割り戻す
         float Rm = mapInfo.w * 1000.0;
         if (rock > 0.0) mat = boulders(p, Rm / 20.0, 0.12 * rock * (1.0 - g_ice), 0.6, o * 0.53);
+        float bare = (1.0 - dust) * (1.0 - g_ice);
+        float drift = smoothstep(0.25, 0.45, fbmL(p, 9000.0, 12, 0.5, o + 71.0) * 0.6 - Tn.x * 0.5) * bare;
+        float mot = (1.0 - 0.15 * drift) / (1.0 - 0.15 * 0.25 * bare);
+        mot *= 1.0 - 0.25 * clamp(g_floor, 0.0, 1.0) * (1.0 - g_ice);
+        mot *= 1.0 - 0.18 * step(1e-10, mat.x);
         if (sand > 0.0) mat += sandWaves(p, 6.2832 * Rm / 25.0, 0.1, 6.2832 * Rm / 300.0, 0.35, o + 61.0) * sand;
+        mot *= (1.0 - 0.15 * sand) * (1.0 + 0.08 * fbmL(p, 2000.0, 14, 0.55, o + 83.0));
+        mot = mix(mot, 1.0, g_ice);
+        // 火星の地図（Viking MDIM 2.1 に NASA Ames が色を付けたもの）は暗い地域が青灰色に塗られているので、色合いだけを明るさに
+        // 応じた反射スペクトルの目安に置き換える（反射率の比 赤:緑:青 は明るい塵 1 : 0.55 : 0.29、暗い砂 1 : 0.73 : 0.55。Mars
+        // Pathfinder・ローバーのパノラマカメラなどの観測の概数。地図と同じ画面の色の値（sRGB、およそ 1/2.2 乗）に直して使う）。
+        // 明るさ（3 色の平均）は地図の値に細かいむらを掛けたもの。極冠の氷は変えない
+        vec3 hue = mix(vec3(1.0, 0.87, 0.76), vec3(1.0, 0.76, 0.57), smoothstep(0.6, 1.1, dot(tc, vec3(0.333)) * mapInfo.x * mot));
+        mb = mix(hue * (dot(mb, vec3(0.333)) * mot / dot(hue, vec3(0.333))), mb, g_ice);
     }
     vec4 fine = vec4(0.0);
-    if (cov > 0.0) fine = (craters(p, 0.35, 260.0, o * 0.37) * (1.0 - g_ice) * (1.0 - sand) + fbmD(p, 600.0, 20, 0.48, o) * (0.003 / 260.0)) * (1.0 - 0.6 * dust) + mat;
+    if (cov > 0.0) fine = (C + Tn * (0.003 / 260.0)) * (1.0 - 0.6 * dust) + mat;
     vec4 h = mix(ph, fine, cov);
     if (mapInfo.z > 0.5) {
         vec2 texel = 1.0 / vec2(textureSize(texture1, 0));
@@ -1065,7 +1101,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
         vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
         vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
-        vec2 sl;   // カメラの周り（火星の 16 ピクセル/度の窓の中）: 細かい標高
+        vec2 sl;   // カメラの周り（火星の 32 ピクセル/度の窓の中）: 細かい標高
         float hd, dw = detGradient(uv, dx, dy, lat, R, sl, hd);
         if (dw > 0.0) {
             grad = mix(grad, east * sl.x + north * sl.y, dw);

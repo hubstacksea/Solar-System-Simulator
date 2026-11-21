@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.63.0 (2026-11-21)
+
+- The fine elevations around the camera on Mars now come from the USGS MOLA and HRSC blended elevations (Fergason et al. 2018, 200 m per pixel at the source) averaged down to 32 pixels per degree (about 1.85 km) instead of MOLA at 16 pixels per degree (about 3.7 km), so canyon walls and mountains keep their shape (`assets/mars_detail.bin` 14.8 to 57.0 MB; on average +0.6 m from the old data)
+- The small procedural craters on Mars are now filled and worn by dust and sand: most are shallow and degraded (down to 0.3 times the depth of a fresh one, with flat floors and low rims), about a quarter are fresh bowls, and the smaller they are the fewer there are (0.8 times per size step). The heights of the terrain grid (altitude and collisions) use the same formula
+- The Martian ground gets brightness variations finer than the map (about 5 km per pixel): patches of dark sand gathering in hollows, dark floors of filled craters, and dark boulders and dune sand. Dusty ground stays uniform, and the mean brightness of each map pixel is unchanged (the fractions and strengths are estimates from the look of images)
+
 ## 2.62.0 (2026-11-21)
 
 - Place names on Earth now appear everywhere, not only within city areas: the city or a summit (mountains from Natural Earth Elevation Points, within 5 km; some summits are a few km off), the regions around you (mountain ranges, deserts, plateaus, islands, peninsulas and so on from Physical Labels; the smallest and the next one at least 1.5 times larger that contains it) and the country (1:50m Admin 0 Countries) or the sea (oceans, seas, bays, straits and so on from Marine Areas), joined with " · " (for example "Ténéré · Sahara · Algeria", "Mount Fuji · Honshu · Japan", "Atlantic Ocean"). The polygons are thinned with Douglas–Peucker to 0.02° (countries) to 0.05° (seas and regions) in `assets/place_names.txt` (0.94 to 1.45 MB), so near borders and coasts you may get the neighbor's name
