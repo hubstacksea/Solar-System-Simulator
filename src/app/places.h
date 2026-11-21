@@ -351,8 +351,17 @@ struct PlaceName {
     std::string name, ja;
 };
 struct PlaceKind { std::string ja, en; };
+// 地域（地球の国・海・山脈や砂漠などの多角形）。点は経度・緯度の 0.01° 単位
+struct PlaceArea {
+    int layer;          // 0: 国, 1: 海, 2: 地域
+    float area;         // 面積 km²（小さいものを優先）
+    float box[4];       // 西端・東端・南端・北端（0.01° 単位）
+    std::string ja, en;
+    std::vector<std::vector<int>> rings;   // 経度, 緯度, 経度, 緯度, …
+};
 static std::vector<PlaceKind> g_placeKinds;
 static std::vector<std::vector<PlaceName>> g_placeNames;   // 天体の番号ごと
+static std::vector<std::vector<PlaceArea>> g_placeAreas;   // 天体の番号ごと
 static bool g_placeNamesLoaded = false;
 
 static V3 LatLonDir(double latDeg, double lonDeg) {
@@ -375,6 +384,7 @@ static bool LoadPlaceNames(const App& app) {
     if (!f.data || !f.size) return false;
     g_placeNamesLoaded = true;
     g_placeNames.assign(app.B.size(), {});
+    g_placeAreas.assign(app.B.size(), {});
     std::map<std::string, int> bodies;
     for (size_t i = 0; i < app.B.size(); i++) bodies.emplace(PlaceBodyKey(app.B[i].d.en), (int)i);
     const char* p = (const char*)f.data;
@@ -392,6 +402,39 @@ static bool LoadPlaceNames(const App& app) {
         }
         p = e + 1;
         if (col[0] == "K" && col.size() >= 3) g_placeKinds.push_back({col[1], col[2]});
+        else if (col[0] == "A" && col.size() >= 5 && body >= 0) {
+            g_placeAreas[body].push_back({atoi(col[1].c_str()), (float)atof(col[2].c_str()), {1e9f, -1e9f, 1e9f, -1e9f}, col[3], col[4], {}});
+        } else if (col[0] == "P" && col.size() >= 2 && body >= 0 && !g_placeAreas[body].empty()) {
+            // Base64 → 符号を交互にした可変長整数の差 → 点（tools/make_place_names.py）
+            PlaceArea& a = g_placeAreas[body].back();
+            std::vector<int> ring;
+            int acc = 0, bits = 0, x = 0, y = 0, k = 0;
+            unsigned int z = 0, sh = 0;
+            for (char c : col[1]) {
+                int v = c >= 'A' && c <= 'Z' ? c - 'A' : c >= 'a' && c <= 'z' ? c - 'a' + 26 : c >= '0' && c <= '9' ? c - '0' + 52
+                        : c == '+' ? 62 : c == '/' ? 63 : -1;
+                if (v < 0) continue;
+                acc = (acc << 6 | v) & 0xFFFF;   // 使うのは下位 14 bit まで
+                bits += 6;
+                if (bits < 8) continue;
+                bits -= 8;
+                unsigned int byte = (acc >> bits) & 0xFF;
+                z |= (byte & 0x7F) << sh;
+                sh += 7;
+                if (byte & 0x80) continue;
+                int d = (int)(z >> 1) ^ -(int)(z & 1);
+                z = sh = 0;
+                if (k++ % 2 == 0) x += d;
+                else {
+                    y += d;
+                    ring.push_back(x);
+                    ring.push_back(y);
+                    a.box[0] = std::min(a.box[0], (float)x), a.box[1] = std::max(a.box[1], (float)x);
+                    a.box[2] = std::min(a.box[2], (float)y), a.box[3] = std::max(a.box[3], (float)y);
+                }
+            }
+            if (ring.size() >= 6) a.rings.push_back(std::move(ring));
+        }
         else if (col[0] == "B" && col.size() >= 2) {
             auto it = bodies.find(PlaceBodyKey(col[1].c_str()));
             body = it == bodies.end() ? -1 : it->second;
@@ -426,6 +469,8 @@ static std::string PlaceNameChars() {
     for (const PlaceKind& k : g_placeKinds) add(k.ja + k.en);
     for (const auto& v : g_placeNames)
         for (const PlaceName& n : v) add(n.name + n.ja);
+    for (const auto& v : g_placeAreas)
+        for (const PlaceArea& a : v) add(a.ja + a.en);
     std::string s;
     for (int cp : cps) {
         int len = 0;
@@ -441,7 +486,21 @@ static std::string PlaceLabel(const PlaceName& n) {
     return k && !k->en.empty() ? n.name + " " + k->en : n.name;
 }
 
-// 緯度・経度（度）の所の地名。そこを含む一番小さい地名と、地球以外ではそれを含む 1.5 倍以上大きい地名。無ければ空
+// 多角形の中か（輪をまとめて偶奇で数えるので、穴も抜ける）
+static bool InPlaceArea(const PlaceArea& a, double x, double y) {
+    if (x < a.box[0] || x > a.box[1] || y < a.box[2] || y > a.box[3]) return false;
+    bool in = false;
+    for (const std::vector<int>& r : a.rings)
+        for (size_t i = 0, n = r.size() / 2, j = n - 1; i < n; j = i++) {
+            double xi = r[2 * i], yi = r[2 * i + 1], xj = r[2 * j], yj = r[2 * j + 1];
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) in = !in;
+        }
+    return in;
+}
+
+// 緯度・経度（度）の所の地名。そこを含む一番小さい地名と、地球以外ではそれを含む 1.5 倍以上大きい地名。
+// 地球は、都市・山頂（あれば）、そこを含む一番小さい地域（山脈・砂漠・島など）とそれを含む 1.5 倍以上大きい地域、
+// 国（無ければ海）。無ければ空
 static std::string PlaceNameAt(const App& app, int body, double lat, double lon) {
     if (!LoadPlaceNames(app) || body < 0 || body >= (int)g_placeNames.size()) return "";
     V3 d = LatLonDir(lat, lon);
@@ -454,6 +513,30 @@ static std::string PlaceNameAt(const App& app, int body, double lat, double lon)
     const PlaceName *a = nullptr, *b = nullptr;
     for (const PlaceName& n : g_placeNames[body])
         if ((!a || n.rad < a->rad) && inside(n)) a = &n;
+    if (!g_placeAreas[body].empty()) {
+        const PlaceArea* best[3] = {};
+        const PlaceArea* wide = nullptr;   // 一番小さい地域を含む、1.5 倍以上大きい地域（テネレ → サハラ砂漠）
+        double x = lon * 100, y = lat * 100;
+        std::vector<const PlaceArea*> in;
+        for (const PlaceArea& r : g_placeAreas[body])
+            if (r.layer >= 0 && r.layer < 3 && InPlaceArea(r, x, y)) {
+                in.push_back(&r);
+                if (!best[r.layer] || r.area < best[r.layer]->area) best[r.layer] = &r;
+            }
+        if (best[2])
+            for (const PlaceArea* r : in)
+                if (r->layer == 2 && r->area >= 1.5f * best[2]->area && (!wide || r->area < wide->area)) wide = r;
+        std::vector<std::string> parts;
+        if (a) parts.push_back(PlaceLabel(*a));
+        for (const PlaceArea* r : {best[2], wide, best[0] ? best[0] : best[1]}) {
+            if (!r) continue;
+            std::string s = TR(r->ja.c_str(), r->en.c_str());
+            if (std::find(parts.begin(), parts.end(), s) == parts.end()) parts.push_back(s);
+        }
+        std::string out;
+        for (const std::string& s : parts) out += (out.empty() ? "" : "  ·  ") + s;
+        return out;
+    }
     if (!a) return "";
     if (body != B_EARTH)
         for (const PlaceName& n : g_placeNames[body])

@@ -6,6 +6,9 @@
 データ:
   - 地球の都市: Natural Earth 1:10m Populated Places（パブリックドメイン）。名前（日本語は NAME_JA）、緯度・経度と、
     市街地の広さ MAX_AREAKM（LandScan から求めた面積 km²）。広さの無い都市は人口から 1 km² に 2,000 人として広さを推定
+  - 地球の地域: Natural Earth（パブリックドメイン）の 1:50m の国（Admin 0 Countries）、1:10m の海（Marine Areas: 大洋・海・湾・
+    海峡など）、1:10m の地域（Physical Labels: 山脈・砂漠・高原・島・半島・平原など）の多角形と、1:10m の山頂
+    （Elevation Points の mountain。山頂から半径 5 km を山頂の地名とする）
   - 地球以外: IAU の惑星の地名（USGS Gazetteer of Planetary Nomenclature。米国政府の著作物でパブリックドメイン）の
     天体ごとの中心点のシェープファイル。IAU が承認した名前だけで、衛星クレーター（「Copernicus A」のような
     文字の付いたもの）は除く。中心（惑星中心緯度・東経 0〜360°）、直径、範囲の緯度・経度
@@ -16,14 +19,18 @@
   緯度  経度（東が正、-180〜180）  半径 km  範囲（南端,北端,西端,東端 の度。無ければ空）  種類（-1: 無し）  名前  [日本語名]
   日本語名が無ければ「名前（種類の日本語）」、英語名は「名前 英語名に付ける語」。
   地名の場所: 中心から半径以内で、範囲があればその中（実際の形ではなく円と四角で近似）
+  A  層（0: 国, 1: 海, 2: 地域）  面積 km²  日本語名  英語名  … 地球の地域（多角形）。続く P の行がその輪
+  P  輪の点（経度・緯度を 0.01° 単位の整数にし、最初の点はそのまま、以降は前の点との差を、符号を交互にした
+     可変長整数（7 bit ずつ、続きがあれば最上位を 1）で並べて Base64 にしたもの）。点は Douglas–Peucker で間引く
 
 使い方: python3 tools/make_place_names.py <作業ディレクトリ> [出力先=assets]
-必要なもの: Python だけ（ダウンロード 約 45 MB）
+必要なもの: Python だけ（ダウンロード 約 50 MB）
 """
 import io
 import math
 import os
 import re
+import base64
 import struct
 import sys
 import unicodedata
@@ -31,6 +38,13 @@ import urllib.request
 import zipfile
 
 NE_URL = "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_populated_places.zip"
+NE_AREAS = [   # (層, URL, 間引きの許容誤差 度)
+    (0, "https://naciscdn.org/naturalearth/50m/cultural/ne_50m_admin_0_countries.zip", 0.02),
+    (1, "https://naciscdn.org/naturalearth/10m/physical/ne_10m_geography_marine_polys.zip", 0.05),
+    (2, "https://naciscdn.org/naturalearth/10m/physical/ne_10m_geography_regions_polys.zip", 0.05),
+]
+NE_PEAKS = "https://naciscdn.org/naturalearth/10m/physical/ne_10m_geography_regions_elevation_points.zip"
+PEAK_RADIUS = 5.0   # Natural Earth の山頂の位置は数 km ずれるものがある（エベレストは西に約 4 km）
 IAU_URL = "https://asc-planetarynames-data.s3.us-west-2.amazonaws.com/%s_nomenclature_center_pts.zip"
 IAU_TARGETS = ("AMALTHEA ARIEL BENNU CALLISTO CERES CHARON DACTYL DEIMOS DIDYMOS DIMORPHOS DINKINESH DIONE DONALDJOHANSON "
                "ENCELADUS EPIMETHEUS EROS EUROPA GANYMEDE GASPRA HYPERION IAPETUS IDA IO ITOKAWA JANUS LUTETIA MARS MATHILDE "
@@ -84,7 +98,7 @@ def dbf_rows(data):
             continue
         o, rec = 1, {}
         for name, ln in fields:
-            rec[name] = r[o:o + ln].decode("utf-8", "replace").strip()
+            rec[name] = r[o:o + ln].decode("utf-8", "replace").strip(" \x00")   # 空きは空白か NUL
             o += ln
         yield rec
 
@@ -140,6 +154,108 @@ def earth(work):
     return rows
 
 
+def lower_keys(r):
+    return {k.lower(): v for k, v in r.items()}
+
+
+def shp_polygons(data):
+    """シェープファイルの多角形を、記録ごとに輪（(経度, 緯度) のリスト）のリストで返す（多角形でない記録は空）"""
+    pos = 100
+    while pos < len(data):
+        clen = struct.unpack(">i", data[pos + 4:pos + 8])[0] * 2
+        rec = data[pos + 8:pos + 8 + clen]
+        pos += 8 + clen
+        if struct.unpack("<i", rec[:4])[0] != 5:
+            yield []
+            continue
+        nparts, npts = struct.unpack("<2i", rec[36:44])
+        idx = list(struct.unpack("<%di" % nparts, rec[44:44 + 4 * nparts])) + [npts]
+        xy = struct.unpack("<%dd" % (2 * npts), rec[44 + 4 * nparts:44 + 4 * nparts + 16 * npts])
+        yield [[(xy[2 * i], xy[2 * i + 1]) for i in range(idx[k], idx[k + 1])] for k in range(nparts)]
+
+
+def simplify(pts, tol):
+    """Douglas–Peucker で点を間引く（端の点は残す）"""
+    if len(pts) < 4:
+        return pts
+    keep = [False] * len(pts)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(pts) - 1)]
+    while stack:
+        a, b = stack.pop()
+        (ax, ay), (bx, by) = pts[a], pts[b]
+        dx, dy = bx - ax, by - ay
+        L = math.hypot(dx, dy)
+        best, bi = -1.0, -1
+        for i in range(a + 1, b):
+            px, py = pts[i][0] - ax, pts[i][1] - ay
+            d = abs(dx * py - dy * px) / L if L > 0 else math.hypot(px, py)
+            if d > best:
+                best, bi = d, i
+        if best > tol:
+            keep[bi] = True
+            stack += [(a, bi), (bi, b)]
+    return [p for p, k in zip(pts, keep) if k]
+
+
+def encode_ring(pts):
+    q = [(round(x * 100), round(y * 100)) for x, y in pts]
+    q = [p for i, p in enumerate(q) if i == 0 or p != q[i - 1]]
+    out, prev = bytearray(), (0, 0)
+    for x, y in q:
+        for v in (x - prev[0], y - prev[1]):
+            z = (v << 1) ^ (v >> 63)   # 符号を交互に（0, -1, 1, -2, …）
+            while True:
+                if z < 0x80:
+                    out.append(z)
+                    break
+                out.append(z & 0x7F | 0x80)
+                z >>= 7
+        prev = (x, y)
+    return base64.b64encode(bytes(out)).decode(), len(q)
+
+
+def ring_area(pts):
+    """輪の面積 km²（緯度の cos を掛けた平面の近似）"""
+    a = 0.0
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]):
+        a += (x0 * y1 - x1 * y0) * math.cos(math.radians((y0 + y1) / 2))
+    return abs(a) / 2 * (math.pi / 180 * 6371.0) ** 2
+
+
+def earth_areas(work):
+    areas = []
+    for layer, url, tol in NE_AREAS:
+        z = zipfile.ZipFile(fetch(work, url))
+        stem = os.path.basename(url)[:-4]
+        recs = [lower_keys(r) for r in dbf_rows(z.read(stem + ".dbf"))]
+        for r, rings in zip(recs, shp_polygons(z.read(stem + ".shp"))):
+            if not rings or r.get("featurecla") == "Dragons-be-here":
+                continue
+            en = latin(clean(r.get("name_en") or r.get("name", "")))
+            ja = japanese(clean(r.get("name_ja", ""))) or en
+            if not en:
+                continue
+            rs = [simplify(ring, tol) for ring in rings]
+            rs = [ring for ring in rs if len(ring) >= 3]
+            if rs:
+                areas.append((layer, sum(ring_area(ring) for ring in rs), ja, en, rs))
+    return areas
+
+
+def earth_peaks(work):
+    z = zipfile.ZipFile(fetch(work, NE_PEAKS))
+    rows = []
+    for r in dbf_rows(z.read("ne_10m_geography_regions_elevation_points.dbf")):
+        r = lower_keys(r)
+        en = latin(clean(r.get("name_en") or r["name"]))
+        if r["featurecla"] != "mountain" or not en:
+            continue
+        ja = japanese(clean(r.get("name_ja", "")))
+        rows.append(("Earth", num(r["lat_y"]), num(r["long_x"]), PEAK_RADIUS, "", None, en, "" if ja == en else ja))
+    return rows
+
+
 def iau(work):
     rows = []
     for t in IAU_TARGETS:
@@ -169,7 +285,8 @@ def main():
     out = sys.argv[2] if len(sys.argv) > 2 else "assets"
     os.makedirs(work, exist_ok=True)
     os.makedirs(out, exist_ok=True)
-    rows = earth(work) + iau(work)
+    rows = earth(work) + earth_peaks(work) + iau(work)
+    areas = earth_areas(work)
     kinds, body = [], None
     with open(os.path.join(out, "place_names.txt"), "w", encoding="utf-8", newline="\n") as f:
         f.write("# tools/make_place_names.py: Natural Earth populated places, IAU/USGS Gazetteer of Planetary Nomenclature\n")
@@ -182,7 +299,16 @@ def main():
                 f.write("B\t%s\n" % b)
             k = kinds.index(kind) if kind is not None and kind[0] else -1
             f.write("%.3f\t%.3f\t%.3f\t%s\t%d\t%s%s\n" % (lat, lon, rad, box, k, name, "\t" + ja if ja else ""))
-    print("place_names.txt  %d places (Earth %d)" % (len(rows), sum(r[0] == "Earth" for r in rows)))
+        f.write("B\tEarth\n")
+        npts = 0
+        for layer, area, ja, en, rings in areas:
+            f.write("A\t%d\t%.0f\t%s\t%s\n" % (layer, area, ja, en))
+            for ring in rings:
+                code, n = encode_ring(ring)
+                npts += n
+                f.write("P\t%s\n" % code)
+    print("place_names.txt  %d places (Earth %d), %d Earth areas (%d points)" % (
+        len(rows), sum(r[0] == "Earth" for r in rows), len(areas), npts))
 
 
 if __name__ == "__main__":

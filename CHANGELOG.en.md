@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.62.0 (2026-11-21)
+
+- Place names on Earth now appear everywhere, not only within city areas: the city or a summit (mountains from Natural Earth Elevation Points, within 5 km; some summits are a few km off), the regions around you (mountain ranges, deserts, plateaus, islands, peninsulas and so on from Physical Labels; the smallest and the next one at least 1.5 times larger that contains it) and the country (1:50m Admin 0 Countries) or the sea (oceans, seas, bays, straits and so on from Marine Areas), joined with " · " (for example "Ténéré · Sahara · Algeria", "Mount Fuji · Honshu · Japan", "Atlantic Ocean"). The polygons are thinned with Douglas–Peucker to 0.02° (countries) to 0.05° (seas and regions) in `assets/place_names.txt` (0.94 to 1.45 MB), so near borders and coasts you may get the neighbor's name
+- Added the characters of the region, country and sea names to the browser font (401 to 420 KB)
+
 ## 2.61.0 (2026-11-21)
 
 - The panel at the lower left on the ground (below 2 km) now shows the name of the place. On Earth it is the city when you are within its urban area (7,342 cities from Natural Earth 1:10m Populated Places, Japanese names from the same data; judged by a circle of the MAX_AREAKM urban area, estimated from the population at 2,000 people per km² where it is missing). On other bodies it is the smallest IAU-named feature around you (USGS Gazetteer of Planetary Nomenclature, 8,729 features on 42 bodies, without satellite craters) and the next one at least 1.5 times larger that contains it (judged by a circle of the center and diameter and a latitude-longitude box, so the edges differ from the real shapes). The Japanese display adds the kind of feature in parentheses
