@@ -458,5 +458,6 @@ static const char* CREDIT = "Solar System Voyager " APP_VERSION "   (c) 2026 hub
 static bool g_jp = false;       // 表示言語（true: 日本語）
 static bool g_jpFont = false;   // 日本語フォントを読み込めたか
 static Font g_font;
+static std::string g_fontText;   // フォントに入れた文字（作り直す時に使う）
 static inline const char* T(UiId id) { return g_jp ? UI_JP[id] : UI_EN[id]; }
 static inline const char* TR(const char* jp, const char* en) { return g_jp ? jp : en; }

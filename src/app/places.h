@@ -338,3 +338,125 @@ static int CityBody(const App& app, const City& c) {
 }
 static const int CITY_COUNT = sizeof CITIES / sizeof CITIES[0];
 static void GoToCity(App& app, int k, double elDeg = 35);
+
+// ---------------------------------------------------------------- 今いる所の地名（地上のパネル）
+// assets/place_names.txt（tools/make_place_names.py）: 地球は都市（市街地の広さの円）、ほかの天体は IAU の地名
+// （中心と直径の円と、緯度・経度の範囲。実際の形ではない）
+struct PlaceName {
+    V3 dir;            // 天体固定座標の向き
+    double cosR;       // 中心から縁までの角度の cos
+    float rad;         // 半径 km
+    float box[4];      // 南端・北端・西端・東端（度）。南端 > 北端なら範囲なし
+    int kind;          // 種類（g_placeKinds の番号、-1: 無し）
+    std::string name, ja;
+};
+struct PlaceKind { std::string ja, en; };
+static std::vector<PlaceKind> g_placeKinds;
+static std::vector<std::vector<PlaceName>> g_placeNames;   // 天体の番号ごと
+static bool g_placeNamesLoaded = false;
+
+static V3 LatLonDir(double latDeg, double lonDeg) {
+    double la = latDeg * DEG, lo = lonDeg * DEG;
+    return V3(std::cos(la) * std::cos(lo), std::sin(la), -std::cos(la) * std::sin(lo));
+}
+
+// 天体の英語名の比べ方: 英字だけを小文字で（「52246 Donaldjohanson」と「Donaldjohanson」を同じに）
+static std::string PlaceBodyKey(const char* s) {
+    std::string k;
+    for (; *s; s++)
+        if (std::isalpha((unsigned char)*s)) k += (char)std::tolower((unsigned char)*s);
+    return k;
+}
+
+// 読めたら true（ブラウザ版は、ファイルが届くまで false）
+static bool LoadPlaceNames(const App& app) {
+    if (g_placeNamesLoaded) return true;
+    EmbeddedFile f = PlaceNamesTxt();
+    if (!f.data || !f.size) return false;
+    g_placeNamesLoaded = true;
+    g_placeNames.assign(app.B.size(), {});
+    std::map<std::string, int> bodies;
+    for (size_t i = 0; i < app.B.size(); i++) bodies.emplace(PlaceBodyKey(app.B[i].d.en), (int)i);
+    const char* p = (const char*)f.data;
+    const char* end = p + f.size;
+    int body = -1;
+    while (p < end) {
+        const char* e = (const char*)std::memchr(p, '\n', end - p);
+        if (!e) e = end;
+        std::vector<std::string> col;
+        for (const char* a = p;;) {
+            const char* t = (const char*)std::memchr(a, '\t', e - a);
+            col.emplace_back(a, t ? t : e);
+            if (!t) break;
+            a = t + 1;
+        }
+        p = e + 1;
+        if (col[0] == "K" && col.size() >= 3) g_placeKinds.push_back({col[1], col[2]});
+        else if (col[0] == "B" && col.size() >= 2) {
+            auto it = bodies.find(PlaceBodyKey(col[1].c_str()));
+            body = it == bodies.end() ? -1 : it->second;
+        } else if (body >= 0 && col.size() >= 6 && col[0][0] != '#') {
+            PlaceName n;
+            double lat = atof(col[0].c_str()), lon = atof(col[1].c_str());
+            n.dir = LatLonDir(lat, lon);
+            n.rad = (float)atof(col[2].c_str());
+            n.cosR = std::cos(std::min<double>(PI, n.rad / app.B[body].d.radius));
+            n.box[0] = 1, n.box[1] = 0;
+            if (!col[3].empty()) sscanf(col[3].c_str(), "%f,%f,%f,%f", &n.box[0], &n.box[1], &n.box[2], &n.box[3]);
+            n.kind = atoi(col[4].c_str());
+            if (n.kind >= (int)g_placeKinds.size()) n.kind = -1;
+            n.name = col[5];
+            if (col.size() >= 7) n.ja = col[6];
+            g_placeNames[body].push_back(std::move(n));
+        }
+    }
+    return true;
+}
+
+// フォントに入れる文字（地名の日本語・英語に出てくる ASCII 以外の文字を 1 つずつ）
+static std::string PlaceNameChars() {
+    std::set<int> cps;
+    auto add = [&](const std::string& s) {
+        for (const char* c = s.c_str(); *c;) {
+            int n = 0, cp = GetCodepointNext(c, &n);
+            if (cp > 127) cps.insert(cp);
+            c += n > 0 ? n : 1;
+        }
+    };
+    for (const PlaceKind& k : g_placeKinds) add(k.ja + k.en);
+    for (const auto& v : g_placeNames)
+        for (const PlaceName& n : v) add(n.name + n.ja);
+    std::string s;
+    for (int cp : cps) {
+        int len = 0;
+        const char* u = CodepointToUTF8(cp, &len);
+        s.append(u, len);
+    }
+    return s;
+}
+
+static std::string PlaceLabel(const PlaceName& n) {
+    const PlaceKind* k = n.kind >= 0 ? &g_placeKinds[n.kind] : nullptr;
+    if (g_jp) return !n.ja.empty() ? n.ja : k && !k->ja.empty() ? n.name + "（" + k->ja + "）" : n.name;
+    return k && !k->en.empty() ? n.name + " " + k->en : n.name;
+}
+
+// 緯度・経度（度）の所の地名。そこを含む一番小さい地名と、地球以外ではそれを含む 1.5 倍以上大きい地名。無ければ空
+static std::string PlaceNameAt(const App& app, int body, double lat, double lon) {
+    if (!LoadPlaceNames(app) || body < 0 || body >= (int)g_placeNames.size()) return "";
+    V3 d = LatLonDir(lat, lon);
+    auto inside = [&](const PlaceName& n) {
+        if (Dot(d, n.dir) < n.cosR) return false;
+        if (n.box[0] > n.box[1]) return true;
+        if (lat < n.box[0] || lat > n.box[1]) return false;
+        return n.box[2] <= n.box[3] ? lon >= n.box[2] && lon <= n.box[3] : lon >= n.box[2] || lon <= n.box[3];
+    };
+    const PlaceName *a = nullptr, *b = nullptr;
+    for (const PlaceName& n : g_placeNames[body])
+        if ((!a || n.rad < a->rad) && inside(n)) a = &n;
+    if (!a) return "";
+    if (body != B_EARTH)
+        for (const PlaceName& n : g_placeNames[body])
+            if (n.rad >= 1.5f * a->rad && (!b || n.rad < b->rad) && inside(n)) b = &n;
+    return b ? PlaceLabel(*a) + "  ·  " + PlaceLabel(*b) : PlaceLabel(*a);
+}

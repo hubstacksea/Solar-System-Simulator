@@ -4,7 +4,7 @@
 """ブラウザ版の日本語フォント (web/NotoSansJP-subset.ttf) を作る。
 
 ブラウザでは OS のフォントを読めないので、Noto Sans JP（SIL Open Font License 1.1、Google Fonts）から、
-ゲームで表示する文字（src/ の文字列・assets/sky.txt の星座名と恒星名・ASCII）だけを残した静的なフォントを作る。
+ゲームで表示する文字（src/ の文字列・assets/sky.txt の星座名と恒星名・assets/place_names.txt の地名・ASCII）だけを残した静的なフォントを作る。
 可変フォントは標準の太さ（400）に固定する。
 
 使い方: python3 tools/make_web_font.py <作業ディレクトリ>
@@ -39,7 +39,7 @@ def main():
     os.makedirs(work, exist_ok=True)
     chars = set(chr(c) for c in range(32, 127)) | set("°²·×〜…（）「」、。・")
     chars |= set(chr(c) for c in range(0x3041, 0x30FD))   # 検索欄に打つひらがな・カタカナ
-    for f in glob.glob("src/**/*.cpp", recursive=True) + glob.glob("src/**/*.h", recursive=True) + ["assets/sky.txt"]:
+    for f in glob.glob("src/**/*.cpp", recursive=True) + glob.glob("src/**/*.h", recursive=True) + ["assets/sky.txt", "assets/place_names.txt"]:
         chars |= set(open(f, encoding="utf-8").read())
     chars = {c for c in chars if c.isprintable()}
     font = TTFont(fetch(work, URL, "NotoSansJP-wght.ttf"))

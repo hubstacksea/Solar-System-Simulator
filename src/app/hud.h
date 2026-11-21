@@ -1301,6 +1301,7 @@ static void DrawGroundView(const App& app) {
     std::string now = GroundTime(app.tDays, tz, false);
     snprintf(l1, sizeof l1, "%s  %s %.1f°  %s %.1f°    %s %s", TR(b.d.jp, b.d.en), lat >= 0 ? "N" : "S", std::fabs(lat),
              lon >= 0 ? "E" : "W", std::fabs(lon), now.c_str(), tzOk ? app.groundTzName.c_str() : "UTC");
+    std::string place = PlaceNameAt(app, g, lat, lon);   // 今いる所の地名（あれば 2 行目に）
     const Body& tb = app.B[app.target];
     l2[0] = l3[0] = 0;
     if (app.target != g) {
@@ -1327,7 +1328,9 @@ static void DrawGroundView(const App& app) {
                      T(lat >= 0 ? UI_GND_TRANSIT_S : UI_GND_TRANSIT_N), tm(rs.transit).c_str(), rs.transitAlt / DEG, T(UI_GND_SET),
                      tm(rs.set).c_str());
     }
-    float w = std::max(TxtW(l1, 15), std::max(TxtW(l2, 15), TxtW(l3, 14))) + 24, h = l2[0] ? 76.0f : 30.0f;
+    float dy = place.empty() ? 0.0f : 21.0f;
+    float w = std::max(std::max(TxtW(l1, 15), TxtW(place.c_str(), 15)), std::max(TxtW(l2, 15), TxtW(l3, 14))) + 24,
+          h = (l2[0] ? 76.0f : 30.0f) + dy;
     bool imagined = b.d.exo >= 0;   // 太陽系の外の惑星の地表は想像図
     if (imagined) {
         w = std::max(w, TxtW(T(UI_GND_IMAGINED), 13) + 24);
@@ -1337,9 +1340,10 @@ static void DrawGroundView(const App& app) {
     DrawRectangleRounded({x, y, w, h}, 0.1f, 6, {0, 10, 25, 170});
     if (imagined) Txt(T(UI_GND_IMAGINED), x + 12, y + h - 22, 13, {255, 190, 140, 255});
     Txt(l1, x + 12, y + 7, 15, {170, 220, 170, 255});
+    if (!place.empty()) Txt(place.c_str(), x + 12, y + 28, 15, {235, 235, 225, 255});
     if (l2[0]) {
-        Txt(l2, x + 12, y + 29, 15, {255, 220, 80, 255});
-        Txt(l3, x + 12, y + 51, 14, {210, 225, 245, 255});
+        Txt(l2, x + 12, y + 29 + dy, 15, {255, 220, 80, 255});
+        Txt(l3, x + 12, y + 51 + dy, 14, {210, 225, 245, 255});
     }
 }
 
@@ -1573,6 +1577,13 @@ static void DrawHUD(App& app) {
 
 // 後から届くデータ（ブラウザ版）: 読めるようになったものから組み込む。どれも、まだ組み込んでいない時だけ読む
 static void RefreshDeferredAssets(App& app) {
+    if (!g_placeNamesLoaded && LoadPlaceNames(app) && g_jpFont) {   // 地名が届いたら、その文字を入れてフォントを作り直す
+        Font f;
+        if (fontload::LoadJapaneseFont(g_fontText + PlaceNameChars(), 36, &f)) {
+            UnloadFont(g_font);
+            g_font = f;
+        }
+    }
     if (g_shapes.empty() && ShapesBin().data) {
         LoadShapes();
         for (Body& b : app.B)

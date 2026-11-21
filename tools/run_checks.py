@@ -152,8 +152,8 @@ def font_chars(path):
 
 
 def shown_chars():
-    """画面に出る文字（src の文字列リテラルの中身と assets/sky.txt。コメントは除く）"""
-    chars = set(open("assets/sky.txt", encoding="utf-8").read())
+    """画面に出る文字（src の文字列リテラルの中身と assets/sky.txt・assets/place_names.txt。コメントは除く）"""
+    chars = set(open("assets/sky.txt", encoding="utf-8").read()) | set(open("assets/place_names.txt", encoding="utf-8").read())
     files = [os.path.join(d, f) for d, _, fs in os.walk("src") for f in fs if f.endswith((".h", ".cpp"))]
     for path in files:
         for s in re.findall(r'"((?:[^"\\\n]|\\.)*)"|//[^\n]*|/\*.*?\*/|\'(?:[^\'\\\n]|\\.)*\'',

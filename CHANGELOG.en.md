@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.61.0 (2026-11-21)
+
+- The panel at the lower left on the ground (below 2 km) now shows the name of the place. On Earth it is the city when you are within its urban area (7,342 cities from Natural Earth 1:10m Populated Places, Japanese names from the same data; judged by a circle of the MAX_AREAKM urban area, estimated from the population at 2,000 people per km² where it is missing). On other bodies it is the smallest IAU-named feature around you (USGS Gazetteer of Planetary Nomenclature, 8,729 features on 42 bodies, without satellite craters) and the next one at least 1.5 times larger that contains it (judged by a circle of the center and diameter and a latitude-longitude box, so the edges differ from the real shapes). The Japanese display adds the kind of feature in parentheses
+- The names are in `assets/place_names.txt` (made by `tools/make_place_names.py`). The browser version fetches it after starting and rebuilds its font with the names' characters when it arrives; the browser font now includes them (307 KB to 401 KB). Latin letters beyond Latin-1 lose their diacritics, and Japanese names with characters outside Shift_JIS are replaced by the English names
+
 ## 2.60.0 (2026-11-20)
 
 - The ripple (25 m wavelength) and dune (300 m) stripes on Mars are now drawn only where observations show dune fields. They used to be drawn everywhere the thermal inertia was moderate and the ground dark (about 65% of the surface), but moderate thermal inertia does not always mean sand; it is often indurated ground. The dune fields are the polygons of the USGS Mars Global Digital Dune Database (Hayward et al. 2007, 2010, 2012; moderate to large dune fields, about 0.7% of the surface, most of it the sand sea around the north pole), painted into the alpha channel of `assets/mars_ti.png`. In dune fields, small craters, which young active dunes lack, and boulders, which the sand covers, are no longer drawn. Small dunes and transverse aeolian ridges (TARs) missing from the database are not drawn

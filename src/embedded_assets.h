@@ -20,6 +20,7 @@ EmbeddedFile MoonColorJpg();   // 月の地表の色 (NASA SVS / LROC)
 EmbeddedFile MoonDataPng();    // 月の標高 16 bit: グレー=上位, アルファ=下位 (NASA SVS / LOLA)
 EmbeddedFile MoonRockPng();    // 月の岩の多さ (NASA PDS / LRO Diviner)。形式は tools/make_surface_props.py
 EmbeddedFile MarsTiPng();      // 火星の熱慣性 (NASA PDS / MGS TES) と砂丘地帯 (USGS)。形式は tools/make_surface_props.py
+EmbeddedFile PlaceNamesTxt();  // 地名 (Natural Earth の都市、IAU / USGS の惑星の地名)。形式は tools/make_place_names.py
 EmbeddedFile IconPng();         // ウィンドウのアイコン (256px)
 EmbeddedFile StarsBin();        // 恒星 (ヒッパルコス星表、8 等級まで)。形式は tools/make_sky_assets.py
 EmbeddedFile ProbesBin();       // 探査機の軌跡 (JPL Horizons)。形式は tools/make_probe_assets.py

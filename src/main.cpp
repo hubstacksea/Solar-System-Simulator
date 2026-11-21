@@ -19,7 +19,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <cctype>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #ifndef _WIN32
@@ -149,7 +151,7 @@ int main(int argc, char** argv) {
         struct { const char* name; EmbeddedFile f; } files[] = {
             {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
             {"earth_clouds.jpg", EarthCloudsJpg()}, {"earth_detail.bin", EarthDetailBin()}, {"moon_detail.bin", MoonDetailBin()}, {"mars_detail.bin", MarsDetailBin()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
-            {"moon_rock.png", MoonRockPng()}, {"mars_ti.png", MarsTiPng()},
+            {"moon_rock.png", MoonRockPng()}, {"mars_ti.png", MarsTiPng()}, {"place_names.txt", PlaceNamesTxt()},
             {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"landers.bin", LandersBin()}, {"sky.txt", SkyTxt()},
             {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},
             {"saturn_rings.png", SaturnRingsPng()}, {"milkyway.jpg", MilkyWayJpg()}};
@@ -375,6 +377,8 @@ int main(int argc, char** argv) {
         allText += std::string(m.jp) + m.noteJp;
         for (int k = 0; k < m.eventCount; k++) allText += std::string(m.events[k].jp) + m.events[k].textJp;
     }
+    if (LoadPlaceNames(app)) allText += PlaceNameChars();   // ブラウザ版は地名が届いてからフォントを作り直す
+    g_fontText = allText;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
     if (!g_jpFont) g_font = GetFontDefault();
     // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）。共有リンクの lang= は後で
