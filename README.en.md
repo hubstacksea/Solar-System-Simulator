@@ -32,7 +32,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 
 | | |
 |---|---|
-| ![Mars with Valles Marineris](docs/screenshots/mars_map.jpg) Mars from Viking maps and MOLA elevations (Valles Marineris in the middle) | ![Inside Valles Marineris](docs/screenshots/mars_terrain.jpg) Looking east inside Valles Marineris from low altitude (MOLA elevations as true-height relief) |
+| ![Mars with Valles Marineris](docs/screenshots/mars_map.jpg) Mars from Viking maps and MOLA elevations (Valles Marineris in the middle) | ![Inside Valles Marineris](docs/screenshots/mars_terrain.jpg) Looking east inside Valles Marineris from low altitude (blended MOLA and HRSC elevations as true-height relief; the layered steps, ridges and gullies of the cliffs are procedural) |
 | ![Daytime sky on Mars](docs/screenshots/mars_sky.jpg) The butterscotch daytime sky of Mars | ![Jupiter with the Great Red Spot](docs/screenshots/jupiter_map.jpg) Jupiter from Cassini maps (Great Red Spot at lower right) |
 | ![Shoemaker-Levy 9 scars](docs/screenshots/shoemaker_levy9.jpg) 18 July 1994: scars left on Jupiter by fragments of Comet Shoemaker-Levy 9 | ![Io](docs/screenshots/io.jpg) Io from Galileo / Voyager maps |
 | ![Saturn and its rings](docs/screenshots/saturn.jpg) Saturn and its rings (with the rings' shadow on the planet) | ![Saturn's rings from Voyager data](docs/screenshots/saturn_rings.jpg) Saturn's rings with the density measured by Voyager 2 |

@@ -57,9 +57,10 @@ SHOTS = {
     "earth_mountains": (lambda: ["--frames", "240", *COCKPIT, "--share",
                                  at("Earth", 6378.137, 27.80, 86.95, earth_alt(27.80, 7.0), 0, 5, 9816.58)], None),
     "apollo15_landing": (lambda: ["--frames", "600", "--photo", "2", "--share", "?apollo=15&scene=12"], None),
-    # スカイクレーン: 着地の 8.5 秒前のパーシビアランス（中心から 3391.6015 km）の南 69 m・上 50 m から北へ 36° 見下ろす
+    # スカイクレーン: 着地の 8.5 秒前のパーシビアランス（中心から 3391.6015 km）の南 69 m・上 55.5 m から北へ 36° 見下ろす
+    # （着陸機は地形の上に降ろすので、地表の高さが変わると合わせ直す）
     "perseverance_skycrane": (lambda: ["--frames", "200", "--zoom", "12", "--dpi", "2", *COCKPIT, "--share",
-                                       at("Mars", 3391.6015, 18.444626 - math.degrees(0.069 / 3391.6015), 77.450789, 0.050, 0, -36,
+                                       at("Mars", 3391.6015, 18.444626 - math.degrees(0.069 / 3391.6015), 77.450789, 0.0555, 0, -36,
                                           "%.8f" % (7719.36375947 - 8.5 / 86400)) + "&tg=Perseverance"], "half"),
     "spirit_airbags": (lambda: ["--frames", "200", "--zoom", "16", "--dpi", "2", *COCKPIT, "--share",
                                 at("Mars", 3392.30, -14.5747, 175.4785, 0.15, 359.2, 46, "%.8f" % (1463.68439725 - 3 / 86400))

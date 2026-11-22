@@ -32,7 +32,7 @@
 
 | | |
 |---|---|
-| ![マリネリス峡谷の見える火星](docs/screenshots/mars_map.jpg) Viking の地図と MOLA の標高による火星（中央にマリネリス峡谷） | ![マリネリス峡谷の中](docs/screenshots/mars_terrain.jpg) マリネリス峡谷の中を低空から東へ（MOLA の標高を実際の高さで立体に） |
+| ![マリネリス峡谷の見える火星](docs/screenshots/mars_map.jpg) Viking の地図と MOLA の標高による火星（中央にマリネリス峡谷） | ![マリネリス峡谷の中](docs/screenshots/mars_terrain.jpg) マリネリス峡谷の中を低空から東へ（MOLA と HRSC の合成標高を実際の高さで立体に。崖の地層の段と尾根・溝は手続き） |
 | ![火星の昼の空](docs/screenshots/mars_sky.jpg) 火星の黄褐色の昼の空 | ![大赤斑の見える木星](docs/screenshots/jupiter_map.jpg) Cassini の地図による木星（右下に大赤斑） |
 | ![シューメーカー・レビー第 9 彗星の衝突痕](docs/screenshots/shoemaker_levy9.jpg) 1994 年 7 月 18 日、シューメーカー・レビー第 9 彗星の破片が残した木星の衝突痕 | ![イオ](docs/screenshots/io.jpg) Galileo / Voyager の地図によるイオ |
 | ![土星と環](docs/screenshots/saturn.jpg) 土星と環（本体に落ちる環の影） | ![Voyager の観測による土星の環](docs/screenshots/saturn_rings.jpg) Voyager 2 の観測による濃淡の土星の環 |
