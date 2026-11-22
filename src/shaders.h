@@ -100,6 +100,28 @@ float craterShape(float x, float s, out float dh) {
 float craterFresh(float rnd, float worn) { return mix(1.0, rnd * rnd, worn); }
 // クレーターの多さに層ごと（小さい層へ）に掛ける値: worn = 1 では小さいものほど埋まって消え、0.8 倍ずつ（目安）
 float craterLayerK(float worn) { return mix(1.0, 0.8, worn); }
+// 崩れたクレーターの天体: 火星（塵・砂）と、カリスト（氷が昇華して縁が崩れ、直径 1 km より小さいクレーターが少ない）
+float craterWorn(int style) { return style == 3 || style == 7 ? 1.0 : 0.0; }
+// 冥王星のスプートニク平原（中心 北緯 20°・東経 180°、南北 約 1050 km・東西 約 800 km の窒素の氷の盆地）の割合。
+// 縁は場所で ±7% ほど揺らす
+float plutoSP(vec3 p, vec3 o) {
+    vec3 n = normalize(p);
+    float la = degrees(asin(clamp(n.y, -1.0, 1.0))) - 20.0, lo = mod(degrees(atan(-n.z, n.x)) + 360.0, 360.0) - 180.0;
+    float e = (la / 26.0) * (la / 26.0) + (lo / 20.0) * (lo / 20.0) + (vnoise(n * 12.0 + o + 5.0) - 0.5) * 0.3;
+    return 1.0 - smoothstep(0.85, 1.0, e);
+}
+// 地図のある天体の、地図より細かいクレーターの多さに掛ける値。表面が若いほど少ない（値はクレーターの数からの目安）:
+// イオは火山の噴出物で埋まり 0、エウロパ（年代 約 6000 万年）・タイタン（雨・風で削られる）・トリトン（約 1 億年）は
+// 月の高地の数 % ほど、エンケラドゥスの南極地域（南緯 55° より南）とスプートニク平原は 0
+float mapCraterK(int style, vec3 p, vec3 o) {
+    if (style == 4) return 0.0;
+    if (style == 5) return 0.03;
+    if (style == 25) return 0.02;
+    if (style == 12) return 0.08;
+    if (style == 11) return smoothstep(-0.87, -0.77, normalize(p).y);
+    if (style == 10) return 1.0 - plutoSP(p, o);
+    return 1.0;
+}
 float cratersBand(vec3 p, float density, float F0, vec3 salt, float sp, float fLo, float worn) {
     float s = 0.0, F = F0, dk = density;
     for (int i = 0; i < 16 && F * 1.7 * sp < 0.5; i++, F *= 2.2, dk *= craterLayerK(worn)) {
@@ -297,6 +319,7 @@ float terrHeight(vec3 d, float lod) {
 )" NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
 // 火星の崖（頂点ごとに bodyHeight で決める）: 崖の割合（cliffWall。急な斜面ではクレーターが崩れて残らない）と尾根と溝の振幅（cliffRidgeA）
 float g_cliff = 0.0, g_wall = 0.0;
+float g_craterK = 1.0;   // 地図のある天体のクレーターの多さに掛ける値（mapCraterK。頂点ごとに bodyHeight で決める）
 // データより細かい手続きの起伏（単位球の長さ。地球は山肌の振幅を掛ける前の値）を、点 q で、L より細かいものを省いて求める
 float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     if (terrA.w < 1.5) {   // 地球の山肌（earthBumps の値を振幅で割ったもの）
@@ -319,8 +342,8 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     } else {               // 地図のある天体: 撮影された所は細かいクレーターと山肌、撮影されていない所は手続きの表面
         vec4 m = textureLod(texture2, uv, 0.0);
         float fine = 0.0, ph = 0.0;
-        bool mars = int(mapInfo2.x + 0.5) == 3;
-        if (m.r > 0.0) fine = cratersBand(q, 0.35, 260.0, o * 0.37, L, fLo, mars ? 1.0 : 0.0) * (1.0 - g_cliff) +
+        int st = int(mapInfo2.x + 0.5);
+        if (m.r > 0.0) fine = cratersBand(q, 0.35 * g_craterK, 260.0, o * 0.37, L, fLo, craterWorn(st)) * (1.0 - g_cliff) +
                               fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (0.003 / 260.0) +
                               (g_wall > 0.0 ? g_wall * ridgeBand(q, 1200.0, 7, 0.5, o + 43.0, L, fLo) : 0.0);
         if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(q, int(mapInfo2.x + 0.5), o, L, fLo);
@@ -377,6 +400,7 @@ float bodyHeight(vec3 d, float sp, float hm) {
     if (terrE.z < 0.5) return hm;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     g_cliff = 0.0; g_wall = 0.0;
+    g_craterK = terrE.z > 1.5 ? mapCraterK(int(mapInfo2.x + 0.5), d, o) : 1.0;
     if (w > 0.0 && int(mapInfo2.x + 0.5) == 3) {   // 火星の崖: 地層の段と尾根・溝（細かい標高の窓の中だけ）
         float s = detSlope(l, lat, terrE.x), k = strataK(s, sp * terrE.x) * w, t = strataT(hm, d, o), dd;
         if (k > 0.0) hm += k * STRATA_M * (strataStep(t, dd) - t);
@@ -657,6 +681,86 @@ vec4 sandWaves(vec3 p, float F1, float k1, float F2, float k2, vec3 o) {
         }
     }
     return s;
+}
+
+// 平行な筋（尾根・溝）の 1 組: 向き n に垂直な面に沿う筋（球面では n を軸とする小円で、近くではほぼ直線）。F: 筋の間隔の
+// 逆数（単位球の長さあたり）。間隔ごとに frac の割合だけ置き、ゆるく曲げる。kind 0: 二重の尾根（2 本の尾根の間に溝）、
+// 1: 尾根と溝が交互に並ぶ。値は vec4(高さ 0..1, p についての勾配)
+vec4 lineSet(vec3 p, vec3 n, float F, float frac, int kind, vec3 o) {
+    float w = lodW(F * (kind == 0 ? 8.0 : 2.0));
+    if (w <= 0.0) return vec4(0.0);
+    float u = dot(p, n) * F + 2.5 * vnoise(p * (F * 0.04) + o);
+    float i = floor(u), f = u - i;
+    if (hash1(ivec3(int(i), 53, int(o.y))) > frac) return vec4(0.0);
+    float h, dh;
+    if (kind == 0) {
+        float a = (f - 0.38) / 0.07, b = (f - 0.62) / 0.07, ea = exp(-a * a), eb = exp(-b * b);
+        h = ea + eb; dh = -2.0 * (a * ea + b * eb) / 0.07;
+    } else {
+        h = 0.5 - 0.5 * cos(6.2831853 * f); dh = 3.1415927 * sin(6.2831853 * f);
+    }
+    w *= 0.3 + 0.7 * hash1(ivec3(int(i), 71, int(o.y)));   // 筋ごとに高さを変える
+    return w * vec4(h, dh * F * n);
+}
+vec3 lineDir(float k) { return normalize(vec3(sin(k * 2.4 + 0.3), cos(k * 1.7 + 1.1), sin(k * 3.1 + 2.0))); }
+// 冥王星のスプートニク平原の、対流の多角形の境目の溝: 平原の中心（東経 180°）を 0 とする経度と緯度の平面に点を散らした
+// ボロノイの、2 番目と 1 番目に近い点の距離の差が小さい所（平面は平原の中では球面とほぼ同じ。3 次元のボロノイは調べる点が
+// 27 個で重かった）。F: 多角形の大きさの逆数（単位球の長さあたり）。値は vec4(高さ −1..0, p についての勾配)
+vec4 cellTroughs(vec3 p, float F, vec3 o) {
+    float w = lodW(F * 10.0);
+    if (w <= 0.0) return vec4(0.0);
+    vec3 n = normalize(p);
+    float lat = asin(clamp(n.y, -1.0, 1.0)), lon = atan(-n.z, n.x), lo = mod(lon + 6.2831853, 6.2831853) - 3.1415927;
+    vec2 q = vec2(lo * 0.94, lat) * F + o.xy, i = floor(q), v1 = vec2(1.0), v2 = vec2(1.0);
+    float d1 = 1e9, d2 = 1e9;
+    for (int k = 0; k < 9; k++) {
+        vec2 c = i + vec2(float(k % 3 - 1), float(k / 3 - 1));
+        ivec3 ic = ivec3(ivec2(c), 11);
+        vec2 v = q - c - vec2(hash1(ic + ivec3(3, 1, 7)), hash1(ic + ivec3(9, 4, 2)));
+        float d = length(v);
+        if (d < d1) { d2 = d1; v2 = v1; d1 = d; v1 = v; }
+        else if (d < d2) { d2 = d; v2 = v; }
+    }
+    float s = clamp((d2 - d1) / 0.12, 0.0, 1.0);
+    vec2 g = 6.0 * s * (1.0 - s) / 0.12 * (v2 / d2 - v1 / d1) * F;   // q の平面での勾配
+    vec3 east = vec3(-sin(lon), 0.0, -cos(lon)), north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
+    return w * vec4(s * s * (3.0 - 2.0 * s) - 1.0, east * g.x * 0.94 / max(cos(lat), 0.05) + north * g.y);
+}
+// 地図のある氷の衛星などの、地図より細かい地形（陰影だけ。値は vec4(高さ, 勾配)、単位球の長さ）。大きさ・高さは探査機の
+// 画像と地形の研究からの目安:
+//  - エウロパ: 二重の尾根（1 本の幅 約 1.5 km、高さ 約 200 m。小さいものは 60 m）が、場所ごとに違う向きで重なる。
+//    カオス地形（地図の暗い所）には少ない
+//  - ガニメデ: 明るい溝状地形に、尾根と溝が間隔 約 8 km（起伏 約 350 m）と 1.5 km（60 m）で並ぶ。帯ごとに向きが違う
+//  - エンケラドゥス: 南極地域（南緯 55° より南）に、間隔 約 1.5 km・起伏 約 60 m の尾根と溝
+//  - 冥王星: スプートニク平原の、窒素の氷の対流でできた多角形（大きさ 約 25 km）の境目の溝（深さ 約 100 m）
+// R: 半径 m、rel: 地図の画素の明るさ（地図の平均を 1）
+vec4 bodyRelief(vec3 p, int style, vec3 o, float R, float rel) {
+    vec4 r = vec4(0.0);
+    if (style == 5) {
+        for (int k = 0; k < 3; k++) {
+            float m = smoothstep(0.35, 0.6, vnoise(p * 5.0 + o + float(k) * 17.0));
+            if (m > 0.0) r += m * (lineSet(p, lineDir(float(k)), R / 12000.0, 0.5, 0, o + float(k) * 3.1) * (200.0 / R) +
+                                   lineSet(p, lineDir(float(k + 4)), R / 2500.0, 0.6, 0, o + float(k) * 5.3 + 40.0) * (60.0 / R));
+        }
+        r *= smoothstep(0.75, 0.95, rel);
+    } else if (style == 6) {
+        float b = smoothstep(0.95, 1.25, rel);
+        for (int k = 0; k < 3 && b > 0.0; k++) {
+            float m = smoothstep(0.5, 0.7, vnoise(p * 14.0 + o + float(k) * 23.0));
+            vec3 n = lineDir(float(k + 8));
+            if (m > 0.0) r += m * (lineSet(p, n, R / 8000.0, 1.0, 1, o + float(k) * 7.7) * (350.0 / R) +
+                                   lineSet(p, n, R / 1500.0, 1.0, 1, o + float(k) * 9.1 + 60.0) * (60.0 / R));
+        }
+        r *= b;
+    } else if (style == 11) {
+        float s = 1.0 - smoothstep(-0.87, -0.77, normalize(p).y), m = smoothstep(0.4, 0.6, vnoise(p * 20.0 + o + 7.0));
+        if (s > 0.0) r = s * (60.0 / R) * (lineSet(p, lineDir(12.0), R / 1500.0, 0.8, 1, o) * m +
+                                           lineSet(p, lineDir(13.0), R / 1500.0, 0.8, 1, o + 3.0) * (1.0 - m));
+    } else if (style == 10) {
+        float s = plutoSP(p, o);
+        if (s > 0.0) r = s * (100.0 / R) * cellTroughs(p, R / 25000.0, o + 33.0);
+    }
+    return r;
 }
 
 // 樹冠: 丸い冠がすき間なく並ぶ凹凸（値ノイズの山を 2 段）。F: 細かさ（冠の大きさ ≒ 単位球の長さ 1 / F）
@@ -1119,7 +1223,12 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         dust *= 1.0 - cliff;
         rock = max(rock, 0.4 * cliff * (1.0 - sand));
     }
-    if (cov > 0.0) C = craters(p, 0.35, 260.0, o * 0.37, mars ? 1.0 : 0.0) * (1.0 - g_ice) * (1.0 - sand) * (1.0 - cliff);
+    // 地図の画素の明るさ（地図の平均を 1）。ガニメデの明るい溝状地形（約 20 億年）は暗い地域（約 40 億年）よりクレーターが
+    // 半分ほど（頂点の高さには入れない。ガニメデは標高データが無く地形の格子を作らない）
+    int st = int(mapInfo2.x + 0.5);
+    float rel = dot(tc, vec3(0.333)) * mapInfo.x, kC = mapCraterK(st, p, o);
+    if (st == 6) kC *= 1.0 - 0.55 * smoothstep(0.95, 1.25, rel);
+    if (cov > 0.0) C = craters(p, 0.35 * kC, 260.0, o * 0.37, craterWorn(st)) * (1.0 - g_ice) * (1.0 - sand) * (1.0 - cliff);
     vec4 Tn = fbmD(p, 600.0, 20, 0.48, o);
     if (mars) {
         // 地図（1 画素 約 5 km）より細かい明るさのむら mot（値はどれも HiRISE などの画像の見た目からの目安）:
@@ -1151,7 +1260,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         // 明るさ（3 色の平均）は地図の値に細かいむらを掛けたもの。極冠の氷は変えない
         vec3 hue = mix(vec3(1.0, 0.87, 0.76), vec3(1.0, 0.76, 0.57), smoothstep(0.6, 1.1, dot(tc, vec3(0.333)) * mapInfo.x * mot));
         mb = mix(hue * (dot(mb, vec3(0.333)) * mot / dot(hue, vec3(0.333))), mb, g_ice);
-    }
+    } else if (cov > 0.0) mat = bodyRelief(p, st, o, R, rel);
     vec4 fine = vec4(0.0);
     if (cov > 0.0) fine = (C + Tn * (0.003 / 260.0)) * (1.0 - 0.6 * dust) + mat;
     vec4 h = mix(ph, fine, cov);

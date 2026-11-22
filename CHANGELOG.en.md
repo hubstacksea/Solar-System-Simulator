@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.65.0 (2026-11-22)
+
+- The number of small craters finer than the map on the mapped moons and Pluto now follows the age of their surfaces: none on Io, 3% of the lunar highlands on Europa, 2% on Titan, 8% on Triton, none in the south polar terrain of Enceladus (south of 55° S) or in Sputnik Planitia on Pluto, and about half as many on the bright grooved terrain of Ganymede as on its dark regions. Callisto's craters are worn and shallow like those on Mars, the smaller the fewer. The heights of the terrain grid (altitude and collisions) use the same formula (the values are estimates from crater counts)
+- The moons and Pluto get shaded relief finer than the map: crisscrossing double ridges on Europa (fewer in chaos terrain), ridges and grooves on the bright terrain of Ganymede (spaced about 8 km and 1.5 km), ridges and grooves in the south polar terrain of Enceladus, and troughs between the convection cells (about 25 km across) of Sputnik Planitia (sizes and heights are estimates from spacecraft images). Drawing near the surface of Pluto and Europa is 20–30% slower
+
 ## 2.64.0 (2026-11-22)
 
 - Martian cliffs (the walls of Valles Marineris, crater walls and so on, where the slope of the fine elevations rises past 7° to 19°) are now rock faces instead of gentle hills. They get layered steps every 250 m of elevation (30% flat ledges, 70% steep faces up to about 2.1 times the slope of the data) and ridges and gullies in proportion to the slope (about ±570 m at a slope of 0.5). The heights of the terrain grid (altitude and collisions) use the same formula, and the elevation data itself is unchanged (the values are estimates from the look of images)

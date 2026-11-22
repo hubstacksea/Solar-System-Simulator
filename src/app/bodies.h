@@ -210,6 +210,25 @@ static float CratersBand(F3 p, float density, float F0, F3 salt, float sp, float
     }
     return s;
 }
+// 地図のある天体のクレーターの崩れ方と多さ（シェーダの craterWorn・plutoSP・mapCraterK）
+static float CraterWorn(int style) { return style == S_MARS || style == S_CALLISTO ? 1.0f : 0.0f; }
+static float PlutoSP(F3 p, F3 o) {
+    float l = std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+    F3 n{p.x / l, p.y / l, p.z / l};
+    float la = std::asin(std::max(-1.0f, std::min(1.0f, n.y))) * (float)(180 / PI) - 20.0f;
+    float lo = std::fmod(std::atan2(-n.z, n.x) * (float)(180 / PI) + 360.0f, 360.0f) - 180.0f;
+    float e = (la / 26.0f) * (la / 26.0f) + (lo / 20.0f) * (lo / 20.0f) + (NoiseValue(n * 12.0f + o + 5.0f) - 0.5f) * 0.3f;
+    return 1 - Smoothf(0.85f, 1.0f, e);
+}
+static float MapCraterK(int style, F3 p, F3 o) {
+    if (style == S_IO) return 0;
+    if (style == S_EUROPA) return 0.03f;
+    if (style == S_TITAN) return 0.02f;
+    if (style == S_TRITON) return 0.08f;
+    if (style == S_ENCELADUS) return Smoothf(-0.87f, -0.77f, p.y / std::sqrt(p.x * p.x + p.y * p.y + p.z * p.z));
+    if (style == S_PLUTO) return 1 - PlutoSP(p, o);
+    return 1;
+}
 // 火星の崖の地層の段と尾根・溝（シェーダの cliffWall・cliffRidgeA・strataT・strataStep・strataK・ridgeBand）
 static const float STRATA_M = 250.0f;
 static float CliffWall(float s) { return Smoothf(0.12f, 0.35f, s); }
@@ -342,8 +361,8 @@ static V3 MapLatLonDir(const BodyDef& d, double latDeg, double lonDeg) {
 
 // 月・地図のある天体の、データより細かい手続きの起伏（単位は半径。シェーダの bumpAt と同じ）。点 p（楕円体では y を
 // 縮める前の球面の点）で sp より細かいものを省く。ms: 地図を引く時に p の y に掛ける値。cliff, wallA: 火星の崖の割合と
-// 尾根・溝の振幅（シェーダの g_cliff・g_wall）
-static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo, float ms, float cliff, float wallA) {
+// 尾根・溝の振幅（シェーダの g_cliff・g_wall）。craterK: クレーターの多さに掛ける値（シェーダの g_craterK）
+static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo, float ms, float cliff, float wallA, float craterK) {
     const float seed = (float)(T.body * 7.31);
     const F3 o{seed, seed * 1.37f, seed * 0.71f};
     float my = p.y * ms, l = std::sqrt(p.x * p.x + my * my + p.z * p.z);
@@ -354,7 +373,7 @@ static float BodyBumps(const Terrain& T, F3 p, float sp, float fLo, float ms, fl
                FbmBand(p, 600.0f, 20, 0.48f, o, sp, fLo) * (Mixf(0.004f, 0.0015f, dark) / 260.0f);
     }
     float cov = T.aux.empty() ? 1.0f : T.Aux(u, v, 0), fine = 0, ph = 0;
-    if (cov > 0) fine = CratersBand(p, 0.35f, 260.0f, o * 0.37f, sp, fLo, T.style == S_MARS ? 1.0f : 0.0f) * (1 - cliff) +
+    if (cov > 0) fine = CratersBand(p, 0.35f * craterK, 260.0f, o * 0.37f, sp, fLo, CraterWorn(T.style)) * (1 - cliff) +
                         FbmBand(p, 600.0f, 20, 0.48f, o, sp, fLo) * (0.003f / 260.0f) +
                         (wallA > 0 ? wallA * RidgeBand(p, 1200.0f, 7, 0.5f, o + 43.0f, sp, fLo) : 0.0f);
     if (cov < 1 || T.pattern) ph = RockyBand(p, T.style, o, sp, fLo);
@@ -389,16 +408,17 @@ static double TerrainKm(const Body& b, V3 o) {
     } else if (T.bumps) {   // データより細かい手続きの起伏
         double R = b.d.radius * 1000, fLo = T.h / (2 * PI) * (1 - w) + (D ? D->H / (2 * PI) * w : 0);
         float L = (float)(BUMP_MIN_M / R);   // 地形の格子と同じく、地表に固定した一番細かい格子点の段で求める
-        float ms = (float)(e * MapLatScale(b.d)), cliff = 0, wallA = 0;
+        const float seed = (float)(T.body * 7.31);
+        const F3 o{seed, seed * 1.37f, seed * 0.71f}, pf{(float)p.x, (float)p.y, (float)p.z};
+        float ms = (float)(e * MapLatScale(b.d)), cliff = 0, wallA = 0, craterK = T.bumps == 2 ? MapCraterK(T.style, pf, o) : 1.0f;
         if (w > 0 && T.style == S_MARS) {   // 火星の崖: 地層の段と尾根・溝（シェーダの bodyHeight と同じ）
-            const float seed = (float)(T.body * 7.31);
             float s = (float)D->Slope(lx, ly, lat, R), k = StrataK(s, (float)BUMP_MIN_M) * (float)w;
-            float t = StrataT((float)(km * 1000), F3{(float)p.x, (float)p.y, (float)p.z}, F3{seed, seed * 1.37f, seed * 0.71f});
+            float t = StrataT((float)(km * 1000), pf, o);
             if (k > 0) km += k * STRATA_M * (StrataStep(t) - t) / 1000;
             cliff = CliffWall(s) * (float)w;
             wallA = CliffRidgeA(s) * (float)w;
         }
-        km += BumpLattice(p, L, [&](F3 q) { return BodyBumps(T, q, L, (float)fLo, ms, cliff, wallA); }) * b.d.radius;
+        km += BumpLattice(p, L, [&](F3 q) { return BodyBumps(T, q, L, (float)fLo, ms, cliff, wallA, craterK); }) * b.d.radius;
     }
     return km;
 }
