@@ -112,6 +112,35 @@ float cratersBand(vec3 p, float density, float F0, vec3 salt, float sp, float fL
     }
     return s;
 }
+// 火星の崖（細かい標高の傾き s（tan）が大きい所。マリネリス渓谷の壁・クレーターの内壁など）の、データより細かい形（手続き。
+// 値はどれも HiRISE などの画像の見た目からの目安）:
+//  - 地層の段: 標高 STRATA_M ごとに、3 割が平らな棚、7 割が急な崖（傾きは最大でデータの 2.1 倍）。層の高さは場所で ±90 m ほど波打つ
+//  - 尾根と溝: 鋭い尾根の並ぶノイズ（振幅は傾きに比例し、傾き 0.5 で最初のオクターブ ±570 m ほど）
+// 崖の割合は傾き 7°〜19° で 0 から 1 へ
+const float STRATA_M = 250.0;
+float cliffWall(float s) { return smoothstep(0.12, 0.35, s); }
+float cliffRidgeA(float s) { return cliffWall(s) * 0.8 * min(s, 0.8) / 1200.0; }   // 尾根と溝の振幅（単位球の長さ）
+// 点 p（単位球）・標高 hm m の地層の番号（小数）
+float strataT(float hm, vec3 p, vec3 o) { return hm / STRATA_M + (vnoise(p * 300.0 + o + 91.0) - 0.5) * 0.7; }
+// 段にした地層の番号と、傾きの倍率 dd
+float strataStep(float t, out float dd) {
+    float i = floor(t), x = clamp((t - i - 0.3) / 0.7, 0.0, 1.0);
+    dd = 6.0 * x * (1.0 - x) / 0.7;
+    return i + x * x * (3.0 - 2.0 * x);
+}
+// 段の強さ: 崖の割合。間隔 spM m より細かい段（急な崖（傾き 0.8）での幅 STRATA_M / 0.8）は消す（傾きは遠くでは画素の
+// 大きさでならされて小さく出るので、傾きによらず消す）
+float strataK(float s, float spM) { return cliffWall(s) * (1.0 - smoothstep(0.15, 0.5, spM * 0.8 / STRATA_M)); }
+// 尾根の鋭いノイズ（値 −0.5..0.5）の、周波数 fLo より細かい部分
+float ridgeBand(vec3 p, float f, int oct, float gain, vec3 o, float sp, float fLo) {
+    float s = 0.0, a = 1.0;
+    for (int i = 0; i < oct && f * sp < 0.5; i++) {
+        float w = bandW(f, sp, fLo);
+        if (w > 0.0) s += a * w * (0.5 - abs(vnoise(p * f + o + float(i) * 7.13) * 2.0 - 1.0));
+        a *= gain; f *= 2.03;
+    }
+    return s;
+}
 // 岩石・氷天体の手続きの表面の値: 起伏の強さ・クレーターの多さ・月と水星の海・冥王星のハート
 void rockyParams(vec3 p, int style, vec3 o, out float rough, out float dens, out float mare, out float heart) {
     rough = 1.0; dens = 0.55; mare = 0.0; heart = 0.0;
@@ -177,6 +206,13 @@ float detHeight(vec2 l) {
     float h00 = detDecode(texelFetch(texture4, a, 0)), h10 = detDecode(texelFetch(texture4, ivec2(b.x, a.y), 0));
     float h01 = detDecode(texelFetch(texture4, ivec2(a.x, b.y), 0)), h11 = detDecode(texelFetch(texture4, b, 0));
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
+// 窓の画素 l の標高の傾き（tan。両隣の画素の差。CPU の DetailMap::Slope と同じ）。lat: 緯度 rad、R: 半径 m
+float detSlope(vec2 l, float lat, float R) {
+    float dy = 3.1415927 * R / detB.y, dx = 6.2831853 * R / detB.x * max(cos(lat), 0.05);
+    float gx = (detHeight(l + vec2(1.0, 0.0)) - detHeight(l - vec2(1.0, 0.0))) / (2.0 * dx);
+    float gy = (detHeight(l + vec2(0.0, 1.0)) - detHeight(l - vec2(0.0, 1.0))) / (2.0 * dy);
+    return length(vec2(gx, gy));
 }
 // 1 分角より細かい山肌（手続き。地形の格子の高さと陰影の両方に使う）。x: 高さ（単位球の長さ）, yzw: 勾配。
 // 振幅は標高の傾き s（tan）で決め、急な山ほど険しく、平野は穏やかにする。h: 標高 m（海面の近くでは 0 へ）。
@@ -259,6 +295,8 @@ float terrHeight(vec3 d, float lod) {
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
 )" NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
+// 火星の崖（頂点ごとに bodyHeight で決める）: 崖の割合（cliffWall。急な斜面ではクレーターが崩れて残らない）と尾根と溝の振幅（cliffRidgeA）
+float g_cliff = 0.0, g_wall = 0.0;
 // データより細かい手続きの起伏（単位球の長さ。地球は山肌の振幅を掛ける前の値）を、点 q で、L より細かいものを省いて求める
 float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     if (terrA.w < 1.5) {   // 地球の山肌（earthBumps の値を振幅で割ったもの）
@@ -281,8 +319,10 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     } else {               // 地図のある天体: 撮影された所は細かいクレーターと山肌、撮影されていない所は手続きの表面
         vec4 m = textureLod(texture2, uv, 0.0);
         float fine = 0.0, ph = 0.0;
-        if (m.r > 0.0) fine = cratersBand(q, 0.35, 260.0, o * 0.37, L, fLo, int(mapInfo2.x + 0.5) == 3 ? 1.0 : 0.0) +
-                              fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (0.003 / 260.0);
+        bool mars = int(mapInfo2.x + 0.5) == 3;
+        if (m.r > 0.0) fine = cratersBand(q, 0.35, 260.0, o * 0.37, L, fLo, mars ? 1.0 : 0.0) * (1.0 - g_cliff) +
+                              fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (0.003 / 260.0) +
+                              (g_wall > 0.0 ? g_wall * ridgeBand(q, 1200.0, 7, 0.5, o + 43.0, L, fLo) : 0.0);
         if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(q, int(mapInfo2.x + 0.5), o, L, fLo);
         h = mix(ph, fine, m.r);
         if (mapInfo2.z > 0.5) h *= 1.0 - m.a;   // 液体の湖・海は平ら
@@ -321,12 +361,8 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
     float hd = lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l);
     float hb = mix(hm, hd, w);
     if (3200.0 * LAT_K * sp >= 0.5) return hb;   // 山肌の一番粗いオクターブも格子点の間隔より細かい
-    // 傾き: 両隣の画素の差（CPU の EarthDetail::Slope と同じ）
-    float dy = 3.1415927 * EARTH_RM / detB.y, dx = 6.2831853 * EARTH_RM / detB.x * max(cos(lat), 0.05);
-    float gx = (detHeight(l + vec2(1.0, 0.0)) - detHeight(l - vec2(1.0, 0.0))) / (2.0 * dx);
-    float gy = (detHeight(l + vec2(0.0, 1.0)) - detHeight(l - vec2(0.0, 1.0))) / (2.0 * dy);
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
-    float a = (0.003 + 0.6 * min(length(vec2(gx, gy)), 1.0)) / 3200.0 * clamp(hb / 50.0, 0.0, 1.0);   // earthBumps の振幅
+    float a = (0.003 + 0.6 * min(detSlope(l, lat, EARTH_RM), 1.0)) / 3200.0 * clamp(hb / 50.0, 0.0, 1.0);   // earthBumps の振幅
     return max(0.0, hb + a * vertexBumps(d, sp, 20.0 / EARTH_RM, 0.0, o) * EARTH_RM * w);
 }
 // 地球以外: カメラの周り（月・火星の窓の中）は細かい標高。データより細かい手続きの起伏（クレーター・山肌）を足した高さ m
@@ -340,6 +376,12 @@ float bodyHeight(vec3 d, float sp, float hm) {
     }
     if (terrE.z < 0.5) return hm;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
+    g_cliff = 0.0; g_wall = 0.0;
+    if (w > 0.0 && int(mapInfo2.x + 0.5) == 3) {   // 火星の崖: 地層の段と尾根・溝（細かい標高の窓の中だけ）
+        float s = detSlope(l, lat, terrE.x), k = strataK(s, sp * terrE.x) * w, t = strataT(hm, d, o), dd;
+        if (k > 0.0) hm += k * STRATA_M * (strataStep(t, dd) - t);
+        g_cliff = cliffWall(s) * w; g_wall = cliffRidgeA(s) * w;
+    }
     return hm + vertexBumps(d, sp, 20.0 / terrE.x, mix(terrE.y, terrE.w, w), o) * terrE.x;
 }
 // 地形の影に使う標高 m: 全球の標高と細かい標高の窓だけ（手続きの起伏は入れない。bumpAt を呼ぶ所を増やさないためでもある）。
@@ -524,6 +566,20 @@ vec4 fbmD(vec3 p, float f, int oct, float gain, vec3 o) {
         if (w <= 0.0) break;
         vec4 n = noised(p * f + o + float(i) * 7.13);
         s += a * w * vec4(n.x * 2.0 - 1.0, n.yzw * 2.0 * f);
+        a *= gain; f *= 2.03;
+    }
+    return s;
+}
+// 勾配付きの尾根の鋭いノイズ（ridgeBand の全部のオクターブ。x: 値, yzw: p についての勾配）
+vec4 ridgeD(vec3 p, float f, int oct, float gain, vec3 o) {
+    vec4 s = vec4(0.0);
+    float a = 1.0;
+    for (int i = 0; i < oct; i++) {
+        float w = lodW(f);
+        if (w <= 0.0) break;
+        vec4 n = noised(p * f + o + float(i) * 7.13);
+        float v = n.x * 2.0 - 1.0;
+        s += a * w * vec4(0.5 - abs(v), -sign(v) * n.yzw * 2.0 * f);
         a *= gain; f *= 2.03;
     }
     return s;
@@ -1043,10 +1099,14 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     // 高い所は岩・岩盤（岩塊 直径 1〜12 m）。砂の波（さざ波 波長 25 m・砂丘 300 m）は、観測で砂丘地帯と分かっている所
     // （USGS の砂丘データベース。地図のアルファ）だけ（熱慣性が中ほどでも、砂とは限らず固まった地面のことも多い）。
     // 砂丘は動いて新しいので、小さなクレーターは描かない。クレーターは塵・砂で埋まり削られて、ほとんどが浅く崩れている
-    // （craterFresh）。極冠は表面が若くクレーターがほとんど無い
+    // （craterFresh）。極冠は表面が若くクレーターがほとんど無い。
+    // 崖（cliffWall）は岩がむき出し: クレーターは崩れて残らず、塵も積もらず、岩塊（崩れた岩くず）が多い
     vec4 mat = vec4(0.0), C = vec4(0.0);
-    float dust = 0.0, sand = 0.0, rock = 0.0;
+    float dust = 0.0, sand = 0.0, rock = 0.0, R = mapInfo.w * 1000.0;
     g_floor = 0.0;
+    vec2 sl = vec2(0.0);   // カメラの周り（火星の 32 ピクセル/度の窓の中）の細かい標高 hd と勾配 sl
+    float hd = 0.0, dw = mapInfo.z > 0.5 ? detGradient(uv, dx, dy, lat, R, sl, hd) : 0.0;
+    float cs = length(sl), cliff = mars ? cliffWall(cs) * dw : 0.0;
     if (mars) {
         g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));   // 極冠: 白い所（緯度 60° より極側）
         if (mapInfo2.w > 0.5) {
@@ -1056,8 +1116,10 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
             sand = smoothstep(0.1, 0.5, tm.y) * (1.0 - g_ice);
             rock = smoothstep(350.0, 700.0, ti) * (1.0 - sand);   // 砂丘の砂は岩を覆う
         }
+        dust *= 1.0 - cliff;
+        rock = max(rock, 0.4 * cliff * (1.0 - sand));
     }
-    if (cov > 0.0) C = craters(p, 0.35, 260.0, o * 0.37, mars ? 1.0 : 0.0) * (1.0 - g_ice) * (1.0 - sand);
+    if (cov > 0.0) C = craters(p, 0.35, 260.0, o * 0.37, mars ? 1.0 : 0.0) * (1.0 - g_ice) * (1.0 - sand) * (1.0 - cliff);
     vec4 Tn = fbmD(p, 600.0, 20, 0.48, o);
     if (mars) {
         // 地図（1 画素 約 5 km）より細かい明るさのむら mot（値はどれも HiRISE などの画像の見た目からの目安）:
@@ -1066,8 +1128,9 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         //  - 崩れたクレーターの埋まった底: 暗い砂がたまる（0.75 倍）
         //  - 岩塊・砂丘の砂: 玄武岩で周りより暗い（0.82 倍・0.85 倍）
         //  - ゆるやかなむら ±8%
+        //  - 崖: むき出しの岩で 0.9 倍。地層ごとに ±12% の縞
         // 地図の画素の平均の明るさが変わらないよう、斑の分は割り戻す
-        float Rm = mapInfo.w * 1000.0;
+        float Rm = R;
         if (rock > 0.0) mat = boulders(p, Rm / 20.0, 0.12 * rock * (1.0 - g_ice), 0.6, o * 0.53);
         float bare = (1.0 - dust) * (1.0 - g_ice);
         float drift = smoothstep(0.25, 0.45, fbmL(p, 9000.0, 12, 0.5, o + 71.0) * 0.6 - Tn.x * 0.5) * bare;
@@ -1076,6 +1139,11 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         mot *= 1.0 - 0.18 * step(1e-10, mat.x);
         if (sand > 0.0) mat += sandWaves(p, 6.2832 * Rm / 25.0, 0.1, 6.2832 * Rm / 300.0, 0.35, o + 61.0) * sand;
         mot *= (1.0 - 0.15 * sand) * (1.0 + 0.08 * fbmL(p, 2000.0, 14, 0.55, o + 83.0));
+        if (cliff > 0.0) {   // 地層の縞（隣の層と境目の 2 割でなじませる。段と同じく細かすぎる所は消す）
+            float t = strataT(hd, p, o), i = floor(t);
+            float b = mix(hash1(ivec3(int(i), 17, 29)), hash1(ivec3(int(i) + 1, 17, 29)), smoothstep(0.8, 1.0, t - i));
+            mot *= (1.0 - 0.1 * cliff) * (1.0 + strataK(cs, fw * R) * dw * (0.24 * b - 0.12));
+        }
         mot = mix(mot, 1.0, g_ice);
         // 火星の地図（Viking MDIM 2.1 に NASA Ames が色を付けたもの）は暗い地域が青灰色に塗られているので、色合いだけを明るさに
         // 応じた反射スペクトルの目安に置き換える（反射率の比 赤:緑:青 は明るい塵 1 : 0.55 : 0.29、暗い砂 1 : 0.73 : 0.55。Mars
@@ -1095,17 +1163,19 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         float hN = mapHeightM(textureGrad(texture1, uv - vec2(0.0, st.y), dx, dy));
         float hS = mapHeightM(textureGrad(texture1, uv + vec2(0.0, st.y), dx, dy));
         float hm = mapHeightM(textureGrad(texture1, uv, dx, dy));
-        float R = mapInfo.w * 1000.0;
         float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R;
         float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R;
         vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
         vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
         vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
-        vec2 sl;   // カメラの周り（火星の 32 ピクセル/度の窓の中）: 細かい標高
-        float hd, dw = detGradient(uv, dx, dy, lat, R, sl, hd);
         if (dw > 0.0) {
             grad = mix(grad, east * sl.x + north * sl.y, dw);
             hm = mix(hm, hd, dw);
+        }
+        if (cliff > 0.0) {   // 火星の崖: 地層の段（頂点の bodyHeight と同じ）と尾根・溝
+            float k = strataK(cs, fw * R) * dw, t = strataT(hm, p, o), dd, st = strataStep(t, dd);
+            h += vec4(k * STRATA_M / R * (st - t), 0.0, 0.0, 0.0) + cov * cliffRidgeA(cs) * dw * ridgeD(p, 1200.0, 7, 0.5, o + 43.0);
+            grad *= 1.0 + k * (dd - 1.0);
         }
         h += vec4(hm / R, grad);
     }

@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.64.0 (2026-11-22)
+
+- Martian cliffs (the walls of Valles Marineris, crater walls and so on, where the slope of the fine elevations rises past 7° to 19°) are now rock faces instead of gentle hills. They get layered steps every 250 m of elevation (30% flat ledges, 70% steep faces up to about 2.1 times the slope of the data) and ridges and gullies in proportion to the slope (about ±570 m at a slope of 0.5). The heights of the terrain grid (altitude and collisions) use the same formula, and the elevation data itself is unchanged (the values are estimates from the look of images)
+- Martian cliffs show bare rock: no craters or dust, more boulders, and 0.9 times the brightness with bands of ±12% from layer to layer
+
 ## 2.63.0 (2026-11-21)
 
 - The fine elevations around the camera on Mars now come from the USGS MOLA and HRSC blended elevations (Fergason et al. 2018, 200 m per pixel at the source) averaged down to 32 pixels per degree (about 1.85 km) instead of MOLA at 16 pixels per degree (about 3.7 km), so canyon walls and mountains keep their shape (`assets/mars_detail.bin` 14.8 to 57.0 MB; on average +0.6 m from the old data)
