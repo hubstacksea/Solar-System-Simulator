@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Solar System Voyager — Copyright (c) 2026 hubstacksea
 # MIT License (LICENSE を参照) — https://github.com/hubstacksea/Solar-System-Simulator
-"""月と火星の細かい標高 (assets/moon_detail.bin, assets/mars_detail.bin) を作る。
+"""月と火星の細かい標高 (assets/moon_detail.bin, assets/mars_detail.bin + mars_detail2.bin) を作る。
 
 データ:
   - 月: NASA's Scientific Visualization Studio, CGI Moon Kit (https://svs.gsfc.nasa.gov/4720) の
@@ -14,6 +14,8 @@
 出力形式（リトルエンディアン）:
   char[4] "EDT2", int32 列の数 (16), 行の数 (8), 1 区画の画素数 (360)
   区画ごと（北の行から、各行は経度 -180° から東へ）に uint32 位置（ファイルの先頭から）, uint32 大きさ
+  火星は GitHub の 1 ファイルの上限（100 MB。50 MB から警告）に余裕を持たせるため 2 つに分ける: mars_detail.bin は見出し・索引と
+  前半の区画、mars_detail2.bin は残りの区画だけ（区画の行の境目で、大きさがほぼ半分ずつになる所）。位置は 2 つをつないだものの先頭から
   区画: 値 v（0.5 m 単位、-10000 m から。標高 = v × 0.5 − 10000 m。月は半径 1737.4 km、火星は MOLA の基準面から）を、
   左 a・上 b・左上 c の値からの予測（a, b, a + b − c の中央値。先頭の行は左、先頭の列は上、区画の左上は先頭の uint16 の値）との
   差にし、zigzag（0, −1, 1, −2 … を 0, 1, 2, 3 …）にした 16 bit の値の上位バイトの面・下位バイトの面を続けて、
@@ -122,18 +124,30 @@ def mars_blend(path, w2, h2):
     return out
 
 
-def write(path, v):
+def write(path, v, parts=1):
+    """parts = 2: 後半の区画を path の名前に 2 を付けたファイルに分ける"""
     H, W = v.shape
     assert W % TILE == 0 and H % TILE == 0 and v.min() >= 0 and v.max() < 65536
     cols, rows = W // TILE, H // TILE
     tiles = [encode_tile(v[r * TILE:(r + 1) * TILE, c * TILE:(c + 1) * TILE]) for r in range(rows) for c in range(cols)]
-    pos = 16 + 8 * len(tiles)
-    index = b""
+    pack(path, cols, rows, tiles, parts)
+
+
+def pack(path, cols, rows, tiles, parts=1):
+    head = 16 + 8 * len(tiles)
+    pos, index = head, b""
     for t in tiles:
         index += struct.pack("<II", pos, len(t))
         pos += len(t)
+    cut = len(tiles)   # 後半のファイルの最初の区画
+    if parts == 2:
+        ends = [head + sum(len(t) for t in tiles[:r * cols]) for r in range(1, rows)]
+        cut = cols * (1 + min(range(rows - 1), key=lambda r: abs(ends[r] - pos / 2)))
     with open(path, "wb") as f:
-        f.write(b"EDT2" + struct.pack("<iii", cols, rows, TILE) + index + b"".join(tiles))
+        f.write(b"EDT2" + struct.pack("<iii", cols, rows, TILE) + index + b"".join(tiles[:cut]))
+    if parts == 2:
+        with open(path[:-4] + "2.bin", "wb") as f:
+            f.write(b"".join(tiles[cut:]))
     print("done:", path, pos, "bytes")
 
 
@@ -149,7 +163,7 @@ def main():
     write(os.path.join(out, "moon_detail.bin"), moon)
     # 火星: m・左端が経度 -180°・上端が北緯 90° → 0.5 m 単位で −10000 m から（maps.bin と同じ）
     mars = mars_blend(fetch(work, MARS_URL), MARS_W, MARS_W // 2)
-    write(os.path.join(out, "mars_detail.bin"), np.clip(np.round((mars + 10000) * 2), 0, 65535).astype(np.int64))
+    write(os.path.join(out, "mars_detail.bin"), np.clip(np.round((mars + 10000) * 2), 0, 65535).astype(np.int64), 2)
 
 
 if __name__ == "__main__":

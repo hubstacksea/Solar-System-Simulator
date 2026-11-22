@@ -388,11 +388,12 @@ static void SetRingInfo(const App& app, const RingSet& rs) {
 }
 
 // 細かい標高 g_detail[k]（0 地球・1 月・2 火星）: 区画の索引を読み、窓のテクスチャを作る（ブラウザ版はファイルが届いてから）。
-// "EDT1" は地球の高さコードの PNG（tools/make_earth_detail.py）、"EDT2" は 16 bit の予測の残差を deflate したもの（make_body_detail.py）
-static void LoadDetail(App& app, int k, EmbeddedFile f) {
+// "EDT1" は地球の高さコードの PNG（tools/make_earth_detail.py）、"EDT2" は 16 bit の予測の残差を deflate したもの（make_body_detail.py）。
+// f2: 2 つに分けたファイルの後ろ半分（火星。両方が揃ってから読む）
+static void LoadDetail(App& app, int k, EmbeddedFile f, EmbeddedFile f2 = {nullptr, 0}, bool parts2 = false) {
     DetailMap& D = g_detail[k];
     int body = k == 0 ? B_EARTH : k == 1 ? B_MOON : B_MARS;
-    if (D.file || !f.data || f.size < 16 || app.B[body].terrain < 0) return;
+    if (D.file || !f.data || f.size < 16 || (parts2 && !f2.data) || app.B[body].terrain < 0) return;
     int fmt = std::memcmp(f.data, "EDT1", 4) == 0 ? 1 : std::memcmp(f.data, "EDT2", 4) == 0 ? 2 : 0;
     if (!fmt) return;
     std::memcpy(&D.cols, f.data + 4, 4);
@@ -405,12 +406,15 @@ static void LoadDetail(App& app, int k, EmbeddedFile f) {
     for (int i = 0; i < n; i++) {
         std::memcpy(&D.pos[i], f.data + 16 + 8 * i, 4);
         std::memcpy(&D.len[i], f.data + 20 + 8 * i, 4);
-        if ((size_t)D.pos[i] + D.len[i] > f.size) return;
+        size_t a = D.pos[i], b = a + D.len[i];   // 区画は 2 つのファイルにまたがらない
+        if (b > f.size + f2.size || (a < f.size && b > f.size)) return;
     }
     D.fmt = fmt;
     D.W = D.cols * D.tile;
     D.H = D.rows * D.tile;
     D.file = f.data;
+    D.file2 = f2.data;
+    D.split = f.size;
     D.win.assign((size_t)DetailMap::N * DetailMap::N, fmt == 1 ? 127 : 20000);
     std::vector<unsigned char> blank((size_t)DetailMap::N * DetailMap::N * fmt, 0);
     Image img = {blank.data(), DetailMap::N, DetailMap::N, 1, fmt == 1 ? PIXELFORMAT_UNCOMPRESSED_GRAYSCALE : PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA};
@@ -429,7 +433,7 @@ static std::vector<unsigned short> DecodeDetailTile(const DetailMap& D, int i) {
     size_t n = (size_t)D.tile * D.tile;
     if (!D.len[i]) return v;
     if (D.fmt == 1) {
-        Image img = LoadImageFromMemory(".png", D.file + D.pos[i], (int)D.len[i]);
+        Image img = LoadImageFromMemory(".png", D.Tile(i), (int)D.len[i]);
         if (img.data && img.width == D.tile && img.height == D.tile && img.format == PIXELFORMAT_UNCOMPRESSED_GRAYSCALE)
             v.assign((unsigned char*)img.data, (unsigned char*)img.data + n);
         UnloadImage(img);
@@ -437,11 +441,11 @@ static std::vector<unsigned short> DecodeDetailTile(const DetailMap& D, int i) {
     }
     if (D.len[i] < 2) return v;
     int size = 0;
-    unsigned char* z = DecompressData(D.file + D.pos[i] + 2, (int)D.len[i] - 2, &size);
+    unsigned char* z = DecompressData(D.Tile(i) + 2, (int)D.len[i] - 2, &size);
     if (z && (size_t)size == 2 * n) {
         v.resize(n);
         unsigned short first;
-        std::memcpy(&first, D.file + D.pos[i], 2);
+        std::memcpy(&first, D.Tile(i), 2);
         int t = D.tile;
         for (int y = 0; y < t; y++)
             for (int x = 0; x < t; x++) {
@@ -740,7 +744,7 @@ static void LoadBodyMaps(App& app) {
             if (m.name == b.d.en && (b.d.kind == KIND_ROCKY || b.d.kind == KIND_GAS)) b.map = (int)app.maps.size();
         app.maps.push_back(m);
     }
-    LoadDetail(app, 2, MarsDetailBin());
+    LoadDetail(app, 2, MarsDetailBin(), MarsDetail2Bin(), true);
     if (MarsTiPng().data) app.marsTi = LoadEmbeddedTexture(MarsTiPng(), ".png");
 }
 

@@ -90,7 +90,7 @@ struct Terrain {
 };
 static std::vector<Terrain> g_terrain;
 
-// 細かい標高（地球 assets/earth_detail.bin 1 分角・月 moon_detail.bin 16 ピクセル/度・火星 mars_detail.bin 32 ピクセル/度）。
+// 細かい標高（地球 assets/earth_detail.bin 1 分角・月 moon_detail.bin 16 ピクセル/度・火星 mars_detail.bin + mars_detail2.bin 32 ピクセル/度）。
 // 区画に分けて持ち、カメラの真下を中心にした N 画素四方の窓だけを展開して GPU に載せ（texture4）、窓の中では全球の標高の
 // 代わりに使う。窓の縁 MARGIN 画素で全球の標高へなじませる。シェーダ（shaders.h の DETAIL_GLSL）と同じ計算
 struct DetailMap {
@@ -98,7 +98,10 @@ struct DetailMap {
     int fmt = 0;                                      // 1: 地球の高さコード（8 bit）, 2: 0.5 m 単位で −10000 m から（16 bit）
     int cols = 0, rows = 0, tile = 0, W = 0, H = 0;   // 区画の数・1 区画の画素数・全球の画素数
     std::vector<unsigned> pos, len;                   // 区画のデータの位置と大きさ（0 は陸の無い区画。地球だけ）
-    const unsigned char* file = nullptr;
+    const unsigned char* file = nullptr;              // データ。2 つに分けたもの（火星）は位置 split から後ろが file2
+    const unsigned char* file2 = nullptr;
+    size_t split = 0;
+    const unsigned char* Tile(int i) const { return pos[i] < split ? file + pos[i] : file2 + (pos[i] - split); }
     bool active = false;                              // 窓あり
     int x0 = 0, y0 = 0;                               // 窓の左上（全球の画素）
     std::vector<unsigned short> win;                  // 窓の値（N x N）

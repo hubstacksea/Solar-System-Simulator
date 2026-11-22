@@ -684,14 +684,15 @@ vec4 sandWaves(vec3 p, float F1, float k1, float F2, float k2, vec3 o) {
 }
 
 // 平行な筋（尾根・溝）の 1 組: 向き n に垂直な面に沿う筋（球面では n を軸とする小円で、近くではほぼ直線）。F: 筋の間隔の
-// 逆数（単位球の長さあたり）。間隔ごとに frac の割合だけ置き、ゆるく曲げる。kind 0: 二重の尾根（2 本の尾根の間に溝）、
-// 1: 尾根と溝が交互に並ぶ。値は vec4(高さ 0..1, p についての勾配)
-vec4 lineSet(vec3 p, vec3 n, float F, float frac, int kind, vec3 o) {
+// 逆数（単位球の長さあたり）。間隔ごとに frac の割合だけ置き、bend（0..1。lineBend の値）で ゆるく曲げる。kind 0: 二重の
+// 尾根（2 本の尾根の間に溝）、1: 尾根と溝が交互に並ぶ。値は vec4(高さ 0..1, p についての勾配)
+vec4 lineSet(vec3 p, vec3 n, float F, float frac, int kind, vec3 o, float bend) {
     float w = lodW(F * (kind == 0 ? 8.0 : 2.0));
     if (w <= 0.0) return vec4(0.0);
-    float u = dot(p, n) * F + 2.5 * vnoise(p * (F * 0.04) + o);
+    float u = dot(p, n) * F + 2.5 * bend;
     float i = floor(u), f = u - i;
-    if (hash1(ivec3(int(i), 53, int(o.y))) > frac) return vec4(0.0);
+    uint hr = hashu(ivec3(int(i), 53, int(o.y)));   // 置くか（下の 16 ビット）と高さ（上の 16 ビット）
+    if (float(hr & 65535u) * (1.0 / 65536.0) > frac) return vec4(0.0);
     float h, dh;
     if (kind == 0) {
         float a = (f - 0.38) / 0.07, b = (f - 0.62) / 0.07, ea = exp(-a * a), eb = exp(-b * b);
@@ -699,30 +700,61 @@ vec4 lineSet(vec3 p, vec3 n, float F, float frac, int kind, vec3 o) {
     } else {
         h = 0.5 - 0.5 * cos(6.2831853 * f); dh = 3.1415927 * sin(6.2831853 * f);
     }
-    w *= 0.3 + 0.7 * hash1(ivec3(int(i), 71, int(o.y)));   // 筋ごとに高さを変える
+    w *= 0.3 + 0.7 * float(hr >> 16) * (1.0 / 65536.0);   // 筋ごとに高さを変える
     return w * vec4(h, dh * F * n);
 }
+// 筋の曲がり（間隔の逆数 F の筋の約 25 本ごとに変わる）。重いので、同じ間隔の筋の組（向きが違う）で同じ値を使う
+float lineBend(vec3 p, float F, vec3 o) { return lodW(F * 2.0) > 0.0 ? vnoise(p * (F * 0.04) + o) : 0.0; }
 vec3 lineDir(float k) { return normalize(vec3(sin(k * 2.4 + 0.3), cos(k * 1.7 + 1.1), sin(k * 3.1 + 2.0))); }
+// 区画 i の隣（k = 0..8 で 3x3）の区画の点から q へのベクトル。点は区画の 0.18〜0.82 に置く（上と下の 16 ビット）。こうすると、
+// 縁を作る点が必ず 3x3 の区画の中にある（2 つ先の区画の点までの最短の距離と、3x3 の区画の点までの最長の距離から数値で確かめた。
+// 0.17 から）
+vec2 cellVec(vec2 q, vec2 i, int k) {
+    vec2 c = i + vec2(float(k % 3 - 1), float(k / 3 - 1));
+    uint h = hashu(ivec3(ivec2(c), 11));
+    return q - c - (0.18 + 0.64 * vec2(float(h & 65535u), float(h >> 16)) * (1.0 / 65536.0));
+}
 // 冥王星のスプートニク平原の、対流の多角形の境目の溝: 平原の中心（東経 180°）を 0 とする経度と緯度の平面に点を散らした
-// ボロノイの、2 番目と 1 番目に近い点の距離の差が小さい所（平面は平原の中では球面とほぼ同じ。3 次元のボロノイは調べる点が
-// 27 個で重かった）。F: 多角形の大きさの逆数（単位球の長さあたり）。値は vec4(高さ −1..0, p についての勾配)
-vec4 cellTroughs(vec3 p, float F, vec3 o) {
+// ボロノイの、多角形の縁（一番近い点と、ほかの点との垂直二等分線）までの距離が小さい所（平面は平原の中では球面とほぼ同じ。
+// 3 次元のボロノイは調べる点が 27 個で重かった。2 番目と 1 番目に近い点の距離の差を使うと、近い 2 点の間で溝が扇形に広がり、
+// 3 本の溝が集まる所で陰影が折れた）。F: 多角形の大きさの逆数（単位球の長さあたり）、lat・lon: 緯度・経度。
+// 値は vec4(高さ −1..0, p についての勾配)
+vec4 cellTroughs(float lat, float lon, float F, vec3 o) {
     float w = lodW(F * 10.0);
     if (w <= 0.0) return vec4(0.0);
-    vec3 n = normalize(p);
-    float lat = asin(clamp(n.y, -1.0, 1.0)), lon = atan(-n.z, n.x), lo = mod(lon + 6.2831853, 6.2831853) - 3.1415927;
-    vec2 q = vec2(lo * 0.94, lat) * F + o.xy, i = floor(q), v1 = vec2(1.0), v2 = vec2(1.0);
+    float lo = mod(lon + 6.2831853, 6.2831853) - 3.1415927;
+    vec2 q = vec2(lo * 0.94, lat) * F + o.xy, i = floor(q), v1 = vec2(0.0);
     float d1 = 1e9, d2 = 1e9;
     for (int k = 0; k < 9; k++) {
-        vec2 c = i + vec2(float(k % 3 - 1), float(k / 3 - 1));
-        ivec3 ic = ivec3(ivec2(c), 11);
-        vec2 v = q - c - vec2(hash1(ic + ivec3(3, 1, 7)), hash1(ic + ivec3(9, 4, 2)));
-        float d = length(v);
-        if (d < d1) { d2 = d1; v2 = v1; d1 = d; v1 = v; }
-        else if (d < d2) { d2 = d; v2 = v; }
+        vec2 v = cellVec(q, i, k);
+        float d = dot(v, v);
+        if (d < d1) { d2 = d1; d1 = d; v1 = v; }
+        else d2 = min(d2, d);
     }
-    float s = clamp((d2 - d1) / 0.12, 0.0, 1.0);
-    vec2 g = 6.0 * s * (1.0 - s) / 0.12 * (v2 / d2 - v1 / d1) * F;   // q の平面での勾配
+    // 縁までの距離は、2 番目と 1 番目に近い点の距離の差の半分より小さくない。なめらかな最小で縮むのは 0.015 × log 8 = 0.031 まで
+    // なので、差が 2 × (0.06 + 0.031) を超える所（多角形の内側の大部分）は溝の外
+    if (sqrt(d2) - sqrt(d1) > 0.183) return vec4(0.0);
+    // 縁（垂直二等分線）ごとの距離 ek を、なめらかな最小（幅 0.015）でまとめる（ただの最小だと、溝が集まる所で壁が折れ目で
+    // 切り替わって見える）。今までの最小 m を基準に重みを足していく（配列を使わない）
+    float m = 1e9, sw = 0.0;
+    vec2 n = vec2(0.0);
+    for (int k = 0; k < 9; k++) {
+        vec2 dv = cellVec(q, i, k) - v1;
+        float L = length(dv);
+        if (L < 1e-6) continue;   // 一番近い点そのもの
+        float ek = (dot(dv + v1, dv + v1) - d1) / (2.0 * L);
+        if (ek < m) {
+            float r = exp((ek - m) / 0.015);
+            sw = sw * r + 1.0; n = n * r + dv / L; m = ek;
+        } else {
+            float r = exp((m - ek) / 0.015);
+            sw += r; n += r * dv / L;
+        }
+    }
+    float e = m - 0.015 * log(sw);   // 縁の上では負になるが、そこは溝の底
+    n /= sw;
+    float s = clamp(e / 0.06, 0.0, 1.0);
+    vec2 g = 6.0 * s * (1.0 - s) / 0.06 * n * F;   // q の平面での勾配
     vec3 east = vec3(-sin(lon), 0.0, -cos(lon)), north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     return w * vec4(s * s * (3.0 - 2.0 * s) - 1.0, east * g.x * 0.94 / max(cos(lat), 0.05) + north * g.y);
 }
@@ -733,32 +765,36 @@ vec4 cellTroughs(vec3 p, float F, vec3 o) {
 //  - ガニメデ: 明るい溝状地形に、尾根と溝が間隔 約 8 km（起伏 約 350 m）と 1.5 km（60 m）で並ぶ。帯ごとに向きが違う
 //  - エンケラドゥス: 南極地域（南緯 55° より南）に、間隔 約 1.5 km・起伏 約 60 m の尾根と溝
 //  - 冥王星: スプートニク平原の、窒素の氷の対流でできた多角形（大きさ 約 25 km）の境目の溝（深さ 約 100 m）
-// R: 半径 m、rel: 地図の画素の明るさ（地図の平均を 1）
-vec4 bodyRelief(vec3 p, int style, vec3 o, float R, float rel) {
+// R: 半径 m、rel: 地図の画素の明るさ（地図の平均を 1）、lat・lon: 緯度・経度、kC: mapCraterK の値（冥王星では平原の外の割合）
+vec4 bodyRelief(vec3 p, int style, vec3 o, float R, float rel, float lat, float lon, float kC) {
     vec4 r = vec4(0.0);
     if (style == 5) {
-        for (int k = 0; k < 3; k++) {
+        float c = smoothstep(0.75, 0.95, rel);   // カオス地形には少ない
+        float bL = c > 0.0 ? lineBend(p, R / 12000.0, o) : 0.0, bS = c > 0.0 ? lineBend(p, R / 2500.0, o + 40.0) : 0.0;
+        for (int k = 0; k < 3 && c > 0.0; k++) {
             float m = smoothstep(0.35, 0.6, vnoise(p * 5.0 + o + float(k) * 17.0));
-            if (m > 0.0) r += m * (lineSet(p, lineDir(float(k)), R / 12000.0, 0.5, 0, o + float(k) * 3.1) * (200.0 / R) +
-                                   lineSet(p, lineDir(float(k + 4)), R / 2500.0, 0.6, 0, o + float(k) * 5.3 + 40.0) * (60.0 / R));
+            if (m > 0.0) r += m * (lineSet(p, lineDir(float(k)), R / 12000.0, 0.5, 0, o + float(k) * 3.1, bL) * (200.0 / R) +
+                                   lineSet(p, lineDir(float(k + 4)), R / 2500.0, 0.6, 0, o + float(k) * 5.3 + 40.0, bS) * (60.0 / R));
         }
-        r *= smoothstep(0.75, 0.95, rel);
+        r *= c;
     } else if (style == 6) {
         float b = smoothstep(0.95, 1.25, rel);
+        float bL = b > 0.0 ? lineBend(p, R / 8000.0, o) : 0.0, bS = b > 0.0 ? lineBend(p, R / 1500.0, o + 60.0) : 0.0;
         for (int k = 0; k < 3 && b > 0.0; k++) {
             float m = smoothstep(0.5, 0.7, vnoise(p * 14.0 + o + float(k) * 23.0));
             vec3 n = lineDir(float(k + 8));
-            if (m > 0.0) r += m * (lineSet(p, n, R / 8000.0, 1.0, 1, o + float(k) * 7.7) * (350.0 / R) +
-                                   lineSet(p, n, R / 1500.0, 1.0, 1, o + float(k) * 9.1 + 60.0) * (60.0 / R));
+            if (m > 0.0) r += m * (lineSet(p, n, R / 8000.0, 1.0, 1, o + float(k) * 7.7, bL) * (350.0 / R) +
+                                   lineSet(p, n, R / 1500.0, 1.0, 1, o + float(k) * 9.1 + 60.0, bS) * (60.0 / R));
         }
         r *= b;
     } else if (style == 11) {
         float s = 1.0 - smoothstep(-0.87, -0.77, normalize(p).y), m = smoothstep(0.4, 0.6, vnoise(p * 20.0 + o + 7.0));
-        if (s > 0.0) r = s * (60.0 / R) * (lineSet(p, lineDir(12.0), R / 1500.0, 0.8, 1, o) * m +
-                                           lineSet(p, lineDir(13.0), R / 1500.0, 0.8, 1, o + 3.0) * (1.0 - m));
+        float bn = s > 0.0 ? lineBend(p, R / 1500.0, o) : 0.0;
+        if (s > 0.0) r = s * (60.0 / R) * (lineSet(p, lineDir(12.0), R / 1500.0, 0.8, 1, o, bn) * m +
+                                           lineSet(p, lineDir(13.0), R / 1500.0, 0.8, 1, o + 3.0, bn) * (1.0 - m));
     } else if (style == 10) {
-        float s = plutoSP(p, o);
-        if (s > 0.0) r = s * (100.0 / R) * cellTroughs(p, R / 25000.0, o + 33.0);
+        float s = 1.0 - kC;
+        if (s > 0.0) r = s * (100.0 / R) * cellTroughs(lat, lon, R / 25000.0, o + 33.0);
     }
     return r;
 }
@@ -1226,7 +1262,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     // 地図の画素の明るさ（地図の平均を 1）。ガニメデの明るい溝状地形（約 20 億年）は暗い地域（約 40 億年）よりクレーターが
     // 半分ほど（頂点の高さには入れない。ガニメデは標高データが無く地形の格子を作らない）
     int st = int(mapInfo2.x + 0.5);
-    float rel = dot(tc, vec3(0.333)) * mapInfo.x, kC = mapCraterK(st, p, o);
+    float rel = dot(tc, vec3(0.333)) * mapInfo.x, kC0 = mapCraterK(st, p, o), kC = kC0;
     if (st == 6) kC *= 1.0 - 0.55 * smoothstep(0.95, 1.25, rel);
     if (cov > 0.0) C = craters(p, 0.35 * kC, 260.0, o * 0.37, craterWorn(st)) * (1.0 - g_ice) * (1.0 - sand) * (1.0 - cliff);
     vec4 Tn = fbmD(p, 600.0, 20, 0.48, o);
@@ -1260,7 +1296,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         // 明るさ（3 色の平均）は地図の値に細かいむらを掛けたもの。極冠の氷は変えない
         vec3 hue = mix(vec3(1.0, 0.87, 0.76), vec3(1.0, 0.76, 0.57), smoothstep(0.6, 1.1, dot(tc, vec3(0.333)) * mapInfo.x * mot));
         mb = mix(hue * (dot(mb, vec3(0.333)) * mot / dot(hue, vec3(0.333))), mb, g_ice);
-    } else if (cov > 0.0) mat = bodyRelief(p, st, o, R, rel);
+    } else if (cov > 0.0) mat = bodyRelief(p, st, o, R, rel, lat, lon, kC0);
     vec4 fine = vec4(0.0);
     if (cov > 0.0) fine = (C + Tn * (0.003 / 260.0)) * (1.0 - 0.6 * dust) + mat;
     vec4 h = mix(ph, fine, cov);

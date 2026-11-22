@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.66.0 (2026-11-23)
+
+- Fixed the troughs of Sputnik Planitia on Pluto breaking into offset steps when seen at a slant. The troughs now follow the distance to the edges of the cells (so their width is even), and their corners are smooth where they meet
+- Drawing the ridges and grooves of Europa, Ganymede and Enceladus and the troughs of Sputnik Planitia is lighter (on Intel UHD, near the surface Europa is about 10% and Pluto about 5% faster than in 2.65.0; Pluto is still about 20% slower than in 2.64.0)
+- The fine Mars elevation data is split into two files (assets/mars_detail.bin and mars_detail2.bin) to stay well below GitHub's per-file size limit (the contents are the same)
+- The README gallery shows Europa's double ridges and the cells of Sputnik Planitia
+
 ## 2.65.0 (2026-11-22)
 
 - The number of small craters finer than the map on the mapped moons and Pluto now follows the age of their surfaces: none on Io, 3% of the lunar highlands on Europa, 2% on Titan, 8% on Triton, none in the south polar terrain of Enceladus (south of 55° S) or in Sputnik Planitia on Pluto, and about half as many on the bright grooved terrain of Ganymede as on its dark regions. Callisto's craters are worn and shallow like those on Mars, the smaller the fewer. The heights of the terrain grid (altitude and collisions) use the same formula (the values are estimates from crater counts)

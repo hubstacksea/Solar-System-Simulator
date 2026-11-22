@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
     if (opt.checkAssets) {   // データの大きさを出し、足りないものがあれば 1 で終わる
         struct { const char* name; EmbeddedFile f; } files[] = {
             {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
-            {"earth_clouds.jpg", EarthCloudsJpg()}, {"earth_detail.bin", EarthDetailBin()}, {"moon_detail.bin", MoonDetailBin()}, {"mars_detail.bin", MarsDetailBin()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
+            {"earth_clouds.jpg", EarthCloudsJpg()}, {"earth_detail.bin", EarthDetailBin()}, {"moon_detail.bin", MoonDetailBin()}, {"mars_detail.bin", MarsDetailBin()}, {"mars_detail2.bin", MarsDetail2Bin()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
             {"moon_rock.png", MoonRockPng()}, {"mars_ti.png", MarsTiPng()}, {"place_names.txt", PlaceNamesTxt()},
             {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"landers.bin", LandersBin()}, {"sky.txt", SkyTxt()},
             {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},

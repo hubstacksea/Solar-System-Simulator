@@ -52,7 +52,7 @@ static EmbeddedFile Load(const char* name) {
 // 後から取得するファイル（CMakeLists.txt の WEB_DEFERRED と同じ）
 static const char* const DEFERRED[] = {"maps.bin", "shapes.bin", "moon_data.png", "moon_color.jpg", "earth_clouds.jpg",
                                        "asteroids.bin", "earth_months.jpg", "earth_detail.bin", "moon_detail.bin",
-                                       "mars_detail.bin", "moon_rock.png", "mars_ti.png", "place_names.txt"};
+                                       "mars_detail.bin", "mars_detail2.bin", "moon_rock.png", "mars_ti.png", "place_names.txt"};
 static int g_pending = -1;
 
 void StartDeferredAssetDownloads() {
@@ -71,6 +71,7 @@ EmbeddedFile EarthCloudsJpg() { return Load("earth_clouds.jpg"); }
 EmbeddedFile EarthDetailBin() { return Load("earth_detail.bin"); }
 EmbeddedFile MoonDetailBin() { return Load("moon_detail.bin"); }
 EmbeddedFile MarsDetailBin() { return Load("mars_detail.bin"); }
+EmbeddedFile MarsDetail2Bin() { return Load("mars_detail2.bin"); }
 EmbeddedFile MoonColorJpg() { return Load("moon_color.jpg"); }
 EmbeddedFile MoonDataPng() { return Load("moon_data.png"); }
 EmbeddedFile MoonRockPng() { return Load("moon_rock.png"); }

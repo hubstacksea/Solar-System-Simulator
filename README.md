@@ -38,6 +38,7 @@
 | ![土星と環](docs/screenshots/saturn.jpg) 土星と環（本体に落ちる環の影） | ![Voyager の観測による土星の環](docs/screenshots/saturn_rings.jpg) Voyager 2 の観測による濃淡の土星の環 |
 | ![天王星の環](docs/screenshots/uranus_rings.jpg) 横倒しの天王星と細い環 | ![ハートの見える冥王星](docs/screenshots/pluto.jpg) New Horizons の地図による冥王星 |
 | ![金星の地表](docs/screenshots/venus_surface.jpg) 雲の下の金星の地表（ベネラ 13 号の着陸地点）。厚い大気のもやで数 km 先は見えない（明るさと、もやの濃さは推定） | ![タイタンの地表](docs/screenshots/titan_surface.jpg) もやの下のタイタン（ホイヘンスの着陸地点の上空 5 km。カッシーニのレーダーの標高。明るさと、もやの濃さは推定） |
+| ![エウロパの二重の尾根](docs/screenshots/europa_ridges.jpg) エウロパの氷の表面に重なる二重の尾根（高さ 約 200 m。配置は手続き、大きさは観測からの目安） | ![スプートニク平原](docs/screenshots/pluto_sputnik.jpg) 冥王星のスプートニク平原の、窒素の氷の対流でできた多角形（大きさ 約 25 km、境目の溝の深さ 約 100 m。配置は手続き、大きさは観測からの目安） |
 
 **彗星と小惑星**
 
@@ -405,4 +406,4 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 ## ライセンス
 
 プログラム（ソースコード・ビルドファイル・ツール・アイコン）は [MIT ライセンス](LICENSE) です。
-地球と月の画像データ（`assets/earth_*`・`assets/moon_*`）・星空のデータ（`assets/stars.bin`・`assets/sky.txt`・`assets/milkyway.jpg`）・地球の季節と雲（`assets/earth_months.jpg`・`assets/earth_clouds.jpg`）・土星の環（`assets/saturn_rings.png`）・惑星と衛星の地図と火星の細かい標高（`assets/maps.bin`・`assets/mars_detail.bin`）・小惑星などの軌道要素（`assets/asteroids.bin`）・彗星と小惑星の形（`assets/shapes.bin`。チュリュモフ・ゲラシメンコ彗星の部分は CC BY-SA IGO 3.0）・音楽（`assets/music`）は MIT の対象外で、元データの利用条件に従います。同梱ライブラリ（raylib / GLFW, zlib ライセンス）とあわせて [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。
+地球と月の画像データ（`assets/earth_*`・`assets/moon_*`）・星空のデータ（`assets/stars.bin`・`assets/sky.txt`・`assets/milkyway.jpg`）・地球の季節と雲（`assets/earth_months.jpg`・`assets/earth_clouds.jpg`）・土星の環（`assets/saturn_rings.png`）・惑星と衛星の地図と火星の細かい標高（`assets/maps.bin`・`assets/mars_detail.bin`・`assets/mars_detail2.bin`）・小惑星などの軌道要素（`assets/asteroids.bin`）・彗星と小惑星の形（`assets/shapes.bin`。チュリュモフ・ゲラシメンコ彗星の部分は CC BY-SA IGO 3.0）・音楽（`assets/music`）は MIT の対象外で、元データの利用条件に従います。同梱ライブラリ（raylib / GLFW, zlib ライセンス）とあわせて [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。

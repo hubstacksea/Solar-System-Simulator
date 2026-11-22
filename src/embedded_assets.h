@@ -16,6 +16,7 @@ EmbeddedFile EarthCloudsJpg();  // 地球の雲 (NASA Blue Marble)
 EmbeddedFile EarthDetailBin();  // 地球の陸の細かい標高 1 分角 (NOAA ETOPO 2022)。形式は tools/make_earth_detail.py
 EmbeddedFile MoonDetailBin();   // 月の細かい標高 (NASA SVS / LOLA)。形式は tools/make_body_detail.py
 EmbeddedFile MarsDetailBin();   // 火星の細かい標高 (NASA PDS MGS MOLA)。形式は tools/make_body_detail.py
+EmbeddedFile MarsDetail2Bin();  // その後ろ半分の区画（GitHub のファイルの大きさの上限のため分けてある）
 EmbeddedFile MoonColorJpg();   // 月の地表の色 (NASA SVS / LROC)
 EmbeddedFile MoonDataPng();    // 月の標高 16 bit: グレー=上位, アルファ=下位 (NASA SVS / LOLA)
 EmbeddedFile MoonRockPng();    // 月の岩の多さ (NASA PDS / LRO Diviner)。形式は tools/make_surface_props.py
