@@ -19,8 +19,10 @@ static std::string GlslForPlatform(const char* src, const std::string& defs = ""
 // 惑星のシェーダ（PLANET_VS・PLANET_FS）は全部の天体の描き方を持っていて大きく、レジスタが足りずに値を退避するので描画が
 // 重い（Intel UHD で、冥王星の地表の近くは種類を定数にすると 約 3 割速い）。画面で大きく見える天体（planetBig）は、種類
 // （params.x）・表面模様（detail.x）・地図の表面模様（mapInfo2.x）を定数にした版（SPEC_KIND・SPEC_STYLE・SPEC_MAP）で描く。
-// 版は初めて使う時に作る。値はすべて PlanetUniform で元のシェーダに設定して写しを持っておき、版で描く前に、その版に
-// まだ送っていない値だけを送る
+// 版は初めて使う時に作り、できるまで待つ（1 つ 1 秒ほど。Intel UHD で、ドライバの保存したものが無い時 1.0〜1.3 秒、ある時
+// 50 ms。裏でコンパイルさせて待たない作り方（parallel_shader_compile）も試したが、Mesa はコンパイルを頼む時に待ち、
+// GPU を使う Chrome（ANGLE の OpenGL）ではかえって長く止まったので使わない）。値はすべて PlanetUniform で元のシェーダに
+// 設定して写しを持っておき、版で描く前に、その版にまだ送っていない値だけを送る
 
 // 元のシェーダの値の位置（名前を覚えておき、版でも同じ名前の位置を探す）
 static int PlanetLoc(App& app, const char* name) {
@@ -63,7 +65,9 @@ static Shader PlanetShaderFor(App& app) {
         App::PlanetVar pv;
         pv.kind = kind, pv.style = style, pv.map = map;
         std::string defs = TextFormat("#define SPEC_KIND %d\n#define SPEC_STYLE %d\n#define SPEC_MAP %d\n", kind, style, map);
+        double t0 = GetTime();
         pv.sh = LoadShaderFromMemory(GlslForPlatform(PLANET_VS, defs).c_str(), GlslForPlatform(PLANET_FS, defs).c_str());
+        TraceLog(LOG_INFO, "SHADER: planet variant (kind %d, style %d, map %d) built in %.0f ms", kind, style, map, (GetTime() - t0) * 1000);
         pv.ok = IsShaderValid(pv.sh) && pv.sh.id != rlGetShaderIdDefault();
         if (pv.ok) {
             pv.sh.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(pv.sh, "texture3");

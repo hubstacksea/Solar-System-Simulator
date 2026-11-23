@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.68.1 (2026-11-23)
+
+- The log now shows how long each per-kind shader took to build (`SHADER: planet variant (...) built in N ms`; this is how long drawing pauses the first time you come close. On Intel UHD it is about 1 s without the driver's saved copy and about 50 ms with it)
+
 ## 2.68.0 (2026-11-23)
 
 - Bodies that look large on screen are drawn with a shader cut down to their kind (the shader holding every kind of surface was so large that it ran short of registers and spilled values). On Intel UHD, near the surface Pluto is about 30% and Mars about 10% faster than in 2.67.0 (others are unchanged). Each cut-down shader is built the first time you come close to that kind of body
