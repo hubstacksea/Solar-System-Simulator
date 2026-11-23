@@ -87,10 +87,14 @@ static void DrawStars(const App& app) {
                     if (Project(c, line[i], &p) && Project(c, line[i + 1], &q)) DrawLineEx(p, q, 1.2f, lc);
                 }
     }
+    // 昼の空では見えない（空の色は空気の薄い火星では淡く、それだけでは星が透けて見える。惑星の点・星雲と同じく昼の明るさで消す）
+    double vis = 1 - SkyDaylight(app);
     for (const Star& st : app.sky.stars) {
         Vector2 p;
         V3 dir = st.dir;
         Color col = st.col;
+        col.a = (unsigned char)(col.a * vis);
+        if (col.a < 4) continue;
         if (rel.on) {
             double D;
             dir = Aberrate(rel, dir, &D);
@@ -329,7 +333,9 @@ static void DrawSunGlowAndDots(const App& app) {
                 if (a >= 4) DrawStarDot(p, StarDotSize(mag), StarColor(bv, (unsigned char)a));
             }
         } else if (b.d.probe < 0 && b.outer / Len(rel) * c.focal < 0.8) {
-            DrawCircleV(p, b.d.parent == 0 ? 1.8f : 1.2f, BodyColor(b));
+            Color col = BodyColor(b);   // 昼の空では見えない
+            col.a = (unsigned char)(col.a * (1.0 - day));
+            if (col.a >= 4) DrawCircleV(p, b.d.parent == 0 ? 1.8f : 1.2f, col);
         }
     }
 }

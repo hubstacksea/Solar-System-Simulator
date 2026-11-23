@@ -932,8 +932,6 @@ int main(int argc, char** argv) {
     for (Mesh& m : app.probeMesh) UnloadMesh(m);
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
-    for (App::PlanetVar& v : app.planetVars)
-        if (v.ok) UnloadShader(v.sh);
     UnloadShader(app.skyShader);
     UnloadShader(app.miniShader);
     UnloadShader(app.beltShader);

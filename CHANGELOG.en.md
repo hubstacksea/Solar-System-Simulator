@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.69.2 (2026-11-24)
+
+- Dropped the per-kind planet shaders (2.68.0): all bodies are drawn with one shader again, as up to 2.67.0. Drawing paused while the shader for each newly approached kind of body was built (on every warp; about 2 s without the driver's saved copy). In exchange for no more pauses, Pluto near the ground takes about 2.1 times and Mars about 1.16 times as long to draw as in 2.69.1 (Intel UHD; Earth and the Moon are about the same)
+- Fixed time acceleration being slow near Mars, Earth and the Moon (at the warp point of Mars at 100 days/s a frame took about 0.12 s). The window of finer elevations below the ship was rebuilt whenever the point below moved. The window is now used only below the height at which one pixel of the global elevations looks larger than 2 pixels on screen (above that the finer elevations cannot be told apart on screen)
+- Fixed stars and planet dots showing through the daytime sky of Mars (the thin Martian air gives a pale sky). Stars and planet dots fade with the brightness of the daytime sky (as nebulae and stars of other systems already did). On Earth, stars are also harder to see while the sky is still bright just after sunset
+- Retook the Mars daytime sky and Pacific dusk images in the README
+
 ## 2.69.1 (2026-11-23)
 
 - Fixed mountain summits rippling in flight over Earth's regions with finer elevations (about 90 m) such as famous mountains. The procedural slopes finer than the data stayed tuned for the 1 arc-minute data inside those regions too (from a 2 km wavelength, up to nearly 1 km high on steep ground), which raised spires that are not really there, and their shape changed with the vertex spacing as you flew. Inside the regions only slopes finer than their data are added now (to the terrain heights, the shading and the altitude and collisions), so the summits take the shape of the data. Drawing speed is unchanged

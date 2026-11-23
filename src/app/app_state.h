@@ -173,13 +173,6 @@ struct App {
     int locSunDir = -1, locSunColor = -1, locFillDir = -1, locFillColor = -1, locEngColor = -1, locEngGlow = -1, locNavBlink = -1;
     Material mat{};
     Shader shader{};
-    // 惑星のシェーダの値の写し（元のシェーダの位置ごと）と、種類を定数にした版（render3d.h の PlanetShaderFor）
-    struct PlanetUni { std::string name; int type = 0, count = 0; unsigned ver = 0; std::vector<unsigned char> data; };
-    std::vector<PlanetUni> planetUni;
-    unsigned planetUniVer = 0;
-    struct PlanetVar { int kind = 0, style = 0, map = 0; bool ok = false; Shader sh{}; std::vector<int> loc; unsigned synced = 0; };
-    std::vector<PlanetVar> planetVars;
-    bool planetBig = false;   // 今描く天体が画面で大きい（種類ごとの版で描く）
     Texture2D earthColor{}, earthData{};  // 地球の実データ（読めなければ手続き生成で描く）
     Texture2D detailTex[6]{};  // 地球・月・火星の細かい標高と、その地域だけのもっと細かい標高のカメラの周りの窓（g_detail）
     Texture2D earthMonths{}, earthClouds{};  // 地球の 12 か月の地表の色と雲（読めなければ 4 月の色と手続きの雲）

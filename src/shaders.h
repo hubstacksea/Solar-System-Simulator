@@ -8,14 +8,7 @@
 
 // 頂点・フラグメントシェーダで共通の部分（隣り合う文字列リテラルとしてシェーダの文字列につなぐ）
 #define NOISE_GLSL R"(
-// 惑星のシェーダの版（render3d.h の PlanetShaderFor）: 種類・表面模様・地図の表面模様の種類を定数にすると、使わない描き方を
-// コンパイラが除く（-1 なら uniform の値を使う）
-#ifndef SPEC_KIND
-#define SPEC_KIND -1
-#define SPEC_STYLE -1
-#define SPEC_MAP -1
-#endif
-#define MAP_STYLE (SPEC_MAP >= 0 ? SPEC_MAP : int(mapInfo2.x + 0.5))
+#define MAP_STYLE int(mapInfo2.x + 0.5)   // 地図の表面模様の種類
 // ---- 整数ハッシュ（座標が大きくても劣化しないので、地表付近の細かいオクターブでも使える）
 uint hashu(ivec3 c) {
     uvec3 v = uvec3(c) * uvec3(1597334673u, 3812015801u, 2798796415u);
@@ -1576,8 +1569,8 @@ vec3 doppler(vec3 c) {
 }
 
 void main() {
-    int kind = SPEC_KIND >= 0 ? SPEC_KIND : int(params.x + 0.5);
-    int style = SPEC_STYLE >= 0 ? SPEC_STYLE : int(detail.x + 0.5);
+    int kind = int(params.x + 0.5);
+    int style = int(detail.x + 0.5);
     vec3 V = normalize(-fragWorld);
 
     if (kind == 6) {   // 金星の雲・タイタンのもやの層を下から見た空（一様に明るい曇り空）

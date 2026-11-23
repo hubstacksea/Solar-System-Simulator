@@ -3,95 +3,29 @@
 // 3D の描画（天体・自機・探査機・軌道・空）と音楽の選曲。
 // main.cpp の一部で、main.cpp が決まった順に読み込む（単体ではコンパイルしない）
 
-// シェーダは GLSL 3.30 で書いてある。ブラウザ版 (WebGL2) では GLSL ES 3.00 に書き換える。defs は #version の次の行に足す
-static std::string GlslForPlatform(const char* src, const std::string& defs = "") {
+// シェーダは GLSL 3.30 で書いてある。ブラウザ版 (WebGL2) では GLSL ES 3.00 に書き換える
+static std::string GlslForPlatform(const char* src) {
     std::string s = src;
-    size_t p = s.find("#version 330");
-    if (p != std::string::npos && !defs.empty()) s.insert(s.find('\n', p) + 1, defs);
 #if defined(__EMSCRIPTEN__)
+    size_t p = s.find("#version 330");
     if (p != std::string::npos)   // #version は 1 行目に置く必要がある（ソースは改行から始まる）
         s = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n" + s.substr(p + 12);
 #endif
     return s;
 }
 
-// ---------------------------------------------------------------- 惑星のシェーダの版
-// 惑星のシェーダ（PLANET_VS・PLANET_FS）は全部の天体の描き方を持っていて大きく、レジスタが足りずに値を退避するので描画が
-// 重い（Intel UHD で、冥王星の地表の近くは種類を定数にすると 約 3 割速い）。画面で大きく見える天体（planetBig）は、種類
-// （params.x）・表面模様（detail.x）・地図の表面模様（mapInfo2.x）を定数にした版（SPEC_KIND・SPEC_STYLE・SPEC_MAP）で描く。
-// 版は初めて使う時に作り、できるまで待つ（1 つ 1 秒ほど。Intel UHD で、ドライバの保存したものが無い時 1.0〜1.3 秒、ある時
-// 50 ms。裏でコンパイルさせて待たない作り方（parallel_shader_compile）も試したが、Mesa はコンパイルを頼む時に待ち、
-// GPU を使う Chrome（ANGLE の OpenGL）ではかえって長く止まったので使わない）。値はすべて PlanetUniform で元のシェーダに
-// 設定して写しを持っておき、版で描く前に、その版にまだ送っていない値だけを送る
-
-// 元のシェーダの値の位置（名前を覚えておき、版でも同じ名前の位置を探す）
-static int PlanetLoc(App& app, const char* name) {
-    int loc = GetShaderLocation(app.shader, name);
-    if (loc >= 0) {
-        if ((int)app.planetUni.size() <= loc) app.planetUni.resize(loc + 1);
-        app.planetUni[loc].name = name;
-    }
-    return loc;
-}
+// ---------------------------------------------------------------- 惑星のシェーダ
+// 惑星のシェーダ（PLANET_VS・PLANET_FS）はすべての天体を 1 つで描く（種類ごとに定数にした版を作る作り方は、版を作る間
+// 描画が止まり、速さもほとんど変わらなかったので使わない）
+static int PlanetLoc(App& app, const char* name) { return GetShaderLocation(app.shader, name); }
 
 static void PlanetUniform(App& app, int loc, const void* v, int type, int count = 1) {
-    if (loc < 0) return;
-    SetShaderValueV(app.shader, loc, v, type, count);
-    if (loc >= (int)app.planetUni.size() || app.planetUni[loc].name.empty()) return;
-    App::PlanetUni& u = app.planetUni[loc];
-    int n = (type == SHADER_UNIFORM_VEC2 || type == SHADER_UNIFORM_IVEC2) ? 2 : (type == SHADER_UNIFORM_VEC3 || type == SHADER_UNIFORM_IVEC3) ? 3
-          : (type == SHADER_UNIFORM_VEC4 || type == SHADER_UNIFORM_IVEC4) ? 4 : 1;
-    u.type = type;
-    u.count = count;
-    u.data.assign((const unsigned char*)v, (const unsigned char*)v + 4 * n * count);
-    u.ver = ++app.planetUniVer;
-}
-
-// 今の値で描く時のシェーダ（planetBig なら種類ごとの版、作れなければ元のシェーダ）
-static Shader PlanetShaderFor(App& app) {
-    if (!app.planetBig) return app.shader;
-    auto first = [&](int loc) {   // その値の最初の成分
-        if (loc < 0 || loc >= (int)app.planetUni.size() || app.planetUni[loc].data.size() < 4) return -1.0f;
-        float f;
-        std::memcpy(&f, app.planetUni[loc].data.data(), 4);
-        return f;
-    };
-    int kind = (int)std::lround(first(app.locParams)), style = (int)std::lround(first(app.locDetail));
-    int map = style == S_MAPPED ? (int)std::lround(first(app.locMapInfo2)) : -1;
-    App::PlanetVar* v = nullptr;
-    for (App::PlanetVar& pv : app.planetVars)
-        if (pv.kind == kind && pv.style == style && pv.map == map) v = &pv;
-    if (!v) {
-        App::PlanetVar pv;
-        pv.kind = kind, pv.style = style, pv.map = map;
-        std::string defs = TextFormat("#define SPEC_KIND %d\n#define SPEC_STYLE %d\n#define SPEC_MAP %d\n", kind, style, map);
-        double t0 = GetTime();
-        pv.sh = LoadShaderFromMemory(GlslForPlatform(PLANET_VS, defs).c_str(), GlslForPlatform(PLANET_FS, defs).c_str());
-        TraceLog(LOG_INFO, "SHADER: planet variant (kind %d, style %d, map %d) built in %.0f ms", kind, style, map, (GetTime() - t0) * 1000);
-        pv.ok = IsShaderValid(pv.sh) && pv.sh.id != rlGetShaderIdDefault();
-        if (pv.ok) {
-            pv.sh.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(pv.sh, "texture3");
-            pv.sh.locs[SHADER_LOC_MAP_OCCLUSION] = GetShaderLocation(pv.sh, "texture4");
-            pv.sh.locs[SHADER_LOC_MAP_EMISSION] = GetShaderLocation(pv.sh, "texture5");
-            pv.loc.assign(app.planetUni.size(), -1);
-            for (size_t i = 0; i < app.planetUni.size(); i++)
-                if (!app.planetUni[i].name.empty()) pv.loc[i] = GetShaderLocation(pv.sh, app.planetUni[i].name.c_str());
-        }
-        app.planetVars.push_back(pv);
-        v = &app.planetVars.back();
-    }
-    if (!v->ok) return app.shader;
-    for (size_t i = 0; i < app.planetUni.size(); i++) {
-        const App::PlanetUni& u = app.planetUni[i];
-        if (u.ver > v->synced && v->loc[i] >= 0) SetShaderValueV(v->sh, v->loc[i], u.data.data(), u.type, u.count);
-    }
-    v->synced = app.planetUniVer;
-    return v->sh;
+    if (loc >= 0) SetShaderValueV(app.shader, loc, v, type, count);
 }
 
 static void DrawPlanetMesh(App& app, const Mesh& mesh, Matrix m) {
     Material mat = app.mat;
-    mat.shader = PlanetShaderFor(app);
+    mat.shader = app.shader;
     DrawMesh(mesh, mat, m);
 }
 
@@ -722,14 +656,19 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
 }
 
 // 自機の真下に、近くの天体（半径の 8 倍まで）の細かい標高の窓を合わせる。描く前に、高度・衝突の計算にも同じ窓を
-// 使えるよう、毎フレーム天体を動かした後に呼ぶ
+// 使えるよう、毎フレーム天体を動かした後に呼ぶ。窓は、全球の標高の 1 画素が画面で 2 画素より大きく見える高さより下でだけ
+// 使う（その上では細かい標高は画面で見分けられない。窓を組み直すのは 1 回 約 0.1 秒かかり、時間を早回しすると真下が
+// 速く動いて毎フレーム組み直すことになる）
 static void UpdateDetailWindows(App& app) {
     V3 ship = ShipWorld(app);
     for (int k = 0; k < 3; k++) {
         const Body& b = app.B[k == 0 ? B_EARTH : k == 1 ? B_MOON : B_MARS];
         V3 rel = ship - b.pos;
         double dist = Len(rel);
-        if (!g_detail[k].file || dist > b.d.radius * 8 || dist <= 0) continue;
+        int texW = k == 0 ? app.earthData.width : k == 1 ? app.moonData.width : b.map >= 0 ? app.maps[b.map].data.width : 0;
+        bool fine = texW > 0 && (dist - b.d.radius) / app.cam.focal < PI * b.d.radius / texW;
+        if (!fine) g_detail[k].active = g_detail[k + 3].active = false;
+        if (!g_detail[k].file || !fine || dist <= 0) continue;
         double cw = std::cos(b.spin), sw = std::sin(b.spin);
         V3 X = b.ex * cw - b.ez * sw, Z = b.ex * sw + b.ez * cw, up = rel * (1.0 / dist);
         V3 o(Dot(up, X), Dot(up, b.pole), Dot(up, Z));   // 真下の向き（本体の座標系）
@@ -1407,7 +1346,6 @@ static void DrawBodies(App& app) {
         ClearDepth();
 
         V3 L = d.kind == KIND_STAR ? V3(0, 1, 0) : Norm(app.B[HostStar(app.B, it.i)].pos - b.pos);
-        app.planetBig = d.radius / std::max(dist, d.radius) * c.focal > 30;   // 半径が 30 画素より大きい
         V3 Lobj(Dot(L, b.ex), Dot(L, b.pole), Dot(L, b.ez));
         Vector3 lf = ToF(L), lo = ToF(Lobj);
         Vector3 c1 = {d.c1.r, d.c1.g, d.c1.b}, c2 = {d.c2.r, d.c2.g, d.c2.b}, atm = {d.atm.r, d.atm.g, d.atm.b};
@@ -1614,7 +1552,6 @@ static void DrawBodies(App& app) {
             rlEnableBackfaceCulling();
         }
     }
-    app.planetBig = false;
 }
 
 static bool Occluded(const App& app, V3 from, V3 to, int self);
