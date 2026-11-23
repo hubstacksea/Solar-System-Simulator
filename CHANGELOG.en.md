@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.69.1 (2026-11-23)
+
+- Fixed mountain summits rippling in flight over Earth's regions with finer elevations (about 90 m) such as famous mountains. The procedural slopes finer than the data stayed tuned for the 1 arc-minute data inside those regions too (from a 2 km wavelength, up to nearly 1 km high on steep ground), which raised spires that are not really there, and their shape changed with the vertex spacing as you flew. Inside the regions only slopes finer than their data are added now (to the terrain heights, the shading and the altitude and collisions), so the summits take the shape of the data. Drawing speed is unchanged
+- Retook the Everest image in the README
+
 ## 2.69.0 (2026-11-23)
 
 - A few regions such as famous mountains now use still finer elevations near the ground (for the terrain grid heights, shading, terrain shadows, altitude and collisions, blended in at the edges of each region). On Earth: around Everest, Fuji, Mont Blanc and the Matterhorn, Kilimanjaro and Denali (Copernicus DEM GLO-90, about 90 m); on the Moon: Mons Hadley and the Apennines at the Apollo 15 site, Mons Huygens and Mons Ampère, Taurus-Littrow at the Apollo 17 site, and Tycho (SLDEM2015, about 60 m); on Mars: Olympus Mons and the Tharsis Montes (the USGS MOLA/HRSC blended elevations, about 206 m). The Olympus Mons scarp now shows its real gullies and ledges (at the previous 1.85 km per pixel, 60% of the slopes steeper than 25° were smoothed away). The data is in assets/earth_patches.bin, moon_patches.bin and mars_patches.bin (42.5 MB in all; tools/make_detail_patches.py). Drawing speed is unchanged

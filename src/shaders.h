@@ -286,15 +286,18 @@ float det2Mix(vec2 uv, float s, float h, out float w2, out vec2 l2) {
 }
 // 1 分角より細かい山肌（手続き。地形の格子の高さと陰影の両方に使う）。x: 高さ（単位球の長さ）, yzw: 勾配。
 // 振幅は標高の傾き s（tan）で決め、急な山ほど険しく、平野は穏やかにする。h: 標高 m（海面の近くでは 0 へ）。
-// sp: 頂点・画素の間隔（単位球の長さ）。それより細かいオクターブは省く
-vec4 earthBumps(vec3 p, float s, float h, float sp, int oct, vec3 o) {
+// sp: 頂点・画素の間隔（単位球の長さ）。それより細かいオクターブは省く。fLo: 標高データにある周波数（地域だけのもっと
+// 細かい標高の中では、それより粗いオクターブは実際の地形と重なるので省く。bandW）
+vec4 earthBumps(vec3 p, float s, float h, float sp, float fLo, int oct, vec3 o) {
     float a = (0.003 + 0.6 * min(s, 1.0)) / 3200.0 * clamp(h / 50.0, 0.0, 1.0), f = 3200.0;
     vec4 r = vec4(0.0);
     for (int i = 0; i < oct; i++) {
-        float w = 1.0 - smoothstep(0.15, 0.5, f * sp);
-        if (w <= 0.0 || a <= 0.0) break;
-        vec4 n = noised(p * f + o + float(i) * 7.13);
-        r += a * w * vec4(n.x * 2.0 - 1.0, n.yzw * 2.0 * f);
+        if (f * sp >= 0.5 || a <= 0.0) break;
+        float w = bandW(f, sp, fLo);
+        if (w > 0.0) {
+            vec4 n = noised(p * f + o + float(i) * 7.13);
+            r += a * w * vec4(n.x * 2.0 - 1.0, n.yzw * 2.0 * f);
+        }
         a *= 0.5; f *= 2.03;
     }
     return r;
@@ -373,9 +376,9 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     if (terrA.w < 1.5) {   // 地球の山肌（earthBumps の値を振幅で割ったもの）
         float r = 0.0, a = 1.0, f = 3200.0;
         for (int i = 0; i < 7; i++) {
-            float w = 1.0 - smoothstep(0.15, 0.5, f * L);
-            if (w <= 0.0) break;
-            r += a * w * (vnoise(q * f + o + float(i) * 7.13) * 2.0 - 1.0);
+            if (f * L >= 0.5) break;
+            float w = bandW(f, L, fLo);
+            if (w > 0.0) r += a * w * (vnoise(q * f + o + float(i) * 7.13) * 2.0 - 1.0);
             a *= 0.5; f *= 2.03;
         }
         return r;
@@ -436,7 +439,8 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     float sl = mix(detSlope(l, lat, EARTH_RM), w2 > 0.0 ? det2Slope(l2, lat, EARTH_RM) : 0.0, w2);
     float a = (0.003 + 0.6 * min(sl, 1.0)) / 3200.0 * clamp(hb / 50.0, 0.0, 1.0);   // earthBumps の振幅
-    return max(0.0, hb + a * vertexBumps(d, sp, 20.0 / EARTH_RM, 0.0, o) * EARTH_RM * w);
+    float fLo = mix(detB.y, detD.y, w2) / 6.2831853;
+    return max(0.0, hb + a * vertexBumps(d, sp, 20.0 / EARTH_RM, fLo, o) * EARTH_RM * w);
 }
 // 地球以外: カメラの周り（月・火星の窓の中）は細かい標高。データより細かい手続きの起伏（クレーター・山肌）を足した高さ m
 float bodyHeight(vec3 d, float sp, float hm) {
@@ -1164,8 +1168,10 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     float rough = (0.03 + 0.3 * clamp(hm / 4000.0, 0.0, 1.0)) / 1400.0;
     vec4 h = vec4(hm / R * EXAG, grad) * land;
     // 窓の中は 1 分角より細かい山肌（地形の格子の高さと同じ。陰影は画素まで細かく）
+    vec2 l2;
+    float fLo = dw > 0.0 ? mix(detB.y, detD.y, det2Weight(uv, l2)) / (2.0 * PI) : 0.0;
     if (land > 0.0) h += mix(dw < 1.0 ? fbmD(p, 700.0, 18, 0.5, o) * rough : vec4(0.0),
-                             dw > 0.0 ? earthBumps(p, s, max(hm, 0.0), fw, 16, o) : vec4(0.0), dw) * land;
+                             dw > 0.0 ? earthBumps(p, s, max(hm, 0.0), fw, fLo, 16, o) : vec4(0.0), dw) * land;
     // 地表の色から素材を推定して細かい起伏を足す（土地被覆の実測ではなく色からの推定）: 明るい黄褐色は砂（砂丘 波長 120 m・800 m）、
     // 暗い緑は森（樹冠 約 8 m と 4 m の凹凸。くぼみは暗い）、白い所は雪と氷（風に沿って伸びた風紋 約 20 m と 5 m）
     if (land > 0.0) {

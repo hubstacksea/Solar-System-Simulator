@@ -307,8 +307,9 @@ template <class F> static float BumpLattice(V3 p, float L, F at) {
     return Mixf(Mixf(Mixf(v(0, 0, 0), v(1, 0, 0), fx), Mixf(v(0, 1, 0), v(1, 1, 0), fx), fy),
                 Mixf(Mixf(v(0, 0, 1), v(1, 0, 1), fx), Mixf(v(0, 1, 1), v(1, 1, 1), fx), fy), fz);
 }
-// 地球の 1 分角より細かい山肌の高さ m（earthBumps の値）。p は単位球の点、s は傾き、h は標高 m。一番細かい格子点の段で求める
-static double EarthBumpsM(V3 p, double s, double h) {
+// 地球の 1 分角より細かい山肌の高さ m（earthBumps の値）。p は単位球の点、s は傾き、h は標高 m、fLo は標高データにある
+// 周波数（それより粗いオクターブは省く）。一番細かい格子点の段で求める
+static double EarthBumpsM(V3 p, double s, double h, float fLo) {
     const float seed = (float)(B_EARTH * 7.31), L = (float)(BUMP_MIN_M / 6378137.0);
     double a = (0.003 + 0.6 * std::min(s, 1.0)) / 3200.0 * std::max(0.0, std::min(1.0, h / 50.0));
     if (a <= 0) return 0;
@@ -316,9 +317,9 @@ static double EarthBumpsM(V3 p, double s, double h) {
     float n = BumpLattice(p, L, [&](F3 q) {
         float r = 0, am = 1, f = 3200.0f;
         for (int i = 0; i < 7; i++) {
-            float w = 1 - Smoothf(0.15f, 0.5f, f * L);
-            if (w <= 0) break;
-            r += am * w * (NoiseValue(q * f + o + (float)i * 7.13f) * 2 - 1);
+            if (f * L >= 0.5f) break;
+            float w = BandW(f, L, fLo);
+            if (w > 0) r += am * w * (NoiseValue(q * f + o + (float)i * 7.13f) * 2 - 1);
             am *= 0.5f;
             f *= 2.03f;
         }
@@ -426,7 +427,10 @@ static double TerrainKm(const Body& b, V3 o) {
         return w2 > 0 ? s * (1 - w2) + P->Slope(plx, ply, lat, R) * w2 : s;
     };
     if (T.earth) {
-        if (w > 0) km = std::max(0.0, km * 1000 + EarthBumpsM(p, slope(6378137.0), km * 1000) * w) / 1000;
+        if (w > 0) {
+            float fLo = (float)((w2 > 0 ? D->H * (1 - w2) + P->H * w2 : D->H) / (2 * PI));
+            km = std::max(0.0, km * 1000 + EarthBumpsM(p, slope(6378137.0), km * 1000, fLo) * w) / 1000;
+        }
     } else if (T.bumps) {   // データより細かい手続きの起伏
         double R = b.d.radius * 1000, fLo = T.h / (2 * PI) * (1 - w) + (D ? D->H / (2 * PI) * w : 0);
         if (w2 > 0) fLo = fLo * (1 - w2) + P->H / (2 * PI) * w2;
