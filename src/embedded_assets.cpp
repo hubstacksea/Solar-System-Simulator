@@ -33,6 +33,9 @@ INCBIN(g_earth_detail_bin, "earth_detail.bin")
 INCBIN(g_moon_detail_bin, "moon_detail.bin")
 INCBIN(g_mars_detail_bin, "mars_detail.bin")
 INCBIN(g_mars_detail2_bin, "mars_detail2.bin")
+INCBIN(g_mars_patches_bin, "mars_patches.bin")
+INCBIN(g_earth_patches_bin, "earth_patches.bin")
+INCBIN(g_moon_patches_bin, "moon_patches.bin")
 INCBIN(g_moon_color_jpg, "moon_color.jpg")
 INCBIN(g_moon_data_png, "moon_data.png")
 INCBIN(g_moon_rock_png, "moon_rock.png")
@@ -68,6 +71,9 @@ EmbeddedFile EarthDetailBin() { return {g_earth_detail_bin, (size_t)(g_earth_det
 EmbeddedFile MoonDetailBin() { return {g_moon_detail_bin, (size_t)(g_moon_detail_bin_end - g_moon_detail_bin)}; }
 EmbeddedFile MarsDetailBin() { return {g_mars_detail_bin, (size_t)(g_mars_detail_bin_end - g_mars_detail_bin)}; }
 EmbeddedFile MarsDetail2Bin() { return {g_mars_detail2_bin, (size_t)(g_mars_detail2_bin_end - g_mars_detail2_bin)}; }
+EmbeddedFile MarsPatchesBin() { return {g_mars_patches_bin, (size_t)(g_mars_patches_bin_end - g_mars_patches_bin)}; }
+EmbeddedFile EarthPatchesBin() { return {g_earth_patches_bin, (size_t)(g_earth_patches_bin_end - g_earth_patches_bin)}; }
+EmbeddedFile MoonPatchesBin() { return {g_moon_patches_bin, (size_t)(g_moon_patches_bin_end - g_moon_patches_bin)}; }
 EmbeddedFile MoonColorJpg() { return {g_moon_color_jpg, (size_t)(g_moon_color_jpg_end - g_moon_color_jpg)}; }
 EmbeddedFile MoonDataPng() { return {g_moon_data_png, (size_t)(g_moon_data_png_end - g_moon_data_png)}; }
 EmbeddedFile MoonRockPng() { return {g_moon_rock_png, (size_t)(g_moon_rock_png_end - g_moon_rock_png)}; }

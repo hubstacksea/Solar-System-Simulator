@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
     if (opt.checkAssets) {   // データの大きさを出し、足りないものがあれば 1 で終わる
         struct { const char* name; EmbeddedFile f; } files[] = {
             {"earth_color.jpg", EarthColorJpg()}, {"earth_data.png", EarthDataPng()}, {"earth_months.jpg", EarthMonthsJpg()},
-            {"earth_clouds.jpg", EarthCloudsJpg()}, {"earth_detail.bin", EarthDetailBin()}, {"moon_detail.bin", MoonDetailBin()}, {"mars_detail.bin", MarsDetailBin()}, {"mars_detail2.bin", MarsDetail2Bin()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
+            {"earth_clouds.jpg", EarthCloudsJpg()}, {"earth_detail.bin", EarthDetailBin()}, {"moon_detail.bin", MoonDetailBin()}, {"mars_detail.bin", MarsDetailBin()}, {"mars_detail2.bin", MarsDetail2Bin()}, {"mars_patches.bin", MarsPatchesBin()}, {"earth_patches.bin", EarthPatchesBin()}, {"moon_patches.bin", MoonPatchesBin()}, {"moon_color.jpg", MoonColorJpg()}, {"moon_data.png", MoonDataPng()},
             {"moon_rock.png", MoonRockPng()}, {"mars_ti.png", MarsTiPng()}, {"place_names.txt", PlaceNamesTxt()},
             {"icon.png", IconPng()}, {"stars.bin", StarsBin()}, {"probes.bin", ProbesBin()}, {"apollo.bin", ApolloBin()}, {"landers.bin", LandersBin()}, {"sky.txt", SkyTxt()},
             {"shapes.bin", ShapesBin()}, {"maps.bin", MapsBin()}, {"asteroids.bin", AsteroidsBin()},
@@ -437,6 +437,9 @@ int main(int argc, char** argv) {
     app.locTerrStep = PlanetLoc(app, "terrStep");
     app.locDetA = PlanetLoc(app, "detA");
     app.locDetB = PlanetLoc(app, "detB");
+    app.locDetC = PlanetLoc(app, "detC");
+    app.locDetD = PlanetLoc(app, "detD");
+    app.locDetE = PlanetLoc(app, "detE");
     app.locTerrE = PlanetLoc(app, "terrE");
     TerrainOff(app);
     app.mat = LoadMaterialDefault();
@@ -451,6 +454,7 @@ int main(int argc, char** argv) {
     }
     app.shader.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(app.shader, "texture3");   // DrawMesh が texture3 に割り当てる
     app.shader.locs[SHADER_LOC_MAP_OCCLUSION] = GetShaderLocation(app.shader, "texture4");   // 同じく texture4（地球の細かい標高）
+    app.shader.locs[SHADER_LOC_MAP_EMISSION] = GetShaderLocation(app.shader, "texture5");    // 同じく texture5（地域だけのもっと細かい標高）
     LoadBodyMaps(app);
     app.locMapInfo = PlanetLoc(app, "mapInfo");
     app.locMapInfo2 = PlanetLoc(app, "mapInfo2");

@@ -92,7 +92,9 @@ static std::vector<Terrain> g_terrain;
 
 // 細かい標高（地球 assets/earth_detail.bin 1 分角・月 moon_detail.bin 16 ピクセル/度・火星 mars_detail.bin + mars_detail2.bin 32 ピクセル/度）。
 // 区画に分けて持ち、カメラの真下を中心にした N 画素四方の窓だけを展開して GPU に載せ（texture4）、窓の中では全球の標高の
-// 代わりに使う。窓の縁 MARGIN 画素で全球の標高へなじませる。シェーダ（shaders.h の DETAIL_GLSL）と同じ計算
+// 代わりに使う。窓の縁 MARGIN 画素で全球の標高へなじませる。シェーダ（shaders.h の DETAIL_GLSL）と同じ計算。
+// 地域だけのもっと細かい標高（火星 mars_patches.bin。tools/make_detail_patches.py）も同じ形で持ち（boxes が地域の長方形）、
+// 今いる地域の窓を texture5 に載せて、その上に重ねる。地域の縁からも MARGIN 画素でなじませる
 struct DetailMap {
     static const int N = 2048, MARGIN = 64;
     int fmt = 0;                                      // 1: 地球の高さコード（8 bit）, 2: 0.5 m 単位で −10000 m から（16 bit）
@@ -102,6 +104,9 @@ struct DetailMap {
     const unsigned char* file2 = nullptr;
     size_t split = 0;
     const unsigned char* Tile(int i) const { return pos[i] < split ? file + pos[i] : file2 + (pos[i] - split); }
+    struct Box { int c0, r0, cols, rows, first; };    // 地域: 左上の区画の列・行、区画の列・行の数、pos・len の最初の区画
+    std::vector<Box> boxes;                           // 地域だけのもの（空なら全球）
+    int box = -1;                                     // 窓のある地域
     bool active = false;                              // 窓あり
     int x0 = 0, y0 = 0;                               // 窓の左上（全球の画素）
     std::vector<unsigned short> win;                  // 窓の値（N x N）
@@ -112,6 +117,12 @@ struct DetailMap {
         x -= W * std::floor(x / W + 0.5);
         *lx = x, *ly = y;
         double e = std::min(std::min(x, N - 1 - x), std::min(y, N - 1 - y));
+        if (box >= 0) {   // 地域の縁
+            const Box& B = boxes[box];
+            double bx = x + x0 - B.c0 * tile, by = y + y0 - B.r0 * tile;
+            bx -= W * std::floor(bx / W + 0.5);
+            e = std::min({e, bx, B.cols * tile - 1 - bx, by, B.rows * tile - 1 - by});
+        }
         return std::max(0.0, std::min(1.0, e / MARGIN));
     }
     double Decode(int c) const {
@@ -137,7 +148,7 @@ struct DetailMap {
         return std::sqrt(gx * gx + gy * gy);
     }
 };
-static DetailMap g_detail[3];   // 地球・月・火星
+static DetailMap g_detail[6];   // 地球・月・火星、その地域だけの細かいもの（DetailIndex + 3）
 static int DetailIndex(int body) { return body == B_EARTH ? 0 : body == B_MOON ? 1 : body == B_MARS ? 2 : -1; }
 
 // ---- シェーダの手続きの起伏（NOISE_GLSL・BUMPS_GLSL）と同じ計算（float で同じ順に）。地形の格子の高さと合わせ、
@@ -406,16 +417,25 @@ static double TerrainKm(const Body& b, V3 o) {
     int k = DetailIndex(T.body);
     const DetailMap* D = k >= 0 ? &g_detail[k] : nullptr;
     if (D && (w = D->Weight(u, v, &lx, &ly)) > 0) km = km * (1 - w) + D->Height(lx, ly) / 1000 * w;
+    // 地域だけのもっと細かい標高（窓は細かい標高の窓の中にある）
+    const DetailMap* P = k >= 0 ? &g_detail[k + 3] : nullptr;
+    double plx = 0, ply = 0, w2 = 0;
+    if (P && w > 0 && (w2 = P->Weight(u, v, &plx, &ply)) > 0) km = km * (1 - w2) + P->Height(plx, ply) / 1000 * w2;
+    auto slope = [&](double R) {   // 標高の傾き（tan）
+        double s = D->Slope(lx, ly, lat, R);
+        return w2 > 0 ? s * (1 - w2) + P->Slope(plx, ply, lat, R) * w2 : s;
+    };
     if (T.earth) {
-        if (w > 0) km = std::max(0.0, km * 1000 + EarthBumpsM(p, D->Slope(lx, ly, lat, 6378137.0), km * 1000) * w) / 1000;
+        if (w > 0) km = std::max(0.0, km * 1000 + EarthBumpsM(p, slope(6378137.0), km * 1000) * w) / 1000;
     } else if (T.bumps) {   // データより細かい手続きの起伏
         double R = b.d.radius * 1000, fLo = T.h / (2 * PI) * (1 - w) + (D ? D->H / (2 * PI) * w : 0);
+        if (w2 > 0) fLo = fLo * (1 - w2) + P->H / (2 * PI) * w2;
         float L = (float)(BUMP_MIN_M / R);   // 地形の格子と同じく、地表に固定した一番細かい格子点の段で求める
         const float seed = (float)(T.body * 7.31);
         const F3 o{seed, seed * 1.37f, seed * 0.71f}, pf{(float)p.x, (float)p.y, (float)p.z};
         float ms = (float)(e * MapLatScale(b.d)), cliff = 0, wallA = 0, craterK = T.bumps == 2 ? MapCraterK(T.style, pf, o) : 1.0f;
         if (w > 0 && T.style == S_MARS) {   // 火星の崖: 地層の段と尾根・溝（シェーダの bodyHeight と同じ）
-            float s = (float)D->Slope(lx, ly, lat, R), k = StrataK(s, (float)BUMP_MIN_M) * (float)w;
+            float s = (float)slope(R), k = StrataK(s, (float)BUMP_MIN_M) * (float)w;
             float t = StrataT((float)(km * 1000), pf, o);
             if (k > 0) km += k * STRATA_M * (StrataStep(t) - t) / 1000;
             cliff = CliffWall(s) * (float)w;

@@ -244,6 +244,46 @@ float detSlope(vec2 l, float lat, float R) {
     float gy = (detHeight(l + vec2(0.0, 1.0)) - detHeight(l - vec2(0.0, 1.0))) / (2.0 * dy);
     return length(vec2(gx, gy));
 }
+// 地域だけのもっと細かい標高（火星のオリンポス山など。texture5。bodies.h の DetailMap の boxes と同じ計算）。細かい標高の窓の
+// 中にあり、その上に重ねる。値の形式は 0.5 m 単位で −10000 m から
+uniform sampler2D texture5;
+uniform vec4 detC;   // xy: 窓の左上（全球の画素）, z: 窓の一辺の画素数, w: 縁でなじませる幅（画素）
+uniform vec4 detD;   // xy: 全球の画素数, z: 1 で窓あり
+uniform vec4 detE;   // 地域の長方形（全球の画素）: xy 左上, zw 右下
+// 窓の中の位置 l（画素）と重み（窓と地域の外は 0、縁から detC.w 画素で 1）
+float det2Weight(vec2 uv, out vec2 l) {
+    l = vec2(0.0);
+    if (detD.z < 0.5) return 0.0;
+    vec2 g = uv * detD.xy - 0.5;
+    l = g - detC.xy;
+    l.x -= detD.x * floor(l.x / detD.x + 0.5);
+    vec2 b = g - detE.xy;
+    b.x -= detD.x * floor(b.x / detD.x + 0.5);
+    vec2 e = min(min(l, detC.z - 1.0 - l), min(b, detE.zw - detE.xy - 1.0 - b));
+    return clamp(min(e.x, e.y) / detC.w, 0.0, 1.0);
+}
+float det2Decode(vec4 t) { return (t.r * 255.0 * 256.0 + t.a * 255.0) * 0.5 - 10000.0; }
+float det2Height(vec2 l) {
+    ivec2 i = ivec2(floor(l)), n = ivec2(int(detC.z) - 1);
+    vec2 f = l - floor(l);
+    ivec2 a = clamp(i, ivec2(0), n), b = clamp(i + 1, ivec2(0), n);
+    float h00 = det2Decode(texelFetch(texture5, a, 0)), h10 = det2Decode(texelFetch(texture5, ivec2(b.x, a.y), 0));
+    float h01 = det2Decode(texelFetch(texture5, ivec2(a.x, b.y), 0)), h11 = det2Decode(texelFetch(texture5, b, 0));
+    return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
+float det2Slope(vec2 l, float lat, float R) {
+    float dy = 3.1415927 * R / detD.y, dx = 6.2831853 * R / detD.x * max(cos(lat), 0.05);
+    float gx = (det2Height(l + vec2(1.0, 0.0)) - det2Height(l - vec2(1.0, 0.0))) / (2.0 * dx);
+    float gy = (det2Height(l + vec2(0.0, 1.0)) - det2Height(l - vec2(0.0, 1.0))) / (2.0 * dy);
+    return length(vec2(gx, gy));
+}
+// 標高 h（m）に、地域だけのもっと細かい標高を重みで混ぜる。s: 間隔（単位球の長さ。それに合わせた縮小画像から引く）
+float det2Mix(vec2 uv, float s, float h, out float w2, out vec2 l2) {
+    w2 = det2Weight(uv, l2);
+    if (w2 <= 0.0) return h;
+    float lod = log2(max(s * detD.y / 3.1415927, 1.0));
+    return mix(h, lod > 0.0 ? det2Decode(textureLod(texture5, (l2 + 0.5) / detC.z, lod)) : det2Height(l2), w2);
+}
 // 1 分角より細かい山肌（手続き。地形の格子の高さと陰影の両方に使う）。x: 高さ（単位球の長さ）, yzw: 勾配。
 // 振幅は標高の傾き s（tan）で決め、急な山ほど険しく、平野は穏やかにする。h: 標高 m（海面の近くでは 0 へ）。
 // sp: 頂点・画素の間隔（単位球の長さ）。それより細かいオクターブは省く
@@ -389,32 +429,37 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
     float w = detWeight(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l);
     if (w <= 0.0) return hm;
     float lod = log2(max(sp * detB.y / 3.1415927, 1.0));
-    float hd = lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l);
-    float hb = mix(hm, hd, w);
+    float hd = lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w2;
+    vec2 l2;
+    float hb = det2Mix(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), sp, mix(hm, hd, w), w2, l2);
     if (3200.0 * LAT_K * sp >= 0.5) return hb;   // 山肌の一番粗いオクターブも格子点の間隔より細かい
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
-    float a = (0.003 + 0.6 * min(detSlope(l, lat, EARTH_RM), 1.0)) / 3200.0 * clamp(hb / 50.0, 0.0, 1.0);   // earthBumps の振幅
+    float sl = mix(detSlope(l, lat, EARTH_RM), w2 > 0.0 ? det2Slope(l2, lat, EARTH_RM) : 0.0, w2);
+    float a = (0.003 + 0.6 * min(sl, 1.0)) / 3200.0 * clamp(hb / 50.0, 0.0, 1.0);   // earthBumps の振幅
     return max(0.0, hb + a * vertexBumps(d, sp, 20.0 / EARTH_RM, 0.0, o) * EARTH_RM * w);
 }
 // 地球以外: カメラの周り（月・火星の窓の中）は細かい標高。データより細かい手続きの起伏（クレーター・山肌）を足した高さ m
 float bodyHeight(vec3 d, float sp, float hm) {
     float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
     vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l;
-    float w = detWeight(uv, l);
+    float w = detWeight(uv, l), w2 = 0.0;
+    vec2 l2 = vec2(0.0);
     if (w > 0.0) {
         float lod = log2(max(sp * detB.y / 3.1415927, 1.0));
         hm = mix(hm, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w);
+        hm = det2Mix(uv, sp, hm, w2, l2);
     }
     if (terrE.z < 0.5) return hm;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     g_cliff = 0.0; g_wall = 0.0;
     g_craterK = terrE.z > 1.5 ? mapCraterK(MAP_STYLE, d, o) : 1.0;
     if (w > 0.0 && MAP_STYLE == 3) {   // 火星の崖: 地層の段と尾根・溝（細かい標高の窓の中だけ）
-        float s = detSlope(l, lat, terrE.x), k = strataK(s, sp * terrE.x) * w, t = strataT(hm, d, o), dd;
+        float s = mix(detSlope(l, lat, terrE.x), w2 > 0.0 ? det2Slope(l2, lat, terrE.x) : 0.0, w2);
+        float k = strataK(s, sp * terrE.x) * w, t = strataT(hm, d, o), dd;
         if (k > 0.0) hm += k * STRATA_M * (strataStep(t, dd) - t);
         g_cliff = cliffWall(s) * w; g_wall = cliffRidgeA(s) * w;
     }
-    return hm + vertexBumps(d, sp, 20.0 / terrE.x, mix(terrE.y, terrE.w, w), o) * terrE.x;
+    return hm + vertexBumps(d, sp, 20.0 / terrE.x, mix(mix(terrE.y, terrE.w, w), detD.y / 6.2831853, w2), o) * terrE.x;
 }
 // 地形の影に使う標高 m: 全球の標高と細かい標高の窓だけ（手続きの起伏は入れない。bumpAt を呼ぶ所を増やさないためでもある）。
 // s: 調べる間隔（単位球の長さ）。それに合わせて縮小した画像から引く
@@ -422,10 +467,11 @@ float dataHeight(vec3 d, float s) {
     float h = terrHeight(d, log2(max(s * terrD.y / 3.1415927, 1.0)));
     float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
     vec2 l;
-    float w = detWeight(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l);
+    vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l2;
+    float w = detWeight(uv, l), w2;
     if (w > 0.0) {
         float lod = log2(max(s * detB.y / 3.1415927, 1.0));
-        h = mix(h, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w);
+        h = det2Mix(uv, s, mix(h, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w), w2, l2);
     }
     return h;
 }
@@ -442,7 +488,7 @@ float vertexShadow(vec3 d, float sp) {
     if (ce < 1e-4) return 1.0;
     sh /= ce;
     float te = se / ce, R = terrE.x;
-    float pxm = max(sp, 3.1415927 / (detB.z > 0.5 ? max(detB.y, terrD.y) : terrD.y)) * R;
+    float pxm = max(sp, 3.1415927 / max(max(detB.z > 0.5 ? detB.y : 0.0, detD.z > 0.5 ? detD.y : 0.0), terrD.y)) * R;
     float h0 = dataHeight(d, pxm / R);
     float dmax = max(min(150000.0, 8000.0 / max(te, 0.01)), pxm * 2.0), q = pow(dmax / pxm, 1.0 / 15.0), dist = pxm, lit = 1.0;
     for (int k = 0; k < 16; k++) {
@@ -1017,6 +1063,19 @@ float detGradient(vec2 uv, vec2 dx, vec2 dy, float lat, float R, out vec2 sl, ou
     float hS = detDecode(textureGrad(texture4, q + vec2(0.0, sq.y), gx, gy));
     hd = detDecode(textureGrad(texture4, q, gx, gy));
     sl = vec2((hE - hW) / (2.0 * sd.x) / (2.0 * PI * max(cos(lat), 0.05)), (hN - hS) / (2.0 * sd.y) / PI) / R;
+    vec2 l2;
+    float w2 = det2Weight(uv, l2);
+    if (w2 > 0.0) {   // 地域だけのもっと細かい標高
+        k = detD.xy / detC.z; gx = dx * k; gy = dy * k;
+        sd = max(1.0 / detD.xy, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
+        q = (l2 + 0.5) / detC.z; sq = sd * k;
+        hE = det2Decode(textureGrad(texture5, q + vec2(sq.x, 0.0), gx, gy));
+        hW = det2Decode(textureGrad(texture5, q - vec2(sq.x, 0.0), gx, gy));
+        hN = det2Decode(textureGrad(texture5, q - vec2(0.0, sq.y), gx, gy));
+        hS = det2Decode(textureGrad(texture5, q + vec2(0.0, sq.y), gx, gy));
+        hd = mix(hd, det2Decode(textureGrad(texture5, q, gx, gy)), w2);
+        sl = mix(sl, vec2((hE - hW) / (2.0 * sd.x) / (2.0 * PI * max(cos(lat), 0.05)), (hN - hS) / (2.0 * sd.y) / PI) / R, w2);
+    }
     return w;
 }
 
@@ -1689,18 +1748,22 @@ void main() {
 
     // 露出は地面の照り返しだけに掛ける（かすみは空と同じ明るさのまま重ね、地平線で空とつながるように）
     col = expo(col);
-    // 大気の中から見た地面のかすみ: 遠いほど地面の色が薄れ、空と同じ光（SKY_FS と同じ近似）が重なる
+    // 大気の中から見た地面のかすみ: 遠いほど地面の色が薄れ、その方向の空の色（SKY_FS と同じ近似。地面の向こうまで空気が
+    // 続く時の明るさ）に近づく。地面の光が通り抜ける割合 T で、地面の色と空の色を混ぜる（空の光を足すだけだと、空の光は
+    // 空気が少なくても頭打ちに近づくので、遠くの山肌に地面の光と空の光が両方乗り、地平線の空より明るく白く飛んでいた）
     if (atmHaze.x > 0.0) {
         float air = atmHaze.x * length(fragWorld) * atmHaze.y / atmHaze.z;
         vec3 v = normalize(fragWorld);
-        float cosT = dot(v, L), sunEl = dot(camUp, L);
-        vec3 sunCol = exp(-atmBeta * min(atmHaze.x / (max(sunEl, 0.0) + 0.06), 7.0)
-                          - atmOzone * min(1.0 / (max(sunEl, 0.0) + 0.03), 25.0) * min(atmHaze.x * 4.0, 1.0));
-        vec3 ray = sunCol * (1.0 - exp(-atmBeta * air)) * 0.75 * (1.0 + cosT * cosT);
+        float cosT = dot(v, L), sunEl = dot(camUp, L), mu = max(dot(v, camUp), 0.0);
+        float airV = atmHaze.x / (mu + 0.06);
+        float airS = min(atmHaze.x / (max(sunEl, 0.0) + 0.06), 7.0) * (1.0 - 0.7 * sqrt(mu));
+        vec3 sunCol = exp(-atmBeta * airS - atmOzone * min(1.0 / (max(sunEl, 0.0) + 0.03), 25.0) * min(atmHaze.x * 4.0, 1.0));
+        vec3 ray = sunCol * (1.0 - exp(-atmBeta * airV)) * 0.75 * (1.0 + cosT * cosT);
         float g = max(cosT, 0.0);
-        vec3 mie = sunCol * atmMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * air));
-        vec3 ins = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * atmHaze.w);
-        col = col * exp(-(atmBeta + 0.02) * air) + ins;
+        vec3 mie = sunCol * atmMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));
+        vec3 sky = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * atmHaze.w);
+        vec3 T = exp(-(atmBeta + 0.02) * air);
+        col = col * T + sky * (1.0 - T);
     }
     finalColor = vec4(doppler(col), 1.0);
 }

@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.69.0 (2026-11-23)
+
+- A few regions such as famous mountains now use still finer elevations near the ground (for the terrain grid heights, shading, terrain shadows, altitude and collisions, blended in at the edges of each region). On Earth: around Everest, Fuji, Mont Blanc and the Matterhorn, Kilimanjaro and Denali (Copernicus DEM GLO-90, about 90 m); on the Moon: Mons Hadley and the Apennines at the Apollo 15 site, Mons Huygens and Mons Ampère, Taurus-Littrow at the Apollo 17 site, and Tycho (SLDEM2015, about 60 m); on Mars: Olympus Mons and the Tharsis Montes (the USGS MOLA/HRSC blended elevations, about 206 m). The Olympus Mons scarp now shows its real gullies and ledges (at the previous 1.85 km per pixel, 60% of the slopes steeper than 25° were smoothed away). The data is in assets/earth_patches.bin, moon_patches.bin and mars_patches.bin (42.5 MB in all; tools/make_detail_patches.py). Drawing speed is unchanged
+- Fixed the haze over distant ground seen from inside an atmosphere. Distant slopes got both the ground's light and the sky's light, so they came out brighter than the horizon sky and washed out to bluish white (for example the Martian volcanoes seen from the ground). The ground color is now mixed with the sky color in that direction by the fraction of light that gets through
+- Retook the README images that show the ground (Everest, Mons Hadley on the Moon, the Apollo 15 landing, the Martian ground and sky and others). tools/bench_render.py has a scene below the Olympus Mons scarp
+
 ## 2.68.1 (2026-11-23)
 
 - The log now shows how long each per-kind shader took to build (`SHADER: planet variant (...) built in N ms`; this is how long drawing pauses the first time you come close. On Intel UHD it is about 1 s without the driver's saved copy and about 50 ms with it)

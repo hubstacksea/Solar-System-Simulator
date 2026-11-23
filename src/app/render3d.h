@@ -72,6 +72,7 @@ static Shader PlanetShaderFor(App& app) {
         if (pv.ok) {
             pv.sh.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(pv.sh, "texture3");
             pv.sh.locs[SHADER_LOC_MAP_OCCLUSION] = GetShaderLocation(pv.sh, "texture4");
+            pv.sh.locs[SHADER_LOC_MAP_EMISSION] = GetShaderLocation(pv.sh, "texture5");
             pv.loc.assign(app.planetUni.size(), -1);
             for (size_t i = 0; i < app.planetUni.size(); i++)
                 if (!app.planetUni[i].name.empty()) pv.loc[i] = GetShaderLocation(pv.sh, app.planetUni[i].name.c_str());
@@ -518,6 +519,55 @@ static void LoadDetail(App& app, int k, EmbeddedFile f, EmbeddedFile f2 = {nullp
     app.B[body].outer = std::max(app.B[body].outer, app.B[body].d.radius + T.hi);
 }
 
+// 地域だけのもっと細かい標高 g_detail[k + 3]（"EDP1"。tools/make_detail_patches.py）: 地域と区画の索引を読み、窓のテクスチャを作る
+static void LoadPatches(App& app, int k, EmbeddedFile f) {
+    DetailMap& D = g_detail[k + 3];
+    int body = k == 0 ? B_EARTH : k == 1 ? B_MOON : B_MARS;
+    if (D.file || !f.data || f.size < 20 || std::memcmp(f.data, "EDP1", 4) != 0 || app.B[body].terrain < 0) return;
+    int nb = 0;
+    std::memcpy(&D.W, f.data + 4, 4);
+    std::memcpy(&D.H, f.data + 8, 4);
+    std::memcpy(&D.tile, f.data + 12, 4);
+    std::memcpy(&nb, f.data + 16, 4);
+    if (D.tile <= 0 || D.W % D.tile || D.H % D.tile || D.H < DetailMap::N || nb <= 0 || f.size < 20 + 16 * (size_t)nb) return;
+    D.cols = D.W / D.tile;
+    D.rows = D.H / D.tile;
+    std::vector<DetailMap::Box> boxes;
+    int n = 0;
+    for (int i = 0; i < nb; i++) {
+        DetailMap::Box B;
+        std::memcpy(&B.c0, f.data + 20 + 16 * i, 4);
+        std::memcpy(&B.r0, f.data + 24 + 16 * i, 4);
+        std::memcpy(&B.cols, f.data + 28 + 16 * i, 4);
+        std::memcpy(&B.rows, f.data + 32 + 16 * i, 4);
+        // 地域は経度 ±180° をまたがない
+        if (B.cols <= 0 || B.rows <= 0 || B.c0 < 0 || B.r0 < 0 || B.c0 + B.cols > D.cols || B.r0 + B.rows > D.rows) return;
+        B.first = n;
+        n += B.cols * B.rows;
+        boxes.push_back(B);
+    }
+    size_t head = 20 + 16 * (size_t)nb;
+    if (f.size < head + 8 * (size_t)n) return;
+    D.pos.resize(n);
+    D.len.resize(n);
+    for (int i = 0; i < n; i++) {
+        std::memcpy(&D.pos[i], f.data + head + 8 * i, 4);
+        std::memcpy(&D.len[i], f.data + head + 4 + 8 * i, 4);
+        if ((size_t)D.pos[i] + D.len[i] > f.size) return;
+    }
+    D.boxes = boxes;
+    D.fmt = 2;
+    D.file = f.data;
+    D.split = f.size;
+    D.win.assign((size_t)DetailMap::N * DetailMap::N, 20000);
+    std::vector<unsigned char> blank((size_t)DetailMap::N * DetailMap::N * 2, 0);
+    Image img = {blank.data(), DetailMap::N, DetailMap::N, 1, PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA};
+    app.detailTex[k + 3] = LoadTextureFromImage(img);
+    SetTextureFilter(app.detailTex[k + 3], TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(app.detailTex[k + 3], TEXTURE_WRAP_CLAMP);
+    TraceLog(LOG_INFO, "DETAIL: %d regions of finer elevation (%d px per degree) for %s", nb, D.W / 360, app.B[body].d.en);
+}
+
 // 区画 i を展開する（tile x tile の値。陸の無い区画（地球）は空）
 static std::vector<unsigned short> DecodeDetailTile(const DetailMap& D, int i) {
     std::vector<unsigned short> v;
@@ -556,23 +606,41 @@ static std::vector<unsigned short> DecodeDetailTile(const DetailMap& D, int i) {
     return v;
 }
 
-// 窓をカメラの真下（緯度 lat・経度 lon rad）に合わせる。中心から窓の 1/4 以上ずれたら区画から組み直して GPU に載せる
+// 窓をカメラの真下（緯度 lat・経度 lon rad）に合わせる。中心から窓の 1/4 以上ずれたら区画から組み直して GPU に載せる。
+// 地域だけのもの（boxes）は、カメラに一番近い地域が窓の半分より近い時だけ、その地域の窓を作る（地域の外の画素は
+// 地域の縁の値で埋める。重みは 0）
 static void UpdateDetail(App& app, int k, double lat, double lon) {
     DetailMap& D = g_detail[k];
     const int N = DetailMap::N;
     if (!D.file || !app.detailTex[k].id) return;
-    int x0 = (int)std::lround((lon / (2 * PI) + 0.5) * D.W - 0.5 - N / 2);
-    int y0 = std::max(0, std::min(D.H - N, (int)std::lround((0.5 - lat / PI) * D.H - 0.5 - N / 2)));
+    double cx = (lon / (2 * PI) + 0.5) * D.W - 0.5, cy = (0.5 - lat / PI) * D.H - 0.5;
+    int box = -1;
+    if (!D.boxes.empty()) {
+        double best = 1e30;
+        for (size_t i = 0; i < D.boxes.size(); i++) {
+            const DetailMap::Box& B = D.boxes[i];
+            double bx = cx - B.c0 * D.tile;
+            bx -= D.W * std::floor(bx / D.W + 0.5);
+            double ex = std::max({0.0, -bx, bx - B.cols * D.tile}), ey = std::max({0.0, B.r0 * D.tile - cy, cy - (B.r0 + B.rows) * D.tile});
+            if (std::max(ex, ey) < best) best = std::max(ex, ey), box = (int)i;
+        }
+        if (best > N / 2) {
+            D.active = false;
+            return;
+        }
+    }
+    int x0 = (int)std::lround(cx - N / 2);
+    int y0 = std::max(0, std::min(D.H - N, (int)std::lround(cy - N / 2)));
     x0 = ((x0 % D.W) + D.W) % D.W;
     int ddx = x0 - D.x0;
     ddx -= D.W * (int)std::floor((double)ddx / D.W + 0.5);
-    if (D.active && std::abs(ddx) <= N / 4 && std::abs(y0 - D.y0) <= N / 4) return;
-    // 展開した区画（最近使ったものだけ残す）
-    static std::map<int, std::vector<unsigned short>> cache;
-    static std::map<int, unsigned> used;
+    if (D.active && box == D.box && std::abs(ddx) <= N / 4 && std::abs(y0 - D.y0) <= N / 4) return;
+    // 展開した区画（最近使ったものだけ残す。細かい標高ごと）
+    static std::map<int, std::vector<unsigned short>> caches[6];
+    static std::map<int, unsigned> useds[6];
     static unsigned stamp = 0;
-    static int cacheOf = -1;
-    if (cacheOf != k) cache.clear(), used.clear(), cacheOf = k;
+    std::map<int, std::vector<unsigned short>>& cache = caches[k];
+    std::map<int, unsigned>& used = useds[k];
     stamp++;
     auto tileData = [&](int i) -> const unsigned short* {
         used[i] = stamp;
@@ -581,16 +649,36 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
         return it->second.empty() ? nullptr : it->second.data();
     };
     unsigned short sea = D.fmt == 1 ? 127 : 20000;   // 地球の陸の無い区画は海面
-    for (int j = 0; j < N; j++) {
-        int gy = y0 + j, tr = gy / D.tile, py = gy % D.tile;
-        unsigned short* row = &D.win[(size_t)j * N];
-        for (int i = 0; i < N;) {
-            int gx = (x0 + i) % D.W, tc = gx / D.tile, px = gx % D.tile;
-            int run = std::min(N - i, D.tile - px);
-            const unsigned short* t = tileData(tr * D.cols + tc);
-            if (t) std::memcpy(row + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
-            else std::fill(row + i, row + i + run, sea);
-            i += run;
+    if (box >= 0) {
+        const DetailMap::Box& B = D.boxes[box];
+        int bx0 = B.c0 * D.tile, by0 = B.r0 * D.tile, bw = B.cols * D.tile, bh = B.rows * D.tile;
+        for (int j = 0; j < N; j++) {
+            int gy = std::max(0, std::min(bh - 1, y0 + j - by0)), tr = gy / D.tile, py = gy % D.tile;
+            unsigned short* row = &D.win[(size_t)j * N];
+            for (int i = 0; i < N;) {
+                int dx = x0 + i - bx0;
+                dx -= D.W * (int)std::floor((double)dx / D.W + 0.5);
+                int gx = std::max(0, std::min(bw - 1, dx)), tc = gx / D.tile, px = gx % D.tile;
+                int run = dx < 0 || dx >= bw ? 1 : std::min(N - i, D.tile - px);
+                const unsigned short* t = tileData(B.first + tr * B.cols + tc);
+                if (!t) std::fill(row + i, row + i + run, sea);
+                else if (run == 1) row[i] = t[(size_t)py * D.tile + px];
+                else std::memcpy(row + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
+                i += run;
+            }
+        }
+    } else {
+        for (int j = 0; j < N; j++) {
+            int gy = y0 + j, tr = gy / D.tile, py = gy % D.tile;
+            unsigned short* row = &D.win[(size_t)j * N];
+            for (int i = 0; i < N;) {
+                int gx = (x0 + i) % D.W, tc = gx / D.tile, px = gx % D.tile;
+                int run = std::min(N - i, D.tile - px);
+                const unsigned short* t = tileData(tr * D.cols + tc);
+                if (t) std::memcpy(row + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
+                else std::fill(row + i, row + i + run, sea);
+                i += run;
+            }
         }
     }
     for (auto it = used.begin(); it != used.end();) {   // 今の窓で使わなかった区画は、多ければ捨てる
@@ -601,6 +689,7 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
     }
     D.x0 = x0;
     D.y0 = y0;
+    D.box = box;
     D.active = true;
     if (D.fmt == 1) {
         std::vector<unsigned char> px(D.win.begin(), D.win.end());
@@ -644,7 +733,13 @@ static void UpdateDetailWindows(App& app) {
         double cw = std::cos(b.spin), sw = std::sin(b.spin);
         V3 X = b.ex * cw - b.ez * sw, Z = b.ex * sw + b.ez * cw, up = rel * (1.0 / dist);
         V3 o(Dot(up, X), Dot(up, b.pole), Dot(up, Z));   // 真下の向き（本体の座標系）
-        UpdateDetail(app, k, MapLatDeg(b.d, o) * DEG, std::atan2(-o.z, o.x));
+        double lat = MapLatDeg(b.d, o) * DEG, lon = std::atan2(-o.z, o.x);
+        UpdateDetail(app, k, lat, lon);
+        // 地域だけのもっと細かい標高は、その 1 画素が画面で見分けられる高さ（半径の 1.05 倍）より下で
+        if (g_detail[k + 3].file) {
+            if (dist < b.d.radius * 1.05) UpdateDetail(app, k + 3, lat, lon);
+            else g_detail[k + 3].active = false;
+        }
     }
 }
 
@@ -653,7 +748,8 @@ static void TerrainOff(App& app) {
     float a[4] = {0, 0, 0, 0};
     PlanetUniform(app, app.locTerrA, a, SHADER_UNIFORM_VEC4);
     PlanetUniform(app, app.locDetB, a, SHADER_UNIFORM_VEC4);
-    if (app.mat.maps) app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = Texture2D{};
+    PlanetUniform(app, app.locDetD, a, SHADER_UNIFORM_VEC4);
+    if (app.mat.maps) app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = app.mat.maps[MATERIAL_MAP_EMISSION].texture = Texture2D{};
 }
 
 // 標高データのある天体（地球・月・火星）の地表近く: カメラの真下を中心に、近くほど細かい格子を地平線の先まで敷き、
@@ -683,7 +779,9 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     // 間隔まで間引く
     // 地球・月・火星: 細かい標高の窓（UpdateDetailWindows で自機の真下に合わせてある）。輪の間隔もその 1 画素に合わせる
     int dk = DetailIndex(T.body);
-    bool det = dk >= 0 && g_detail[dk].active;
+    // 地域だけのもっと細かい標高（det2）では輪の間隔を詰めない（オリンポス断崖の下で、格子を細かくしても見た目はほぼ変わらず
+    // 描画が 3 割近く重くなった。細かい形は陰影（detGradient）と頂点の高さで出る）
+    bool det = dk >= 0 && g_detail[dk].active, det2 = det && g_detail[dk + 3].active;
     const double TERRAIN_PX = 32, texel = PI / (det ? g_detail[dk].H : texH) * 0.5;
     static float ring[4 * 61], step[4 * 61];
     {
@@ -739,6 +837,17 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
         PlanetUniform(app, app.locDetB, db, SHADER_UNIFORM_VEC4);
         app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = app.detailTex[dk];
     }
+    if (det2) {   // 地域だけのもっと細かい標高: 窓・全球の画素数・地域の長方形（全球の画素）
+        const DetailMap& P = g_detail[dk + 3];
+        const DetailMap::Box& B = P.boxes[P.box];
+        float dc[4] = {(float)P.x0, (float)P.y0, (float)DetailMap::N, (float)DetailMap::MARGIN};
+        float dd[4] = {(float)P.W, (float)P.H, 1, (float)P.fmt};
+        float de[4] = {(float)(B.c0 * P.tile), (float)(B.r0 * P.tile), (float)((B.c0 + B.cols) * P.tile), (float)((B.r0 + B.rows) * P.tile)};
+        PlanetUniform(app, app.locDetC, dc, SHADER_UNIFORM_VEC4);
+        PlanetUniform(app, app.locDetD, dd, SHADER_UNIFORM_VEC4);
+        PlanetUniform(app, app.locDetE, de, SHADER_UNIFORM_VEC4);
+        app.mat.maps[MATERIAL_MAP_EMISSION].texture = app.detailTex[dk + 3];
+    }
     // データより細かい手続きの起伏: 半径 m・全球の標高の周波数・種類（1 月, 2 地図のある天体）・細かい標高の周波数
     float te[4] = {(float)(d.radius * 1000), (float)(texH / (2 * PI)), (float)T.bumps, (float)(det ? g_detail[dk].H / (2 * PI) : 0)};
     PlanetUniform(app, app.locTerrE, te, SHADER_UNIFORM_VEC4);
@@ -760,6 +869,7 @@ static void LoadEarthTextures(App& app) {
         return;
     }
     LoadDetail(app, 0, EarthDetailBin());
+    LoadPatches(app, 0, EarthPatchesBin());
 }
 
 // 木星の大赤斑の経度（体系 II、西経 deg、360° を超えても続けて数える）。Project Pluto がまとめた観測値
@@ -836,6 +946,7 @@ static void LoadBodyMaps(App& app) {
         app.maps.push_back(m);
     }
     LoadDetail(app, 2, MarsDetailBin(), MarsDetail2Bin(), true);
+    LoadPatches(app, 2, MarsPatchesBin());
     if (MarsTiPng().data) app.marsTi = LoadEmbeddedTexture(MarsTiPng(), ".png");
 }
 
@@ -855,6 +966,7 @@ static void LoadMoonTextures(App& app) {
         SetAux(T, MoonColorJpg(), ".jpg", 3);
     }
     LoadDetail(app, 1, MoonDetailBin());
+    LoadPatches(app, 1, MoonPatchesBin());
 }
 
 // 天の川の光: 赤道座標の全天画像を、カメラを中心とする球の内側に薄く貼る（星より先に描く）。

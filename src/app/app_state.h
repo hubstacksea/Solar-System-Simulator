@@ -181,7 +181,7 @@ struct App {
     std::vector<PlanetVar> planetVars;
     bool planetBig = false;   // 今描く天体が画面で大きい（種類ごとの版で描く）
     Texture2D earthColor{}, earthData{};  // 地球の実データ（読めなければ手続き生成で描く）
-    Texture2D detailTex[3]{};  // 地球・月・火星の細かい標高のカメラの周りの窓（g_detail）
+    Texture2D detailTex[6]{};  // 地球・月・火星の細かい標高と、その地域だけのもっと細かい標高のカメラの周りの窓（g_detail）
     Texture2D earthMonths{}, earthClouds{};  // 地球の 12 か月の地表の色と雲（読めなければ 4 月の色と手続きの雲）
     bool earthTex = false;
     Texture2D moonColor{}, moonData{};    // 月の実データ
@@ -213,7 +213,7 @@ struct App {
     int locHazeAir = -1, locHazeSky = -1, locHazeBeta = -1;
     Mesh terrainMesh{};                   // 地表近くの地形の格子（頂点は (u, φ)。形はシェーダで作る）
     int locTerrA = -1, locTerrB = -1, locTerrC = -1, locTerrD = -1, locTerrRing = -1, locTerrStep = -1;
-    int locDetA = -1, locDetB = -1, locTerrE = -1;
+    int locDetA = -1, locDetB = -1, locDetC = -1, locDetD = -1, locDetE = -1, locTerrE = -1;
     std::vector<Vector3> dust;
     double glow = 0;
     double camYaw = NAN, camPitch = 0, camDist = 60;

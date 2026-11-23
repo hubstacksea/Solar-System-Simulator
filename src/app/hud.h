@@ -1605,7 +1605,10 @@ static void RefreshDeferredAssets(App& app) {
     if (!app.earthClouds.id && EarthCloudsJpg().data) app.earthClouds = LoadEmbeddedTexture(EarthCloudsJpg(), ".jpg");
     if (!g_detail[0].file && app.earthTex) LoadDetail(app, 0, EarthDetailBin());
     if (!g_detail[1].file && app.moonTex) LoadDetail(app, 1, MoonDetailBin());
+    if (!g_detail[3].file && app.earthTex) LoadPatches(app, 0, EarthPatchesBin());
+    if (!g_detail[4].file && app.moonTex) LoadPatches(app, 1, MoonPatchesBin());
     if (!g_detail[2].file && !app.maps.empty()) LoadDetail(app, 2, MarsDetailBin(), MarsDetail2Bin(), true);
+    if (!g_detail[5].file && !app.maps.empty()) LoadPatches(app, 2, MarsPatchesBin());
     if (!app.moonRock.id && app.moonTex && MoonRockPng().data) app.moonRock = LoadEmbeddedTexture(MoonRockPng(), ".png");
     if (!app.marsTi.id && !app.maps.empty() && MarsTiPng().data) app.marsTi = LoadEmbeddedTexture(MarsTiPng(), ".png");
     if (!app.moonTex && MoonColorJpg().data && MoonDataPng().data) LoadMoonTextures(app);
