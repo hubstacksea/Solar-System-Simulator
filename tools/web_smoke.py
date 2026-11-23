@@ -5,7 +5,7 @@
 
 Chrome の DevTools プロトコルを標準ライブラリだけで話す（WebSocket も自前）。WebGL2 はソフトウェア描画
 （SwiftShader）で動かす。各 URL について、起動（raylib の初期化のログ）を待ってから指定の秒数ごとに画面を撮る。
-起動しなかった URL や、ページで捕まえられなかった例外があれば終了コード 1。
+起動しなかった URL、ページで捕まえられなかった例外、撮れなかった画面があれば終了コード 1。
 
 使い方: python3 tools/web_smoke.py <出力ディレクトリ> <ページの URL> [<クエリ>[|<操作>] ...]
   例: python3 tools/web_smoke.py shots-web http://localhost:8000/ "" "?voyage=BepiColombo&scene=arrive"
@@ -32,6 +32,10 @@ SHOT_AT = (20, 40)          # 起動から何秒後に撮るか
 # ヘッドレスの Chrome はソフトウェア描画で 1 フレームが 1 秒近くかかり、時間で待つと押す・離すが同じフレームに入る）
 HOLD_FRAMES = 2
 BOOT_TIMEOUT = 120          # 起動を待つ最長の秒数
+# 起動してから、撮る・操作の時間に加えて待つ最長の秒数（重い場面ではソフトウェア描画で画面が届くのが遅れる。冥王星の地表の
+# 近くでは、撮るのを頼んでから届くまで 60〜120 秒かかった。以前はページを開いた時刻から 170 秒で打ち切っていて、40 秒の画面が
+# 撮れないことがあった）
+FINISH_TIMEOUT = 300
 
 
 # キー: (key, code, 仮想キーコード, 入力される文字)
@@ -56,6 +60,7 @@ class WebSocket:
         if b" 101 " not in head.split(b"\r\n")[0]:
             raise RuntimeError(head.decode(errors="replace"))
         self.buf = b""
+        self.msg = b""   # 続きのフレームを待っているメッセージ
 
     def send(self, text):
         data = text.encode()
@@ -65,35 +70,51 @@ class WebSocket:
                                 else bytes([0x80 | 127]) + struct.pack(">Q", n))
         self.sock.sendall(hdr + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
 
-    def _read(self, n):
-        while len(self.buf) < n:
-            chunk = self.sock.recv(1 << 16)
-            if not chunk:
-                raise ConnectionError("closed")
-            self.buf += chunk
-        out, self.buf = self.buf[:n], self.buf[n:]
-        return out
+    def _frame(self):
+        """受け取り済みのデータの先頭の、そろったフレーム (b0, 中身)。まだそろっていなければ None（データは消さない）"""
+        if len(self.buf) < 2:
+            return None
+        b0, b1 = self.buf[0], self.buf[1]
+        n, at = b1 & 0x7F, 2
+        if n == 126:
+            if len(self.buf) < 4:
+                return None
+            n, at = struct.unpack(">H", self.buf[2:4])[0], 4
+        elif n == 127:
+            if len(self.buf) < 10:
+                return None
+            n, at = struct.unpack(">Q", self.buf[2:10])[0], 10
+        if len(self.buf) < at + n:
+            return None
+        payload, self.buf = self.buf[at:at + n], self.buf[at + n:]
+        return b0, payload
 
     def recv(self, timeout):
-        """1 つのメッセージ（テキスト）。timeout 秒で None"""
-        self.sock.settimeout(timeout)
-        try:
-            msg = b""
-            while True:
-                b0, b1 = self._read(2)
-                n = b1 & 0x7F
-                if n == 126:
-                    n = struct.unpack(">H", self._read(2))[0]
-                elif n == 127:
-                    n = struct.unpack(">Q", self._read(8))[0]
-                payload = self._read(n)
-                if b0 & 0x0F == 9:   # ping
-                    continue
-                msg += payload
-                if b0 & 0x80:
-                    return msg.decode(errors="replace")
-        except socket.timeout:
-            return None
+        """1 つのメッセージ（テキスト）。timeout 秒で None。途中まで届いたメッセージは次に呼んだ時に続ける
+        （大きなスクリーンショットが届く途中で待ちを打ち切って、フレームの見出しを読み捨てると、その後のデータの区切りを見失っていた）"""
+        end = time.time() + timeout
+        while True:
+            f = self._frame()
+            if f is None:
+                left = end - time.time()
+                if left <= 0:
+                    return None
+                self.sock.settimeout(left)
+                try:
+                    chunk = self.sock.recv(1 << 16)
+                except socket.timeout:
+                    return None
+                if not chunk:
+                    raise ConnectionError("closed")
+                self.buf += chunk
+                continue
+            b0, payload = f
+            if b0 & 0x0F == 9:   # ping
+                continue
+            self.msg += payload
+            if b0 & 0x80:
+                msg, self.msg = self.msg, b""
+                return msg.decode(errors="replace")
 
 
 def main():
@@ -128,10 +149,10 @@ def main():
 
         backlog = []   # フレームを待つ間に届いた、ほかのメッセージ
 
-        def wait_reply(i):
-            """呼び出し i の結果が届くまで待つ（その間に届いたほかのメッセージは後で処理する）"""
+        def wait_reply(i, timeout=60):
+            """呼び出し i の結果が届くまで待つ（その間に届いたほかのメッセージは後で処理する）。timeout 秒何も届かなければ None"""
             while True:
-                m = ws.recv(60)
+                m = ws.recv(timeout)
                 if m is None:
                     return None
                 msg = json.loads(m)
@@ -162,8 +183,9 @@ def main():
             size = (1280, 720)
             next_at = None   # 次の操作を行う時刻
             errors = 0
-            limit = BOOT_TIMEOUT + max(SHOT_AT) + 10 + sum(float(a[5:]) for a in actions if a.startswith("wait:"))
-            while time.time() - t0 < limit:
+            lost = []   # 操作の shot で撮れなかった画面
+            limit = max(SHOT_AT) + FINISH_TIMEOUT + sum(float(a[5:]) for a in actions if a.startswith("wait:"))
+            while (time.time() - t0 < BOOT_TIMEOUT) if booted is None else (time.time() - booted < limit):
                 if booted is not None and shots and time.time() - booted >= shots[0]:
                     pending[call("Page.captureScreenshot", format="png")] = "%s_%ds.png" % (name, shots.pop(0))
                 if booted is not None and actions and size_id is None:
@@ -180,10 +202,12 @@ def main():
                     elif kind == "js":   # ページで JavaScript を実行する（確認用）
                         evaluate(arg)
                     elif kind == "shot":   # 撮り終わるまで次の操作に進まない
-                        msg = wait_reply(call("Page.captureScreenshot", format="png"))
+                        msg = wait_reply(call("Page.captureScreenshot", format="png"), FINISH_TIMEOUT)
                         if msg and "result" in msg:
                             with open(os.path.join(out, "%s_%s.png" % (name, arg)), "wb") as f:
                                 f.write(base64.b64decode(msg["result"]["data"]))
+                        else:
+                            lost.append("%s_%s.png" % (name, arg))
                     elif kind == "key":
                         key, code, vk, text = KEYS[arg]
                         # 文字の出るキーは keyDown（text 付き）、出ないキーは rawKeyDown（Puppeteer と同じ）
@@ -236,11 +260,15 @@ def main():
                 elif meth == "Log.entryAdded":
                     e = p.get("entry", {})
                     log.append("[%s] %s %s" % (e.get("level"), e.get("text"), e.get("url", "")))
+            missing = ["%ds" % t for t in shots] + list(pending.values()) + lost   # 撮れなかった画面
+            if missing:
+                log.append("[smoke] screenshots not taken: " + " ".join(missing))
             with open(os.path.join(out, name + ".log"), "w", encoding="utf-8") as f:
                 f.write("URL: %s\n" % (base + q) + "\n".join(log) + "\n")
-            ok = booted is not None and errors == 0 and not actions
+            ok = booted is not None and errors == 0 and not actions and not missing
             failed += not ok
-            print("%-8s %s  booted=%s  exceptions=%d  %s" % (name, "OK" if ok else "FAIL", booted is not None, errors, base + q),
+            print("%-8s %s  booted=%s  exceptions=%d  missing=%d  %s" % (name, "OK" if ok else "FAIL", booted is not None, errors,
+                                                                    len(missing), base + q),
                   flush=True)
     finally:
         proc.terminate()

@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.67.0 (2026-11-23)
+
+- Triton's cantaloupe terrain (300° E to 30° E, from the equator to the northern edge of the imaged area) is shaded with rounded dimples about 35 km across and the ridges between them (about 500 m deep, from the 300–600 m of Schenk et al. 2021; estimated from Voyager images and uncertain; best seen when the Sun is low). Near the surface of Pluto, drawing is about 4% slower (on Intel UHD; the planet shader is large and runs short of registers, so more values are spilled)
+- Fixed the browser check (tools/web_smoke.py) sometimes missing screenshots of heavy scenes. Giving up a wait in the middle of a large screenshot lost track of where the following messages began. The waits are now counted from startup, and missing screenshots count as a failure
+
 ## 2.66.0 (2026-11-23)
 
 - Fixed the troughs of Sputnik Planitia on Pluto breaking into offset steps when seen at a slant. The troughs now follow the distance to the edges of the cells (so their width is even), and their corners are smooth where they meet

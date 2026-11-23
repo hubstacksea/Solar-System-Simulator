@@ -714,16 +714,27 @@ vec2 cellVec(vec2 q, vec2 i, int k) {
     uint h = hashu(ivec3(ivec2(c), 11));
     return q - c - (0.18 + 0.64 * vec2(float(h & 65535u), float(h >> 16)) * (1.0 / 65536.0));
 }
-// 冥王星のスプートニク平原の、対流の多角形の境目の溝: 平原の中心（東経 180°）を 0 とする経度と緯度の平面に点を散らした
-// ボロノイの、多角形の縁（一番近い点と、ほかの点との垂直二等分線）までの距離が小さい所（平面は平原の中では球面とほぼ同じ。
-// 3 次元のボロノイは調べる点が 27 個で重かった。2 番目と 1 番目に近い点の距離の差を使うと、近い 2 点の間で溝が扇形に広がり、
-// 3 本の溝が集まる所で陰影が折れた）。F: 多角形の大きさの逆数（単位球の長さあたり）、lat・lon: 緯度・経度。
-// 値は vec4(高さ −1..0, p についての勾配)
-vec4 cellTroughs(float lat, float lon, float F, vec3 o) {
+// 多角形の網目（冥王星のスプートニク平原の溝・トリトンのカンタロープ地形）は、中心の経度 lon0 を 0 とする経度と緯度の平面に
+// 点を散らしたボロノイで作る（平面は地域の中では球面とほぼ同じ。経度の向きは kx（中心の緯度の cos）で縮める。3 次元の
+// ボロノイは調べる点が 27 個で重かった）。F: 多角形の大きさの逆数（単位球の長さあたり）、lat・lon: 緯度・経度
+vec2 cellQ(float lat, float lon, float lon0, float kx, float F, vec3 o) {
+    float lo = mod(lon - lon0 + 9.4247780, 6.2831853) - 3.1415927;
+    return vec2(lo * kx, lat) * F + o.xy;
+}
+// q の平面での勾配 g を p についての勾配に
+vec3 cellGrad(float lat, float lon, float kx, vec2 g) {
+    vec3 east = vec3(-sin(lon), 0.0, -cos(lon)), north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
+    return east * g.x * kx / max(cos(lat), 0.05) + north * g.y;
+}
+// ボロノイの多角形の網目。pits = false: 冥王星のスプートニク平原の、対流の多角形の境目の溝（多角形の縁（一番近い点と、ほかの
+// 点との垂直二等分線）までの距離が小さい所。2 番目と 1 番目に近い点の距離の差を使うと、近い 2 点の間で溝が扇形に広がり、
+// 3 本の溝が集まる所で陰影が折れた）。pits = true: トリトンのカンタロープ地形の、丸みのある窪みと間の尾根（点からの距離 r と
+// 縁までの距離 e から、点で 0・縁で 1 になる r / (r + e) の上の窪み。縁で傾きが 0 なので、尾根の頂は折れ目にならない）。
+// 値は vec4(高さ −1..0（溝の底・窪みの底で −1）, p についての勾配)
+vec4 cellNet(float lat, float lon, float lon0, float kx, float F, bool pits, vec3 o) {
     float w = lodW(F * 10.0);
     if (w <= 0.0) return vec4(0.0);
-    float lo = mod(lon + 6.2831853, 6.2831853) - 3.1415927;
-    vec2 q = vec2(lo * 0.94, lat) * F + o.xy, i = floor(q), v1 = vec2(0.0);
+    vec2 q = cellQ(lat, lon, lon0, kx, F, o), i = floor(q), v1 = vec2(0.0);
     float d1 = 1e9, d2 = 1e9;
     for (int k = 0; k < 9; k++) {
         vec2 v = cellVec(q, i, k);
@@ -732,8 +743,8 @@ vec4 cellTroughs(float lat, float lon, float F, vec3 o) {
         else d2 = min(d2, d);
     }
     // 縁までの距離は、2 番目と 1 番目に近い点の距離の差の半分より小さくない。なめらかな最小で縮むのは 0.015 × log 8 = 0.031 まで
-    // なので、差が 2 × (0.06 + 0.031) を超える所（多角形の内側の大部分）は溝の外
-    if (sqrt(d2) - sqrt(d1) > 0.183) return vec4(0.0);
+    // なので、溝では差が 2 × (0.06 + 0.031) を超える所（多角形の内側の大部分）は溝の外
+    if (!pits && sqrt(d2) - sqrt(d1) > 0.183) return vec4(0.0);
     // 縁（垂直二等分線）ごとの距離 ek を、なめらかな最小（幅 0.015）でまとめる（ただの最小だと、溝が集まる所で壁が折れ目で
     // 切り替わって見える）。今までの最小 m を基準に重みを足していく（配列を使わない）
     float m = 1e9, sw = 0.0;
@@ -751,12 +762,19 @@ vec4 cellTroughs(float lat, float lon, float F, vec3 o) {
             sw += r; n += r * dv / L;
         }
     }
-    float e = m - 0.015 * log(sw);   // 縁の上では負になるが、そこは溝の底
-    n /= sw;
-    float s = clamp(e / 0.06, 0.0, 1.0);
-    vec2 g = 6.0 * s * (1.0 - s) / 0.06 * n * F;   // q の平面での勾配
-    vec3 east = vec3(-sin(lon), 0.0, -cos(lon)), north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
-    return w * vec4(s * s * (3.0 - 2.0 * s) - 1.0, east * g.x * 0.94 / max(cos(lat), 0.05) + north * g.y);
+    float e = m - 0.015 * log(sw);   // 縁の上では負になるが、そこは溝の底・尾根の頂
+    n /= sw;   // e の q についての勾配
+    // 形を決める値 x とその勾配 nx: 溝は e、窪みは r / (r + e)
+    float x = e, x0 = 0.0, xw = 0.06;
+    vec2 nx = n;
+    if (pits) {
+        float r = sqrt(d1), ep = max(e, 0.0), D = r + ep + 1e-6;
+        x = r / D; x0 = 0.15; xw = 0.85;
+        nx = (ep * v1 / max(r, 1e-6) - (e > 0.0 ? r : 0.0) * n) / (D * D);
+    }
+    float s = clamp((x - x0) / xw, 0.0, 1.0);
+    vec2 g = 6.0 * s * (1.0 - s) / xw * nx * F;   // q の平面での勾配
+    return w * vec4(s * s * (3.0 - 2.0 * s) - 1.0, cellGrad(lat, lon, kx, g));
 }
 // 地図のある氷の衛星などの、地図より細かい地形（陰影だけ。値は vec4(高さ, 勾配)、単位球の長さ）。大きさ・高さは探査機の
 // 画像と地形の研究からの目安:
@@ -765,6 +783,9 @@ vec4 cellTroughs(float lat, float lon, float F, vec3 o) {
 //  - ガニメデ: 明るい溝状地形に、尾根と溝が間隔 約 8 km（起伏 約 350 m）と 1.5 km（60 m）で並ぶ。帯ごとに向きが違う
 //  - エンケラドゥス: 南極地域（南緯 55° より南）に、間隔 約 1.5 km・起伏 約 60 m の尾根と溝
 //  - 冥王星: スプートニク平原の、窒素の氷の対流でできた多角形（大きさ 約 25 km）の境目の溝（深さ 約 100 m）
+//  - トリトン: カンタロープ地形（ボイジャー 2 号の画像で東経 300°〜30°・赤道から北の撮影範囲の端まで。USGS の
+//    ブベンベ地域の位置は北緯 18°・東経 335°）の、直径 30〜40 km の楕円の窪み（cavi）が並ぶ網目。窪みの深さ 約 500 m
+//    （Schenk ほか 2021 で 300〜600 m、間の尾根は 400 m 以上。ボイジャーの立体視・陰影からの推定で不確か）
 // R: 半径 m、rel: 地図の画素の明るさ（地図の平均を 1）、lat・lon: 緯度・経度、kC: mapCraterK の値（冥王星では平原の外の割合）
 vec4 bodyRelief(vec3 p, int style, vec3 o, float R, float rel, float lat, float lon, float kC) {
     vec4 r = vec4(0.0);
@@ -792,9 +813,14 @@ vec4 bodyRelief(vec3 p, int style, vec3 o, float R, float rel, float lat, float 
         float bn = s > 0.0 ? lineBend(p, R / 1500.0, o) : 0.0;
         if (s > 0.0) r = s * (60.0 / R) * (lineSet(p, lineDir(12.0), R / 1500.0, 0.8, 1, o, bn) * m +
                                            lineSet(p, lineDir(13.0), R / 1500.0, 0.8, 1, o + 3.0, bn) * (1.0 - m));
-    } else if (style == 10) {
-        float s = 1.0 - kC;
-        if (s > 0.0) r = s * (100.0 / R) * cellTroughs(lat, lon, R / 25000.0, o + 33.0);
+    } else if (style == 10 || style == 12) {
+        // トリトンの地域: 中心 北緯 22°・東経 345°、南北 ±24°・東西 ±48° の楕円。縁は場所で揺らす
+        bool tr = style == 12;
+        float la = degrees(lat) - 22.0, lo = mod(degrees(lon) + 555.0, 360.0) - 180.0;
+        float s = tr ? 1.0 - smoothstep(0.8, 1.0, (la / 24.0) * (la / 24.0) + (lo / 48.0) * (lo / 48.0) +
+                                                   (vnoise(p * 10.0 + o + 9.0) - 0.5) * 0.4) : 1.0 - kC;
+        if (s > 0.0) r = s * ((tr ? 500.0 : 100.0) / R) * cellNet(lat, lon, tr ? -0.2617994 : 3.1415927, tr ? 0.93 : 0.94,
+                                                                 R / (tr ? 35000.0 : 25000.0), tr, o + (tr ? 47.0 : 33.0));
     }
     return r;
 }
