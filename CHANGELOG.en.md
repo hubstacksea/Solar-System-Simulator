@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.69.3 (2026-11-24)
+
+- Fixed the images in the README galleries on GitHub being of unequal size side by side (Earth and the Moon and others; the column with longer captions was wider). Each column now takes half the width
+
 ## 2.69.2 (2026-11-24)
 
 - Dropped the per-kind planet shaders (2.68.0): all bodies are drawn with one shader again, as up to 2.67.0. Drawing paused while the shader for each newly approached kind of body was built (on every warp; about 2 s without the driver's saved copy). In exchange for no more pauses, Pluto near the ground takes about 2.1 times and Mars about 1.16 times as long to draw as in 2.69.1 (Intel UHD; Earth and the Moon are about the same)

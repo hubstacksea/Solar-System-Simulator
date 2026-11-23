@@ -12,86 +12,215 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 
 **Earth and the Moon**
 
-| | |
-|---|---|
-| ![City lights of Europe at night](docs/screenshots/earth_night.jpg) City lights of Europe at night | ![Dusk over the Pacific](docs/screenshots/sunset.jpg) Dusk over the Pacific |
-| ![Sunset over the sea](docs/screenshots/sunset_sea.jpg) Sunset over the sea | ![Hazy horizon from 10 km](docs/screenshots/haze.jpg) The hazy horizon from 10 km up |
-| ![The Everest massif](docs/screenshots/earth_mountains.jpg) The Everest massif from about 7 km up (Copernicus DEM 3 arc-second (about 90 m) elevations as true-height relief; finer slopes are procedural) | ![The Alps from orbit](docs/screenshots/earth_alps.jpg) The Alps at midday in November from 300 km up (shading of ridges and valleys) |
-| ![International Space Station](docs/screenshots/iss.jpg) The International Space Station above Earth | ![The Moon's near side](docs/screenshots/moon.jpg) The Moon's near side (real NASA data) |
-| ![Mons Hadley on the Moon](docs/screenshots/moon_terrain.jpg) Low over the Moon: Mons Hadley near the Apollo 15 landing site, with Hadley Rille in front (SLDEM2015 elevations of about 60 m as true-height relief; smaller craters are procedural) | ![Total lunar eclipse of 31 December 2028](docs/screenshots/lunar_eclipse.jpg) Total lunar eclipse of 31 December 2028 (seen from beside the Moon) |
-| ![Solar eclipse of 2 August 2027](docs/screenshots/solar_eclipse.jpg) Solar eclipse of 2 August 2027 (the Moon's shadow over North Africa) | ![Total solar eclipse from the ground](docs/screenshots/eclipse_ground.jpg) The total eclipse of 2 August 2027 from the ground (corona) |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/earth_night.jpg" alt="City lights of Europe at night" width="100%"><br>City lights of Europe at night</td>
+<td width="50%" valign="top"><img src="docs/screenshots/sunset.jpg" alt="Dusk over the Pacific" width="100%"><br>Dusk over the Pacific</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/sunset_sea.jpg" alt="Sunset over the sea" width="100%"><br>Sunset over the sea</td>
+<td width="50%" valign="top"><img src="docs/screenshots/haze.jpg" alt="Hazy horizon from 10 km" width="100%"><br>The hazy horizon from 10 km up</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/earth_mountains.jpg" alt="The Everest massif" width="100%"><br>The Everest massif from about 7 km up (Copernicus DEM 3 arc-second (about 90 m) elevations as true-height relief; finer slopes are procedural)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/earth_alps.jpg" alt="The Alps from orbit" width="100%"><br>The Alps at midday in November from 300 km up (shading of ridges and valleys)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/iss.jpg" alt="International Space Station" width="100%"><br>The International Space Station above Earth</td>
+<td width="50%" valign="top"><img src="docs/screenshots/moon.jpg" alt="The Moon&#x27;s near side" width="100%"><br>The Moon's near side (real NASA data)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/moon_terrain.jpg" alt="Mons Hadley on the Moon" width="100%"><br>Low over the Moon: Mons Hadley near the Apollo 15 landing site, with Hadley Rille in front (SLDEM2015 elevations of about 60 m as true-height relief; smaller craters are procedural)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/lunar_eclipse.jpg" alt="Total lunar eclipse of 31 December 2028" width="100%"><br>Total lunar eclipse of 31 December 2028 (seen from beside the Moon)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/solar_eclipse.jpg" alt="Solar eclipse of 2 August 2027" width="100%"><br>Solar eclipse of 2 August 2027 (the Moon's shadow over North Africa)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/eclipse_ground.jpg" alt="Total solar eclipse from the ground" width="100%"><br>The total eclipse of 2 August 2027 from the ground (corona)</td>
+</tr>
+</table>
 
 **The Apollo program**
 
-| | |
-|---|---|
-| ![Lunar module undocking](docs/screenshots/apollo15_undock.jpg) 30 July 1971: the lunar module undocking from the command and service module in lunar orbit (Apollo 15) | ![Apollo 15 landing](docs/screenshots/apollo15_landing.jpg) The Apollo 15 lunar module coming down onto the lunar terrain just before landing |
-| ![Apollo 15 deep-space EVA](docs/screenshots/apollo15_eva.jpg) The deep-space EVA on the way home: the command module pilot at the service module's instrument bay (Apollo 15) | ![Apollo 15 splashdown](docs/screenshots/apollo15_splashdown.jpg) 7 August 1971: the Apollo 15 command module coming down on two of its three main parachutes |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/apollo15_undock.jpg" alt="Lunar module undocking" width="100%"><br>30 July 1971: the lunar module undocking from the command and service module in lunar orbit (Apollo 15)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/apollo15_landing.jpg" alt="Apollo 15 landing" width="100%"><br>The Apollo 15 lunar module coming down onto the lunar terrain just before landing</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/apollo15_eva.jpg" alt="Apollo 15 deep-space EVA" width="100%"><br>The deep-space EVA on the way home: the command module pilot at the service module's instrument bay (Apollo 15)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/apollo15_splashdown.jpg" alt="Apollo 15 splashdown" width="100%"><br>7 August 1971: the Apollo 15 command module coming down on two of its three main parachutes</td>
+</tr>
+</table>
 
 **Planets and moons**
 
-| | |
-|---|---|
-| ![Mars with Valles Marineris](docs/screenshots/mars_map.jpg) Mars from Viking maps and MOLA elevations (Valles Marineris in the middle) | ![Inside Valles Marineris](docs/screenshots/mars_terrain.jpg) Looking east inside Valles Marineris from low altitude (blended MOLA and HRSC elevations as true-height relief; the layered steps, ridges and gullies of the cliffs are procedural) |
-| ![Daytime sky on Mars](docs/screenshots/mars_sky.jpg) The butterscotch daytime sky of Mars | ![Jupiter with the Great Red Spot](docs/screenshots/jupiter_map.jpg) Jupiter from Cassini maps (Great Red Spot at lower right) |
-| ![Shoemaker-Levy 9 scars](docs/screenshots/shoemaker_levy9.jpg) 18 July 1994: scars left on Jupiter by fragments of Comet Shoemaker-Levy 9 | ![Io](docs/screenshots/io.jpg) Io from Galileo / Voyager maps |
-| ![Saturn and its rings](docs/screenshots/saturn.jpg) Saturn and its rings (with the rings' shadow on the planet) | ![Saturn's rings from Voyager data](docs/screenshots/saturn_rings.jpg) Saturn's rings with the density measured by Voyager 2 |
-| ![Rings of Uranus](docs/screenshots/uranus_rings.jpg) Tipped-over Uranus and its narrow rings | ![Pluto with its heart](docs/screenshots/pluto.jpg) Pluto from New Horizons maps |
-| ![Surface of Venus](docs/screenshots/venus_surface.jpg) The surface of Venus below the clouds (Venera 13 landing site). The thick haze hides everything beyond a few km (brightness and haze density are estimates) | ![Surface of Titan](docs/screenshots/titan_surface.jpg) Titan below its haze, 5 km above the Huygens landing site (Cassini radar elevations; brightness and haze density are estimates) |
-| ![Double ridges on Europa](docs/screenshots/europa_ridges.jpg) Double ridges crossing Europa's icy surface (about 200 m high; the layout is procedural, the sizes are estimates from observations) | ![Sputnik Planitia](docs/screenshots/pluto_sputnik.jpg) The polygons of Pluto's Sputnik Planitia, formed by convection in nitrogen ice (about 25 km across, with troughs about 100 m deep at their edges; the layout is procedural, the sizes are estimates from observations) |
-| ![Cantaloupe terrain on Triton](docs/screenshots/triton_cantaloupe.jpg) Triton's cantaloupe terrain: a network of dimples about 35 km across with ridges between them (about 500 m deep; the layout is procedural, the sizes and depth are estimates from Voyager 2 images) |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/mars_map.jpg" alt="Mars with Valles Marineris" width="100%"><br>Mars from Viking maps and MOLA elevations (Valles Marineris in the middle)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/mars_terrain.jpg" alt="Inside Valles Marineris" width="100%"><br>Looking east inside Valles Marineris from low altitude (blended MOLA and HRSC elevations as true-height relief; the layered steps, ridges and gullies of the cliffs are procedural)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/mars_sky.jpg" alt="Daytime sky on Mars" width="100%"><br>The butterscotch daytime sky of Mars</td>
+<td width="50%" valign="top"><img src="docs/screenshots/jupiter_map.jpg" alt="Jupiter with the Great Red Spot" width="100%"><br>Jupiter from Cassini maps (Great Red Spot at lower right)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/shoemaker_levy9.jpg" alt="Shoemaker-Levy 9 scars" width="100%"><br>18 July 1994: scars left on Jupiter by fragments of Comet Shoemaker-Levy 9</td>
+<td width="50%" valign="top"><img src="docs/screenshots/io.jpg" alt="Io" width="100%"><br>Io from Galileo / Voyager maps</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/saturn.jpg" alt="Saturn and its rings" width="100%"><br>Saturn and its rings (with the rings' shadow on the planet)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/saturn_rings.jpg" alt="Saturn&#x27;s rings from Voyager data" width="100%"><br>Saturn's rings with the density measured by Voyager 2</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/uranus_rings.jpg" alt="Rings of Uranus" width="100%"><br>Tipped-over Uranus and its narrow rings</td>
+<td width="50%" valign="top"><img src="docs/screenshots/pluto.jpg" alt="Pluto with its heart" width="100%"><br>Pluto from New Horizons maps</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/venus_surface.jpg" alt="Surface of Venus" width="100%"><br>The surface of Venus below the clouds (Venera 13 landing site). The thick haze hides everything beyond a few km (brightness and haze density are estimates)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/titan_surface.jpg" alt="Surface of Titan" width="100%"><br>Titan below its haze, 5 km above the Huygens landing site (Cassini radar elevations; brightness and haze density are estimates)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/europa_ridges.jpg" alt="Double ridges on Europa" width="100%"><br>Double ridges crossing Europa's icy surface (about 200 m high; the layout is procedural, the sizes are estimates from observations)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/pluto_sputnik.jpg" alt="Sputnik Planitia" width="100%"><br>The polygons of Pluto's Sputnik Planitia, formed by convection in nitrogen ice (about 25 km across, with troughs about 100 m deep at their edges; the layout is procedural, the sizes are estimates from observations)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/triton_cantaloupe.jpg" alt="Cantaloupe terrain on Triton" width="100%"><br>Triton's cantaloupe terrain: a network of dimples about 35 km across with ridges between them (about 500 m deep; the layout is procedural, the sizes and depth are estimates from Voyager 2 images)</td>
+<td width="50%"></td>
+</tr>
+</table>
 
 **Comets and asteroids**
 
-| | |
-|---|---|
-| ![Halley's Comet on 9 February 1986](docs/screenshots/halley.jpg) Halley's Comet on 9 February 1986 (perihelion) | ![Comet Hyakutake near Earth](docs/screenshots/hyakutake.jpg) Comet Hyakutake passing 0.1 AU from Earth, 25 March 1996 |
-| ![Comet Churyumov-Gerasimenko](docs/screenshots/comet_67p.jpg) Comet Churyumov-Gerasimenko in its real shape (August 2015, perihelion) | ![Ryugu](docs/screenshots/ryugu.jpg) The spinning-top asteroid Ryugu |
-| ![Itokawa](docs/screenshots/itokawa.jpg) Itokawa in its real shape | ![Asteroid belt and Trojans](docs/screenshots/asteroid_belt.jpg) The main belt (ring) and Jupiter's Trojans (green) from 15 AU above |
-| ![Vesta](docs/screenshots/vesta.jpg) Vesta in its real lumpy shape from Dawn elevations | ![Occator crater on Ceres](docs/screenshots/ceres_occator.jpg) The bright deposits of Occator crater on Ceres, with its rim rising on the horizon (Dawn elevations as true-height relief) |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/halley.jpg" alt="Halley&#x27;s Comet on 9 February 1986" width="100%"><br>Halley's Comet on 9 February 1986 (perihelion)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/hyakutake.jpg" alt="Comet Hyakutake near Earth" width="100%"><br>Comet Hyakutake passing 0.1 AU from Earth, 25 March 1996</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/comet_67p.jpg" alt="Comet Churyumov-Gerasimenko" width="100%"><br>Comet Churyumov-Gerasimenko in its real shape (August 2015, perihelion)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/ryugu.jpg" alt="Ryugu" width="100%"><br>The spinning-top asteroid Ryugu</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/itokawa.jpg" alt="Itokawa" width="100%"><br>Itokawa in its real shape</td>
+<td width="50%" valign="top"><img src="docs/screenshots/asteroid_belt.jpg" alt="Asteroid belt and Trojans" width="100%"><br>The main belt (ring) and Jupiter's Trojans (green) from 15 AU above</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/vesta.jpg" alt="Vesta" width="100%"><br>Vesta in its real lumpy shape from Dawn elevations</td>
+<td width="50%" valign="top"><img src="docs/screenshots/ceres_occator.jpg" alt="Occator crater on Ceres" width="100%"><br>The bright deposits of Occator crater on Ceres, with its rim rising on the horizon (Dawn elevations as true-height relief)</td>
+</tr>
+</table>
 
 **Spacecraft**
 
-| | |
-|---|---|
-| ![Voyager 1 at Jupiter](docs/screenshots/voyager1_jupiter.jpg) Voyager 1 at closest approach to Jupiter, 5 March 1979 (K key, spacecraft page) | ![Voyager 2 at Neptune](docs/screenshots/voyager2_neptune.jpg) Voyager 2 passing over Neptune's night side, 25 August 1989 |
-| ![Cassini arriving at Saturn](docs/screenshots/cassini.jpg) Cassini arriving at Saturn, 1 July 2004 (Huygens probe on its side) | ![Juno entering orbit around Jupiter](docs/screenshots/juno.jpg) Juno entering orbit around Jupiter, 5 July 2016 |
-| ![Rosetta arriving at Comet Churyumov-Gerasimenko](docs/screenshots/rosetta.jpg) Guided tour (U key): Rosetta arriving at its comet, 6 August 2014 | ![One minute before DART's impact](docs/screenshots/dart_impact.jpg) Didymos and Dimorphos one minute before DART's impact |
-| ![Europa Clipper](docs/screenshots/europa_clipper.jpg) Europa Clipper on its way to Jupiter (30 m solar array span) | ![Juno](docs/screenshots/probe_view.jpg) Warping to a spacecraft: centered and large in a zoomed view (Juno at Jupiter) |
-| ![BepiColombo arriving at Mercury](docs/screenshots/voyage_bepicolombo.jpg) Spacecraft voyage: BepiColombo just before entering Mercury orbit in November 2026 (top right: a map of its path so far) | ![Asteroid Dinkinesh](docs/screenshots/voyage_dinkinesh.jpg) Spacecraft voyage: asteroid Dinkinesh, passed by Lucy at 422 km in November 2023 (zoomed in automatically) |
-| ![Perseverance on the sky crane](docs/screenshots/perseverance_skycrane.jpg) 18 February 2021: Perseverance's sky crane lowering the rover about 7 m below it (8.5 seconds before touchdown; NAIF's reconstructed descent trajectory, simplified shapes) | ![Spirit on its airbags](docs/screenshots/spirit_airbags.jpg) 4 January 2004: Spirit inside its inflated airbags, hanging 20 m below the parachute and backshell (3 seconds before first impact; shapes and parachute size are estimates) |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/voyager1_jupiter.jpg" alt="Voyager 1 at Jupiter" width="100%"><br>Voyager 1 at closest approach to Jupiter, 5 March 1979 (K key, spacecraft page)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/voyager2_neptune.jpg" alt="Voyager 2 at Neptune" width="100%"><br>Voyager 2 passing over Neptune's night side, 25 August 1989</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/cassini.jpg" alt="Cassini arriving at Saturn" width="100%"><br>Cassini arriving at Saturn, 1 July 2004 (Huygens probe on its side)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/juno.jpg" alt="Juno entering orbit around Jupiter" width="100%"><br>Juno entering orbit around Jupiter, 5 July 2016</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/rosetta.jpg" alt="Rosetta arriving at Comet Churyumov-Gerasimenko" width="100%"><br>Guided tour (U key): Rosetta arriving at its comet, 6 August 2014</td>
+<td width="50%" valign="top"><img src="docs/screenshots/dart_impact.jpg" alt="One minute before DART&#x27;s impact" width="100%"><br>Didymos and Dimorphos one minute before DART's impact</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/europa_clipper.jpg" alt="Europa Clipper" width="100%"><br>Europa Clipper on its way to Jupiter (30 m solar array span)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/probe_view.jpg" alt="Juno" width="100%"><br>Warping to a spacecraft: centered and large in a zoomed view (Juno at Jupiter)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/voyage_bepicolombo.jpg" alt="BepiColombo arriving at Mercury" width="100%"><br>Spacecraft voyage: BepiColombo just before entering Mercury orbit in November 2026 (top right: a map of its path so far)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/voyage_dinkinesh.jpg" alt="Asteroid Dinkinesh" width="100%"><br>Spacecraft voyage: asteroid Dinkinesh, passed by Lucy at 422 km in November 2023 (zoomed in automatically)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/perseverance_skycrane.jpg" alt="Perseverance on the sky crane" width="100%"><br>18 February 2021: Perseverance's sky crane lowering the rover about 7 m below it (8.5 seconds before touchdown; NAIF's reconstructed descent trajectory, simplified shapes)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/spirit_airbags.jpg" alt="Spirit on its airbags" width="100%"><br>4 January 2004: Spirit inside its inflated airbags, hanging 20 m below the parachute and backshell (3 seconds before first impact; shapes and parachute size are estimates)</td>
+</tr>
+</table>
 
 **The sky from the ground and historic events**
 
-| | |
-|---|---|
-| ![Constellation lines and names](docs/screenshots/constellations.jpg) The real starry sky with constellation lines (C key) | ![Southern sky from Mauna Kea](docs/screenshots/sky_from_ground.jpg) The night sky to the south from the summit of Mauna Kea (search, "On Earth") |
-| ![From the ground in Tokyo](docs/screenshots/ground_view.jpg) Before dawn in Tokyo: the horizon, compass points and Venus's altitude, azimuth and rise/set times (lower left) | ![Geminids night](docs/screenshots/geminids.jpg) Geminids night in Tokyo (a meteor at the upper left), with Jupiter's magnitude, phase and apparent size on the right |
-| ![Transit of Mercury, 13 November 2032](docs/screenshots/mercury_transit.jpg) Transit of Mercury, 13 November 2032 | ![Eddington's eclipse](docs/screenshots/historic_eclipse.jpg) Historic eclipses: the 1919 total eclipse on Principe where Eddington's team confirmed general relativity |
-| ![The supernova of 1054](docs/screenshots/supernova_1054.jpg) July 1054: the supernova that left the Crab Nebula, before dawn over Kaifeng, the Song capital | ![Jupiter as Galileo saw it](docs/screenshots/galileo_1610.jpg) 7 January 1610: Jupiter and its moons as Galileo saw them from Padua (two to the east, one to the west) |
-| ![Andromeda Galaxy](docs/screenshots/andromeda.jpg) The Andromeda Galaxy zoomed in, with its companions M32 and M110 | ![Carina Nebula](docs/screenshots/carina_nebula.jpg) The Carina Nebula (names shown with the C key) |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/constellations.jpg" alt="Constellation lines and names" width="100%"><br>The real starry sky with constellation lines (C key)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/sky_from_ground.jpg" alt="Southern sky from Mauna Kea" width="100%"><br>The night sky to the south from the summit of Mauna Kea (search, "On Earth")</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/ground_view.jpg" alt="From the ground in Tokyo" width="100%"><br>Before dawn in Tokyo: the horizon, compass points and Venus's altitude, azimuth and rise/set times (lower left)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/geminids.jpg" alt="Geminids night" width="100%"><br>Geminids night in Tokyo (a meteor at the upper left), with Jupiter's magnitude, phase and apparent size on the right</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/mercury_transit.jpg" alt="Transit of Mercury, 13 November 2032" width="100%"><br>Transit of Mercury, 13 November 2032</td>
+<td width="50%" valign="top"><img src="docs/screenshots/historic_eclipse.jpg" alt="Eddington&#x27;s eclipse" width="100%"><br>Historic eclipses: the 1919 total eclipse on Principe where Eddington's team confirmed general relativity</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/supernova_1054.jpg" alt="The supernova of 1054" width="100%"><br>July 1054: the supernova that left the Crab Nebula, before dawn over Kaifeng, the Song capital</td>
+<td width="50%" valign="top"><img src="docs/screenshots/galileo_1610.jpg" alt="Jupiter as Galileo saw it" width="100%"><br>7 January 1610: Jupiter and its moons as Galileo saw them from Padua (two to the east, one to the west)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/andromeda.jpg" alt="Andromeda Galaxy" width="100%"><br>The Andromeda Galaxy zoomed in, with its companions M32 and M110</td>
+<td width="50%" valign="top"><img src="docs/screenshots/carina_nebula.jpg" alt="Carina Nebula" width="100%"><br>The Carina Nebula (names shown with the C key)</td>
+</tr>
+</table>
 
 **Stars and exoplanets**
 
-| | |
-|---|---|
-| ![Sirius A](docs/screenshots/sirius.jpg) Sirius A, 8.7 light-years away (top left: the white dwarf Sirius B, 30 AU away) | ![Sirius B](docs/screenshots/sirius_b.jpg) Guided tour: the white dwarf Sirius B, with Sirius A 20 AU away |
-| ![A flare on Proxima Centauri](docs/screenshots/red_dwarf_flare.jpg) The spotted red dwarf Proxima Centauri and a blue-white flare | ![Brown dwarf](docs/screenshots/brown_dwarf.jpg) The brown dwarf Luhman 16 B with cloud bands and patchy clouds |
-| ![Altair](docs/screenshots/altair.jpg) Altair (16.7 light-years), flattened by its fast spin | ![Epsilon Eridani b](docs/screenshots/exoplanet.jpg) Epsilon Eridani b, a Jupiter-like planet 10.5 light-years away |
-| ![On Proxima Centauri b](docs/screenshots/proxima_b_ground.jpg) On the ground of Proxima Centauri b (artist's impression): the red star hangs still in the sky | ![Habitable zone](docs/screenshots/habitable_zone.jpg) The system map centered on Proxima Centauri with its habitable zone (green); planet b orbits inside it |
-| ![Stars around the Sun](docs/screenshots/star_map.jpg) The system map's "stars around the Sun" (zoom all the way out; the stems show the height above the ecliptic) | ![The Big Dipper now and in 100,000 years](docs/screenshots/star_epoch.jpg) The "Star epoch" setting: the Big Dipper now (left) and in 100,000 years (right), deformed by the proper motions of its stars |
-| ![Interstellar warp](docs/screenshots/interstellar_warp.jpg) Interstellar warp (the sky crowds forward and turns blue as you pass through a swirling tunnel of light) | ![Hyperdrive](docs/screenshots/hyperdrive.jpg) The hyperdrive (8): one light-year per second toward Alpha Centauri |
-| ![At 99% of light speed](docs/screenshots/relativistic.jpg) At 99% of the speed of light the stars and the Milky Way crowd forward and turn blue and bright (aberration, Doppler effect) | ![Frame fixed to the ship](docs/screenshots/frame_lock.jpg) Reference frame fixed to the ship (Shift+F): Earth leaving at 30 km/s (top right) |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/sirius.jpg" alt="Sirius A" width="100%"><br>Sirius A, 8.7 light-years away (top left: the white dwarf Sirius B, 30 AU away)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/sirius_b.jpg" alt="Sirius B" width="100%"><br>Guided tour: the white dwarf Sirius B, with Sirius A 20 AU away</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/red_dwarf_flare.jpg" alt="A flare on Proxima Centauri" width="100%"><br>The spotted red dwarf Proxima Centauri and a blue-white flare</td>
+<td width="50%" valign="top"><img src="docs/screenshots/brown_dwarf.jpg" alt="Brown dwarf" width="100%"><br>The brown dwarf Luhman 16 B with cloud bands and patchy clouds</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/altair.jpg" alt="Altair" width="100%"><br>Altair (16.7 light-years), flattened by its fast spin</td>
+<td width="50%" valign="top"><img src="docs/screenshots/exoplanet.jpg" alt="Epsilon Eridani b" width="100%"><br>Epsilon Eridani b, a Jupiter-like planet 10.5 light-years away</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/proxima_b_ground.jpg" alt="On Proxima Centauri b" width="100%"><br>On the ground of Proxima Centauri b (artist's impression): the red star hangs still in the sky</td>
+<td width="50%" valign="top"><img src="docs/screenshots/habitable_zone.jpg" alt="Habitable zone" width="100%"><br>The system map centered on Proxima Centauri with its habitable zone (green); planet b orbits inside it</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/star_map.jpg" alt="Stars around the Sun" width="100%"><br>The system map's "stars around the Sun" (zoom all the way out; the stems show the height above the ecliptic)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/star_epoch.jpg" alt="The Big Dipper now and in 100,000 years" width="100%"><br>The "Star epoch" setting: the Big Dipper now (left) and in 100,000 years (right), deformed by the proper motions of its stars</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/interstellar_warp.jpg" alt="Interstellar warp" width="100%"><br>Interstellar warp (the sky crowds forward and turns blue as you pass through a swirling tunnel of light)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/hyperdrive.jpg" alt="Hyperdrive" width="100%"><br>The hyperdrive (8): one light-year per second toward Alpha Centauri</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/relativistic.jpg" alt="At 99% of light speed" width="100%"><br>At 99% of the speed of light the stars and the Milky Way crowd forward and turn blue and bright (aberration, Doppler effect)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/frame_lock.jpg" alt="Frame fixed to the ship" width="100%"><br>Reference frame fixed to the ship (Shift+F): Earth leaving at 30 km/s (top right)</td>
+</tr>
+</table>
 
 **Features and screens**
 
-| | |
-|---|---|
-| ![Warp](docs/screenshots/warp.jpg) Warp effect | ![Huygens descending to Titan](docs/screenshots/huygens_descent.jpg) Photo mode (Z key): Huygens coming down through Titan's haze under its stabilizer parachute on 14 January 2005 (about 2.8 km up; the parachute size is an estimate) |
-| ![Gravity mode](docs/screenshots/gravity_mode.jpg) Gravity mode (R key): the predicted orbit around Earth | ![System map](docs/screenshots/system_map.jpg) The system map (F3; 1989 with the path of Voyager 1) |
-| ![Body info](docs/screenshots/body_info.jpg) The info card (I key; Jupiter) | ![Share link](docs/screenshots/share_link.jpg) A scene opened from a share link (above Mars; F2 copies one) |
-| ![First-run guide](docs/screenshots/first_run.jpg) The guide shown on the first launch | ![Extra large text](docs/screenshots/settings_large.jpg) The settings with text size "Extra large" |
-| ![Browser version](docs/screenshots/browser.jpg) The browser version (WebGL2) | ![Touch controls on a phone](docs/screenshots/touch.jpg) Touch controls on a phone in landscape (during the tour) |
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/warp.jpg" alt="Warp" width="100%"><br>Warp effect</td>
+<td width="50%" valign="top"><img src="docs/screenshots/huygens_descent.jpg" alt="Huygens descending to Titan" width="100%"><br>Photo mode (Z key): Huygens coming down through Titan's haze under its stabilizer parachute on 14 January 2005 (about 2.8 km up; the parachute size is an estimate)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/gravity_mode.jpg" alt="Gravity mode" width="100%"><br>Gravity mode (R key): the predicted orbit around Earth</td>
+<td width="50%" valign="top"><img src="docs/screenshots/system_map.jpg" alt="System map" width="100%"><br>The system map (F3; 1989 with the path of Voyager 1)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/body_info.jpg" alt="Body info" width="100%"><br>The info card (I key; Jupiter)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/share_link.jpg" alt="Share link" width="100%"><br>A scene opened from a share link (above Mars; F2 copies one)</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/first_run.jpg" alt="First-run guide" width="100%"><br>The guide shown on the first launch</td>
+<td width="50%" valign="top"><img src="docs/screenshots/settings_large.jpg" alt="Extra large text" width="100%"><br>The settings with text size "Extra large"</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/screenshots/browser.jpg" alt="Browser version" width="100%"><br>The browser version (WebGL2)</td>
+<td width="50%" valign="top"><img src="docs/screenshots/touch.jpg" alt="Touch controls on a phone" width="100%"><br>Touch controls on a phone in landscape (during the tour)</td>
+</tr>
+</table>
 
 ## Getting started
 
