@@ -8,6 +8,14 @@
 
 // 頂点・フラグメントシェーダで共通の部分（隣り合う文字列リテラルとしてシェーダの文字列につなぐ）
 #define NOISE_GLSL R"(
+// 惑星のシェーダの版（render3d.h の PlanetShaderFor）: 種類・表面模様・地図の表面模様の種類を定数にすると、使わない描き方を
+// コンパイラが除く（-1 なら uniform の値を使う）
+#ifndef SPEC_KIND
+#define SPEC_KIND -1
+#define SPEC_STYLE -1
+#define SPEC_MAP -1
+#endif
+#define MAP_STYLE (SPEC_MAP >= 0 ? SPEC_MAP : int(mapInfo2.x + 0.5))
 // ---- 整数ハッシュ（座標が大きくても劣化しないので、地表付近の細かいオクターブでも使える）
 uint hashu(ivec3 c) {
     uvec3 v = uvec3(c) * uvec3(1597334673u, 3812015801u, 2798796415u);
@@ -342,11 +350,11 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
     } else {               // 地図のある天体: 撮影された所は細かいクレーターと山肌、撮影されていない所は手続きの表面
         vec4 m = textureLod(texture2, uv, 0.0);
         float fine = 0.0, ph = 0.0;
-        int st = int(mapInfo2.x + 0.5);
+        int st = MAP_STYLE;
         if (m.r > 0.0) fine = cratersBand(q, 0.35 * g_craterK, 260.0, o * 0.37, L, fLo, craterWorn(st)) * (1.0 - g_cliff) +
                               fbmBand(q, 600.0, 20, 0.48, o, L, fLo) * (0.003 / 260.0) +
                               (g_wall > 0.0 ? g_wall * ridgeBand(q, 1200.0, 7, 0.5, o + 43.0, L, fLo) : 0.0);
-        if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(q, int(mapInfo2.x + 0.5), o, L, fLo);
+        if (m.r < 1.0 || mapInfo.y > 1.5) ph = rockyBand(q, MAP_STYLE, o, L, fLo);
         h = mix(ph, fine, m.r);
         if (mapInfo2.z > 0.5) h *= 1.0 - m.a;   // 液体の湖・海は平ら
     }
@@ -400,8 +408,8 @@ float bodyHeight(vec3 d, float sp, float hm) {
     if (terrE.z < 0.5) return hm;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     g_cliff = 0.0; g_wall = 0.0;
-    g_craterK = terrE.z > 1.5 ? mapCraterK(int(mapInfo2.x + 0.5), d, o) : 1.0;
-    if (w > 0.0 && int(mapInfo2.x + 0.5) == 3) {   // 火星の崖: 地層の段と尾根・溝（細かい標高の窓の中だけ）
+    g_craterK = terrE.z > 1.5 ? mapCraterK(MAP_STYLE, d, o) : 1.0;
+    if (w > 0.0 && MAP_STYLE == 3) {   // 火星の崖: 地層の段と尾根・溝（細かい標高の窓の中だけ）
         float s = detSlope(l, lat, terrE.x), k = strataK(s, sp * terrE.x) * w, t = strataT(hm, d, o), dd;
         if (k > 0.0) hm += k * STRATA_M * (strataStep(t, dd) - t);
         g_cliff = cliffWall(s) * w; g_wall = cliffRidgeA(s) * w;
@@ -1254,13 +1262,13 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     // された所（cov > 0）だけ求める（混ぜる重みが 0 の側は結果に効かない。火星などほぼ全体が撮影された天体で重い rocky を省く）
     vec3 pb = vec3(0.0);
     vec4 ph = vec4(0.0);
-    if (cov < 1.0 || mapInfo.y > 1.5) ph = rocky(p, int(mapInfo2.x + 0.5), o, pb);
+    if (cov < 1.0 || mapInfo.y > 1.5) ph = rocky(p, MAP_STYLE, o, pb);
     float L1 = dot(color1, vec3(0.333));
     vec3 mb;
     if (mapInfo.y > 1.5) mb = pb * tc.r * mapInfo.x;          // 模様だけ（明暗は手続き的な塗り分け）
     else if (mapInfo.y > 0.5) mb = color1 * tc.r * mapInfo.x;  // 白黒: 天体の色で着色
     else mb = tc * L1 * mapInfo.x;                             // カラー: 明るさだけ天体に合わせる
-    bool mars = int(mapInfo2.x + 0.5) == 3;
+    bool mars = MAP_STYLE == 3;
     // 火星: TES の夜の熱慣性から素材を見分け、細かい起伏を足す。熱慣性が低い所は細かい塵が積もって小さな凹凸が埋まり、
     // 高い所は岩・岩盤（岩塊 直径 1〜12 m）。砂の波（さざ波 波長 25 m・砂丘 300 m）は、観測で砂丘地帯と分かっている所
     // （USGS の砂丘データベース。地図のアルファ）だけ（熱慣性が中ほどでも、砂とは限らず固まった地面のことも多い）。
@@ -1287,7 +1295,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     }
     // 地図の画素の明るさ（地図の平均を 1）。ガニメデの明るい溝状地形（約 20 億年）は暗い地域（約 40 億年）よりクレーターが
     // 半分ほど（頂点の高さには入れない。ガニメデは標高データが無く地形の格子を作らない）
-    int st = int(mapInfo2.x + 0.5);
+    int st = MAP_STYLE;
     float rel = dot(tc, vec3(0.333)) * mapInfo.x, kC0 = mapCraterK(st, p, o), kC = kC0;
     if (st == 6) kC *= 1.0 - 0.55 * smoothstep(0.95, 1.25, rel);
     if (cov > 0.0) C = craters(p, 0.35 * kC, 260.0, o * 0.37, craterWorn(st)) * (1.0 - g_ice) * (1.0 - sand) * (1.0 - cliff);
@@ -1361,7 +1369,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
 
 // 地図のあるガス惑星（木星・土星）: 雲の模様を貼る。撮影されていない所は手続き的な雲。地図は mapInfo2.y だけ回す（大赤斑を今の経度に合わせる）
 vec3 gasMap(vec3 p, vec3 o) {
-    vec3 pb = gas(p, int(mapInfo2.x + 0.5), o);
+    vec3 pb = gas(p, MAP_STYLE, o);
     float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
     float lon = atan(-p.z, p.x) + mapInfo2.y;
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
@@ -1503,8 +1511,8 @@ vec3 doppler(vec3 c) {
 }
 
 void main() {
-    int kind = int(params.x + 0.5);
-    int style = int(detail.x + 0.5);
+    int kind = SPEC_KIND >= 0 ? SPEC_KIND : int(params.x + 0.5);
+    int style = SPEC_STYLE >= 0 ? SPEC_STYLE : int(detail.x + 0.5);
     vec3 V = normalize(-fragWorld);
 
     if (kind == 6) {   // 金星の雲・タイタンのもやの層を下から見た空（一様に明るい曇り空）

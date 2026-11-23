@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.68.0 (2026-11-23)
+
+- Bodies that look large on screen are drawn with a shader cut down to their kind (the shader holding every kind of surface was so large that it ran short of registers and spilled values). On Intel UHD, near the surface Pluto is about 30% and Mars about 10% faster than in 2.67.0 (others are unchanged). Each cut-down shader is built the first time you come close to that kind of body
+- Added tools/bench_render.py, which compares drawing speed in fixed scenes with a previous build
+- The README gallery shows Triton's cantaloupe terrain
+
 ## 2.67.0 (2026-11-23)
 
 - Triton's cantaloupe terrain (300° E to 30° E, from the equator to the northern edge of the imaged area) is shaded with rounded dimples about 35 km across and the ridges between them (about 500 m deep, from the 300–600 m of Schenk et al. 2021; estimated from Voyager images and uncertain; best seen when the Sun is low). Near the surface of Pluto, drawing is about 4% slower (on Intel UHD; the planet shader is large and runs short of registers, so more values are spilled)

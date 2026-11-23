@@ -3,6 +3,93 @@
 // 3D の描画（天体・自機・探査機・軌道・空）と音楽の選曲。
 // main.cpp の一部で、main.cpp が決まった順に読み込む（単体ではコンパイルしない）
 
+// シェーダは GLSL 3.30 で書いてある。ブラウザ版 (WebGL2) では GLSL ES 3.00 に書き換える。defs は #version の次の行に足す
+static std::string GlslForPlatform(const char* src, const std::string& defs = "") {
+    std::string s = src;
+    size_t p = s.find("#version 330");
+    if (p != std::string::npos && !defs.empty()) s.insert(s.find('\n', p) + 1, defs);
+#if defined(__EMSCRIPTEN__)
+    if (p != std::string::npos)   // #version は 1 行目に置く必要がある（ソースは改行から始まる）
+        s = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n" + s.substr(p + 12);
+#endif
+    return s;
+}
+
+// ---------------------------------------------------------------- 惑星のシェーダの版
+// 惑星のシェーダ（PLANET_VS・PLANET_FS）は全部の天体の描き方を持っていて大きく、レジスタが足りずに値を退避するので描画が
+// 重い（Intel UHD で、冥王星の地表の近くは種類を定数にすると 約 3 割速い）。画面で大きく見える天体（planetBig）は、種類
+// （params.x）・表面模様（detail.x）・地図の表面模様（mapInfo2.x）を定数にした版（SPEC_KIND・SPEC_STYLE・SPEC_MAP）で描く。
+// 版は初めて使う時に作る。値はすべて PlanetUniform で元のシェーダに設定して写しを持っておき、版で描く前に、その版に
+// まだ送っていない値だけを送る
+
+// 元のシェーダの値の位置（名前を覚えておき、版でも同じ名前の位置を探す）
+static int PlanetLoc(App& app, const char* name) {
+    int loc = GetShaderLocation(app.shader, name);
+    if (loc >= 0) {
+        if ((int)app.planetUni.size() <= loc) app.planetUni.resize(loc + 1);
+        app.planetUni[loc].name = name;
+    }
+    return loc;
+}
+
+static void PlanetUniform(App& app, int loc, const void* v, int type, int count = 1) {
+    if (loc < 0) return;
+    SetShaderValueV(app.shader, loc, v, type, count);
+    if (loc >= (int)app.planetUni.size() || app.planetUni[loc].name.empty()) return;
+    App::PlanetUni& u = app.planetUni[loc];
+    int n = (type == SHADER_UNIFORM_VEC2 || type == SHADER_UNIFORM_IVEC2) ? 2 : (type == SHADER_UNIFORM_VEC3 || type == SHADER_UNIFORM_IVEC3) ? 3
+          : (type == SHADER_UNIFORM_VEC4 || type == SHADER_UNIFORM_IVEC4) ? 4 : 1;
+    u.type = type;
+    u.count = count;
+    u.data.assign((const unsigned char*)v, (const unsigned char*)v + 4 * n * count);
+    u.ver = ++app.planetUniVer;
+}
+
+// 今の値で描く時のシェーダ（planetBig なら種類ごとの版、作れなければ元のシェーダ）
+static Shader PlanetShaderFor(App& app) {
+    if (!app.planetBig) return app.shader;
+    auto first = [&](int loc) {   // その値の最初の成分
+        if (loc < 0 || loc >= (int)app.planetUni.size() || app.planetUni[loc].data.size() < 4) return -1.0f;
+        float f;
+        std::memcpy(&f, app.planetUni[loc].data.data(), 4);
+        return f;
+    };
+    int kind = (int)std::lround(first(app.locParams)), style = (int)std::lround(first(app.locDetail));
+    int map = style == S_MAPPED ? (int)std::lround(first(app.locMapInfo2)) : -1;
+    App::PlanetVar* v = nullptr;
+    for (App::PlanetVar& pv : app.planetVars)
+        if (pv.kind == kind && pv.style == style && pv.map == map) v = &pv;
+    if (!v) {
+        App::PlanetVar pv;
+        pv.kind = kind, pv.style = style, pv.map = map;
+        std::string defs = TextFormat("#define SPEC_KIND %d\n#define SPEC_STYLE %d\n#define SPEC_MAP %d\n", kind, style, map);
+        pv.sh = LoadShaderFromMemory(GlslForPlatform(PLANET_VS, defs).c_str(), GlslForPlatform(PLANET_FS, defs).c_str());
+        pv.ok = IsShaderValid(pv.sh) && pv.sh.id != rlGetShaderIdDefault();
+        if (pv.ok) {
+            pv.sh.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(pv.sh, "texture3");
+            pv.sh.locs[SHADER_LOC_MAP_OCCLUSION] = GetShaderLocation(pv.sh, "texture4");
+            pv.loc.assign(app.planetUni.size(), -1);
+            for (size_t i = 0; i < app.planetUni.size(); i++)
+                if (!app.planetUni[i].name.empty()) pv.loc[i] = GetShaderLocation(pv.sh, app.planetUni[i].name.c_str());
+        }
+        app.planetVars.push_back(pv);
+        v = &app.planetVars.back();
+    }
+    if (!v->ok) return app.shader;
+    for (size_t i = 0; i < app.planetUni.size(); i++) {
+        const App::PlanetUni& u = app.planetUni[i];
+        if (u.ver > v->synced && v->loc[i] >= 0) SetShaderValueV(v->sh, v->loc[i], u.data.data(), u.type, u.count);
+    }
+    v->synced = app.planetUniVer;
+    return v->sh;
+}
+
+static void DrawPlanetMesh(App& app, const Mesh& mesh, Matrix m) {
+    Material mat = app.mat;
+    mat.shader = PlanetShaderFor(app);
+    DrawMesh(mesh, mat, m);
+}
+
 // ---------------------------------------------------------------- 描画: 3D
 static void DrawOrbits(App& app) {
     if (app.relU > 0.02) return;   // 光速に近い時は天体が光行差でずれて見え、軌道の線と合わなくなるので描かない
@@ -379,12 +466,12 @@ static Texture2D LoadRingTexture(const RingSet& rs) {
 }
 
 // 環のシェーダの値: x 表の内側 km, y 表の幅 km, z 海王星のアダムズ環の弧の位置 rad（弧が無ければ -1）
-static void SetRingInfo(const App& app, const RingSet& rs) {
+static void SetRingInfo(App& app, const RingSet& rs) {
     float arc = -1;
     if (rs.arcs) arc = (float)(std::fmod(820.1185 * app.tDays, 360.0) * DEG);   // 弧は環と同じ周期で回る（位置は目安）
     if (arc < -0.5f && rs.arcs) arc += (float)(2 * PI);
     float info[4] = {(float)rs.inner, (float)(rs.outer - rs.inner), arc, rs.thin ? 1.0f : 0.0f};
-    SetShaderValue(app.shader, app.locRingInfo, info, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locRingInfo, info, SHADER_UNIFORM_VEC4);
 }
 
 // 細かい標高 g_detail[k]（0 地球・1 月・2 火星）: 区画の索引を読み、窓のテクスチャを作る（ブラウザ版はファイルが届いてから）。
@@ -560,8 +647,8 @@ static void UpdateDetailWindows(App& app) {
 // 地形の格子・地球の細かい標高を使わない状態に戻す（同じシェーダで描くほかの天体・環のため）
 static void TerrainOff(App& app) {
     float a[4] = {0, 0, 0, 0};
-    SetShaderValue(app.shader, app.locTerrA, a, SHADER_UNIFORM_VEC4);
-    SetShaderValue(app.shader, app.locDetB, a, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locTerrA, a, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locDetB, a, SHADER_UNIFORM_VEC4);
     if (app.mat.maps) app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = Texture2D{};
 }
 
@@ -634,27 +721,27 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     double grow = std::max(0.0, std::min(1.0, (8.0 - dist / a) / 2.0));
     float tc[4] = {(float)e1.x, (float)e1.y, (float)e1.z, (float)(grow * grow * (3 - 2 * grow) / (a * 1000))};
     float td[4] = {(float)texW, (float)texH, (float)TERRAIN_RINGS, (float)TERRAIN_SLICES};
-    SetShaderValue(app.shader, app.locTerrA, ta, SHADER_UNIFORM_VEC4);
-    SetShaderValue(app.shader, app.locTerrB, tb, SHADER_UNIFORM_VEC4);
-    SetShaderValue(app.shader, app.locTerrC, tc, SHADER_UNIFORM_VEC4);
-    SetShaderValue(app.shader, app.locTerrD, td, SHADER_UNIFORM_VEC4);
-    SetShaderValueV(app.shader, app.locTerrRing, ring, SHADER_UNIFORM_VEC4, 61);
-    SetShaderValueV(app.shader, app.locTerrStep, step, SHADER_UNIFORM_VEC4, 61);
+    PlanetUniform(app, app.locTerrA, ta, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locTerrB, tb, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locTerrC, tc, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locTerrD, td, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locTerrRing, ring, SHADER_UNIFORM_VEC4, 61);
+    PlanetUniform(app, app.locTerrStep, step, SHADER_UNIFORM_VEC4, 61);
     if (det) {
         const DetailMap& D = g_detail[dk];
         float da[4] = {(float)D.x0, (float)D.y0, (float)DetailMap::N, (float)DetailMap::MARGIN};
         float db[4] = {(float)D.W, (float)D.H, 1, (float)D.fmt};
-        SetShaderValue(app.shader, app.locDetA, da, SHADER_UNIFORM_VEC4);
-        SetShaderValue(app.shader, app.locDetB, db, SHADER_UNIFORM_VEC4);
+        PlanetUniform(app, app.locDetA, da, SHADER_UNIFORM_VEC4);
+        PlanetUniform(app, app.locDetB, db, SHADER_UNIFORM_VEC4);
         app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = app.detailTex[dk];
     }
     // データより細かい手続きの起伏: 半径 m・全球の標高の周波数・種類（1 月, 2 地図のある天体）・細かい標高の周波数
     float te[4] = {(float)(d.radius * 1000), (float)(texH / (2 * PI)), (float)T.bumps, (float)(det ? g_detail[dk].H / (2 * PI) : 0)};
-    SetShaderValue(app.shader, app.locTerrE, te, SHADER_UNIFORM_VEC4);
+    PlanetUniform(app, app.locTerrE, te, SHADER_UNIFORM_VEC4);
     // 原点は真下の楕円体の上の点（カメラからの位置を倍精度で求める）、軸は本体の座標系、長さは赤道半径を 1 とする
     V3 o = rel + (X * c.x + b.pole * (c.y * e) + Z * c.z) * a;
     Matrix m = BodyMatrix(b, o * s, a * s, a * s, b.spin);
-    DrawMesh(app.terrainMesh, app.mat, m);
+    DrawPlanetMesh(app, app.terrainMesh, m);
     TerrainOff(app);
 }
 
@@ -985,7 +1072,7 @@ static void UpdateExposure(App& app, float dt) {
     if (Len(app.cam.pos - last) > 100) app.exposure = (float)t;
     else app.exposure += (float)((t - app.exposure) * std::min(1.0, dt * 1.5));   // 目の順応のようにゆっくり
     last = app.cam.pos;
-    SetShaderValue(app.shader, app.locExposure, &app.exposure, SHADER_UNIFORM_FLOAT);
+    PlanetUniform(app, app.locExposure, &app.exposure, SHADER_UNIFORM_FLOAT);
     SetShaderValue(app.shipShader, app.locShipExposure, &app.exposure, SHADER_UNIFORM_FLOAT);
 }
 
@@ -1144,10 +1231,10 @@ static void SetOccluders(App& app, int i, double s) {
             n++;
         }
         float sa = (float)sunAng;
-        SetShaderValue(app.shader, app.locSunAng, &sa, SHADER_UNIFORM_FLOAT);
+        PlanetUniform(app, app.locSunAng, &sa, SHADER_UNIFORM_FLOAT);
     }
-    if (n > 0) SetShaderValueV(app.shader, app.locOcc, data, SHADER_UNIFORM_VEC4, n);
-    SetShaderValue(app.shader, app.locOccN, &n, SHADER_UNIFORM_INT);
+    if (n > 0) PlanetUniform(app, app.locOcc, data, SHADER_UNIFORM_VEC4, n);
+    PlanetUniform(app, app.locOccN, &n, SHADER_UNIFORM_INT);
 }
 
 // 雲（もや）の層の下の空の明るさ（色ごと）。高さ h km、太陽の高さ sinEl（sin）。地表と層の下端の間・層の中は対数で
@@ -1169,8 +1256,8 @@ static void DrawBodies(App& app) {
     Relativity rv = GetRelativity(app);
     float rb = rv.on ? (float)rv.beta : 0.0f;
     Vector3 rd = ToF(rv.on ? rv.v : V3(0, 0, -1));
-    SetShaderValue(app.shader, app.locRelBeta, &rb, SHADER_UNIFORM_FLOAT);
-    SetShaderValue(app.shader, app.locRelDir, &rd, SHADER_UNIFORM_VEC3);
+    PlanetUniform(app, app.locRelBeta, &rb, SHADER_UNIFORM_FLOAT);
+    PlanetUniform(app, app.locRelDir, &rd, SHADER_UNIFORM_VEC3);
     struct Item { int i; double dist; };
     std::vector<Item> items;
     for (size_t i = 0; i < app.B.size(); i++) {
@@ -1204,6 +1291,7 @@ static void DrawBodies(App& app) {
         ClearDepth();
 
         V3 L = d.kind == KIND_STAR ? V3(0, 1, 0) : Norm(app.B[HostStar(app.B, it.i)].pos - b.pos);
+        app.planetBig = d.radius / std::max(dist, d.radius) * c.focal > 30;   // 半径が 30 画素より大きい
         V3 Lobj(Dot(L, b.ex), Dot(L, b.pole), Dot(L, b.ez));
         Vector3 lf = ToF(L), lo = ToF(Lobj);
         Vector3 c1 = {d.c1.r, d.c1.g, d.c1.b}, c2 = {d.c2.r, d.c2.g, d.c2.b}, atm = {d.atm.r, d.atm.g, d.atm.b};
@@ -1216,13 +1304,13 @@ static void DrawBodies(App& app) {
             params[1] = (float)StarSurface(d);
             params[3] = fl > 0.01 ? (float)(seq % 4096) + (float)std::min(0.99, fl) : 0.0f;
         }
-        SetShaderValue(app.shader, app.locLight, &lf, SHADER_UNIFORM_VEC3);
+        PlanetUniform(app, app.locLight, &lf, SHADER_UNIFORM_VEC3);
         // 本体の描画では自転込みの座標系での太陽方向（環の影に使う）
         {
             double cw = std::cos(b.spin), sw = std::sin(b.spin);
             V3 X = b.ex * cw - b.ez * sw, Z = b.ex * sw + b.ez * cw;
             Vector3 ls = ToF(V3(Dot(L, X), Dot(L, b.pole), Dot(L, Z)));
-            SetShaderValue(app.shader, app.locLightObj, &ls, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locLightObj, &ls, SHADER_UNIFORM_VEC3);
         }
         SetOccluders(app, it.i, s);
         {   // 太陽の黒点の活動（日付ごとの黒点数と周期の中の位置。ほかの恒星は既定の模様）
@@ -1234,7 +1322,7 @@ static void DrawBodies(App& app) {
                 si[1] = (float)(28.0 - 20.0 * x);   // シュペーラーの法則: 周期の初めは 30° 近く、終わりは 8° 近く
                 si[2] = 7.0f;
             }
-            SetShaderValue(app.shader, app.locSunInfo, si, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locSunInfo, si, SHADER_UNIFORM_VEC4);
         }
         {   // 木星の衝突痕（シューメーカー・レビー第 9 彗星。1994 年 7 月）: 衝突から 1 時間で広がり、2 か月ほどで横に広がりながら
             // 数か月かけて薄れる（見た目の目安）
@@ -1253,18 +1341,18 @@ static void DrawBodies(App& app) {
                 double age0 = app.tDays - SL9[0].t;
                 info[0] = (float)n;
                 info[1] = (float)(0.85 * std::exp(-std::max(0.0, age0) / 120));
-                SetShaderValueV(app.shader, app.locScars, sc, SHADER_UNIFORM_VEC4, 20);
+                PlanetUniform(app, app.locScars, sc, SHADER_UNIFORM_VEC4, 20);
             }
-            SetShaderValue(app.shader, app.locScarCount, info, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locScarCount, info, SHADER_UNIFORM_VEC4);
         }
-        SetShaderValue(app.shader, app.locC1, &c1, SHADER_UNIFORM_VEC3);
-        SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
-        SetShaderValue(app.shader, app.locAtm, &atm, SHADER_UNIFORM_VEC3);
-        SetShaderValue(app.shader, app.locParams, params, SHADER_UNIFORM_VEC4);
+        PlanetUniform(app, app.locC1, &c1, SHADER_UNIFORM_VEC3);
+        PlanetUniform(app, app.locC2, &c2, SHADER_UNIFORM_VEC3);
+        PlanetUniform(app, app.locAtm, &atm, SHADER_UNIFORM_VEC3);
+        PlanetUniform(app, app.locParams, params, SHADER_UNIFORM_VEC4);
         float mapLatK = (float)((1 - d.flattening) * MapLatScale(d) - 1);   // シェーダの mapDir
-        SetShaderValue(app.shader, app.locMapLatK, &mapLatK, SHADER_UNIFORM_FLOAT);
+        PlanetUniform(app, app.locMapLatK, &mapLatK, SHADER_UNIFORM_FLOAT);
         float oppB0 = d.atmStrength > 0 ? 0.0f : 1.0f;   // 衝効果は大気の無い天体だけ（シェーダの oppB0）
-        SetShaderValue(app.shader, app.locOppB0, &oppB0, SHADER_UNIFORM_FLOAT);
+        PlanetUniform(app, app.locOppB0, &oppB0, SHADER_UNIFORM_FLOAT);
         // 模様の細かさは 1 画素の大きさで決める。地球の雲は高度 10〜35 km で消える（地表付近で地面が白く覆われないように）
         float cloudK = (float)std::min(1.0, std::max(0.0, (alt - d.radius * 0.0015) / (d.radius * 0.004)));
         int style = d.style;
@@ -1282,7 +1370,7 @@ static void DrawBodies(App& app) {
             double year = 2000.0 + (app.tDays + 0.5) / 365.2425;
             double month = std::fmod((year - std::floor(year)) * 12.0 - 0.5 + 12.0, 12.0);
             float info2[4] = {0, 0, (float)month, season ? 1.0f : 0.0f};
-            SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         } else if (d.style == S_MOON && app.moonTex) {
             style = S_MOON_TEX;
             app.mat.maps[MATERIAL_MAP_DIFFUSE].texture = app.moonColor;
@@ -1290,7 +1378,7 @@ static void DrawBodies(App& app) {
             // 岩の多さ（texture2。mapInfo2.w が 1 の時だけ使う）
             app.mat.maps[MATERIAL_MAP_NORMAL].texture = app.moonRock;
             float info2[4] = {0, 0, 0, app.moonRock.id ? 1.0f : 0.0f};
-            SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         } else if (b.map >= 0) {
             const App::BodyMap& m = app.maps[b.map];
             style = S_MAPPED;
@@ -1304,11 +1392,11 @@ static void DrawBodies(App& app) {
             bool ti = it.i == B_MARS && app.marsTi.id;
             if (ti) app.mat.maps[MATERIAL_MAP_ROUGHNESS].texture = app.marsTi;
             float info2[4] = {(float)d.style, shift, m.liquid ? 1.0f : 0.0f, ti ? 1.0f : 0.0f};
-            SetShaderValue(app.shader, app.locMapInfo, info, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locMapInfo, info, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locMapInfo2, info2, SHADER_UNIFORM_VEC4);
         }
         float detail[4] = {(float)style, (float)(QUALITY_DETAIL[app.quality] / (c.focal * d.radius * s)), (float)app.tDays, cloudK};
-        SetShaderValue(app.shader, app.locDetail, detail, SHADER_UNIFORM_VEC4);
+        PlanetUniform(app, app.locDetail, detail, SHADER_UNIFORM_VEC4);
         // 大気のある天体: 日光の色と、カメラが同じ大気の中にいる時のかすみ
         {
             Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, ozone = {0, 0, 0}, up = {0, 1, 0}, alb = {0, 0, 0};
@@ -1330,13 +1418,13 @@ static void DrawBodies(App& app) {
                         up = ToF(u);
                     }
                 }
-            SetShaderValue(app.shader, app.locAtmBeta, &beta, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locAtmMie, &mie, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locAtmOzone, &ozone, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locAtmExt, ext, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locAtmAlb, &alb, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locAtmHaze, haze, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locAtmBeta, &beta, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locAtmMie, &mie, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locAtmOzone, &ozone, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locAtmExt, ext, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locAtmAlb, &alb, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locAtmHaze, haze, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
         }
         int ri = -1;   // 環（RingSets() の番号）
         for (size_t k = 0; k < RingSets().size(); k++)
@@ -1360,40 +1448,40 @@ static void DrawBodies(App& app) {
             float hb[4] = {hw->beta[0], hw->beta[1], hw->beta[2], (float)hw->H};
             Vector3 g1 = {hw->g1.r, hw->g1.g, hw->g1.b}, g2 = {hw->g2.r, hw->g2.g, hw->g2.b};
             float pv[4] = {params[0], params[1], params[2], 0};
-            SetShaderValue(app.shader, app.locHazeSky, &sky, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locHazeAir, ha, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locHazeBeta, hb, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locC1, &g1, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locC2, &g2, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locParams, pv, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locHazeSky, &sky, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locHazeAir, ha, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locHazeBeta, hb, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locC1, &g1, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locC2, &g2, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locParams, pv, SHADER_UNIFORM_VEC4);
         }
         if (hw && !under) {
         } else if (texW > 0) DrawTerrain(app, b, rel, dist, alt, s, texW, texH);
-        else DrawMesh(b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
+        else DrawPlanetMesh(app, b.shape >= 0 ? app.shapeMesh[b.shape] : app.sphere, BodyMatrix(b, rel * s, d.radius * s, rPol * s, b.spin));
         if (hw) {   // 雲（もや）の層: 外からは今までの模様（ガス惑星と同じ描き方）、下からは一様な曇り空
             float ha0[4] = {0, 0, 0, 0};
-            SetShaderValue(app.shader, app.locHazeAir, ha0, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locC1, &c1, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locC2, &c2, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locHazeAir, ha0, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locC1, &c1, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locC2, &c2, SHADER_UNIFORM_VEC3);
             double above = dist - d.radius - hw->top;
             float pc[4] = {under ? 6.0f : (float)KIND_GAS, d.bands, params[2],
                            d.atmStrength * (float)std::min(1.0, std::max(0.0, above / (d.radius * 0.05)))};
             float dc[4] = {(float)d.style, detail[1], detail[2], detail[3]};
-            SetShaderValue(app.shader, app.locParams, pc, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locDetail, dc, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locParams, pc, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locDetail, dc, SHADER_UNIFORM_VEC4);
             // 下から見る時は、球の面の中ほどが半径より内側に入る分（約 0.015%）を見込んで、カメラより確実に上に置く
             double rc = (under ? std::max(d.radius + hw->top, dist + 1) / (1 - 2e-4) : d.radius + hw->top) * s;
             if (under) rlDisableBackfaceCulling();
-            DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, rc, rc, b.spin));
+            DrawPlanetMesh(app, app.sphere, BodyMatrix(b, rel * s, rc, rc, b.spin));
             if (under) rlEnableBackfaceCulling();
         }
 
         if (d.style == S_TITAN && !under) {   // 上空のもやの層（地表から 約 500 km 上。縁でだけ見える）
             float hp[4] = {5.0f, 0, 0, 0.7f};
             Vector3 hc = {0.50f, 0.66f, 0.95f};
-            SetShaderValue(app.shader, app.locParams, hp, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locC1, &hc, SHADER_UNIFORM_VEC3);
-            DrawMesh(app.sphere, app.mat, BodyMatrix(b, rel * s, d.radius * 1.19 * s, d.radius * 1.19 * s, 0));
+            PlanetUniform(app, app.locParams, hp, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locC1, &hc, SHADER_UNIFORM_VEC3);
+            DrawPlanetMesh(app, app.sphere, BodyMatrix(b, rel * s, d.radius * 1.19 * s, d.radius * 1.19 * s, 0));
         }
         if (ri >= 0 && app.ringTex[ri].id) {
             const RingSet& rs = RingSets()[ri];
@@ -1401,15 +1489,16 @@ static void DrawBodies(App& app) {
             Vector3 rc1 = {rs.c1.r, rs.c1.g, rs.c1.b}, rc2 = {rs.c2.r, rs.c2.g, rs.c2.b};
             app.mat.maps[MATERIAL_MAP_ROUGHNESS].texture = app.ringTex[ri];
             SetRingInfo(app, rs);
-            SetShaderValue(app.shader, app.locC1, &rc1, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locC2, &rc2, SHADER_UNIFORM_VEC3);
-            SetShaderValue(app.shader, app.locParams, rp, SHADER_UNIFORM_VEC4);
-            SetShaderValue(app.shader, app.locLightObj, &lo, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locC1, &rc1, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locC2, &rc2, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locParams, rp, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locLightObj, &lo, SHADER_UNIFORM_VEC3);
             rlDisableBackfaceCulling();
-            DrawMesh(app.ringMesh[ri], app.mat, BodyMatrix(b, rel * s, d.radius * s, d.radius * s, 0));
+            DrawPlanetMesh(app, app.ringMesh[ri], BodyMatrix(b, rel * s, d.radius * s, d.radius * s, 0));
             rlEnableBackfaceCulling();
         }
     }
+    app.planetBig = false;
 }
 
 static bool Occluded(const App& app, V3 from, V3 to, int self);

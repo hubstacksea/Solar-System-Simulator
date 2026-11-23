@@ -39,6 +39,7 @@
 | ![天王星の環](docs/screenshots/uranus_rings.jpg) 横倒しの天王星と細い環 | ![ハートの見える冥王星](docs/screenshots/pluto.jpg) New Horizons の地図による冥王星 |
 | ![金星の地表](docs/screenshots/venus_surface.jpg) 雲の下の金星の地表（ベネラ 13 号の着陸地点）。厚い大気のもやで数 km 先は見えない（明るさと、もやの濃さは推定） | ![タイタンの地表](docs/screenshots/titan_surface.jpg) もやの下のタイタン（ホイヘンスの着陸地点の上空 5 km。カッシーニのレーダーの標高。明るさと、もやの濃さは推定） |
 | ![エウロパの二重の尾根](docs/screenshots/europa_ridges.jpg) エウロパの氷の表面に重なる二重の尾根（高さ 約 200 m。配置は手続き、大きさは観測からの目安） | ![スプートニク平原](docs/screenshots/pluto_sputnik.jpg) 冥王星のスプートニク平原の、窒素の氷の対流でできた多角形（大きさ 約 25 km、境目の溝の深さ 約 100 m。配置は手続き、大きさは観測からの目安） |
+| ![トリトンのカンタロープ地形](docs/screenshots/triton_cantaloupe.jpg) トリトンのカンタロープ地形: 直径 約 35 km の窪みと間の尾根が並ぶ網目（深さ 約 500 m。配置は手続き、大きさ・深さはボイジャー 2 号の画像からの推定） |
 
 **彗星と小惑星**
 
@@ -171,6 +172,8 @@ python3 tools/run_checks.py build/solar_voyager   # 画面のない環境では 
 データの読み込み、日食 9 件と NASA の日食表の照合、歴史のページの件数、ブラウザ版のフォントに画面に出る文字がすべて入っているか（足りなければ `tools/make_web_font.py` で作り直す）、ブラウザ版のシェーダ（頂点シェーダで起伏の計算を呼ぶ所が 1 つだけか。何か所にも書くとブラウザでシェーダの変換が終わらず起動しない）、全天体へのワープ（正面に着き、着いた後に動かない）、扁平な惑星の地表すれすれの光速飛行（表面が消えない）を確かめ、項目ごとに PASS / FAIL を出します（全部で 10 分ほど）。
 
 地表の見え方を変えた時は、README の画像のうち地表が写るものを `python3 tools/retake_gallery.py build/solar_voyager <出力先フォルダ> [名前 ...] --apply` で同じ場面（日時と場所を固定）に撮り直せます（Pillow が必要）。
+
+描画の速さは `python3 tools/bench_render.py build/solar_voyager <前の版の実行ファイル>` で、決まった場面（冥王星・エウロパ・トリトン・月・火星・地球の地表の近く）の 200 フレームを描く時間を比べられます（それぞれ 3 回測って一番短いもの）。
 
 ### ブラウザ版（Emscripten）
 

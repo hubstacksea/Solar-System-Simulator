@@ -59,6 +59,8 @@ SHOTS = {
     # エウロパの二重の尾根（太陽高度が低く、尾根の陰影が出る時刻）と、冥王星のスプートニク平原の多角形
     "europa_ridges": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Europa", 1560.8, 10, -90, 15, 0, -15, 9830.55)], None),
     "pluto_sputnik": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Pluto", 1188.3, 15, 178, 12, 270, -12, 9831.35)], None),
+    # トリトンのカンタロープ地形（太陽高度が低く、窪みの陰影が出る時刻）
+    "triton_cantaloupe": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Triton", 1353.4, 22, -15, 150, 270, -45, 9832.9)], None),
     "apollo15_landing": (lambda: ["--frames", "600", "--photo", "2", "--share", "?apollo=15&scene=12"], None),
     # スカイクレーン: 着地の 8.5 秒前のパーシビアランス（中心から 3391.6015 km）の南 69 m・上 55.5 m から北へ 36° 見下ろす
     # （着陸機は地形の上に降ろすので、地表の高さが変わると合わせ直す）

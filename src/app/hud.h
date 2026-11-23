@@ -1611,13 +1611,3 @@ static void RefreshDeferredAssets(App& app) {
     if (!app.moonTex && MoonColorJpg().data && MoonDataPng().data) LoadMoonTextures(app);
 }
 
-// シェーダは GLSL 3.30 で書いてある。ブラウザ版 (WebGL2) では GLSL ES 3.00 に書き換える
-static std::string GlslForPlatform(const char* src) {
-    std::string s = src;
-#if defined(__EMSCRIPTEN__)
-    size_t p = s.find("#version 330");
-    if (p != std::string::npos)   // #version は 1 行目に置く必要がある（ソースは改行から始まる）
-        s = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n" + s.substr(p + 12);
-#endif
-    return s;
-}

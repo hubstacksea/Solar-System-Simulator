@@ -39,6 +39,7 @@ Body positions are computed from the PC clock (UTC); at 1x time scale they orbit
 | ![Rings of Uranus](docs/screenshots/uranus_rings.jpg) Tipped-over Uranus and its narrow rings | ![Pluto with its heart](docs/screenshots/pluto.jpg) Pluto from New Horizons maps |
 | ![Surface of Venus](docs/screenshots/venus_surface.jpg) The surface of Venus below the clouds (Venera 13 landing site). The thick haze hides everything beyond a few km (brightness and haze density are estimates) | ![Surface of Titan](docs/screenshots/titan_surface.jpg) Titan below its haze, 5 km above the Huygens landing site (Cassini radar elevations; brightness and haze density are estimates) |
 | ![Double ridges on Europa](docs/screenshots/europa_ridges.jpg) Double ridges crossing Europa's icy surface (about 200 m high; the layout is procedural, the sizes are estimates from observations) | ![Sputnik Planitia](docs/screenshots/pluto_sputnik.jpg) The polygons of Pluto's Sputnik Planitia, formed by convection in nitrogen ice (about 25 km across, with troughs about 100 m deep at their edges; the layout is procedural, the sizes are estimates from observations) |
+| ![Cantaloupe terrain on Triton](docs/screenshots/triton_cantaloupe.jpg) Triton's cantaloupe terrain: a network of dimples about 35 km across with ridges between them (about 500 m deep; the layout is procedural, the sizes and depth are estimates from Voyager 2 images) |
 
 **Comets and asteroids**
 
@@ -171,6 +172,8 @@ python3 tools/run_checks.py build/solar_voyager   # --no-display without a scree
 It checks the embedded data, 9 solar eclipses against NASA's catalog, the number of historic events, that the browser version's font has every character shown on screen (if not, rebuild it with `tools/make_web_font.py`), the browser version's shader (the vertex shader must call the relief calculation from one place only; writing it in several places kept the browser from finishing the shader translation, so it never started), warps to every body (arriving facing it and staying still) and light-speed flights just above the oblate planets (the surface must not vanish), printing PASS / FAIL for each (about 10 minutes in all).
 
 After changing how surfaces look, retake the README images that show the ground in the same scenes (fixed dates and places) with `python3 tools/retake_gallery.py build/solar_voyager <output folder> [name ...] --apply` (requires Pillow).
+
+To compare drawing speed, `python3 tools/bench_render.py build/solar_voyager <previous executable>` times 200 frames in fixed scenes (near the surfaces of Pluto, Europa, Triton, the Moon, Mars and Earth; the shortest of 3 runs each).
 
 ### Browser version (Emscripten)
 

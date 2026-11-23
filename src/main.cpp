@@ -403,41 +403,41 @@ int main(int argc, char** argv) {
     }
 
     app.shader = LoadShaderFromMemory(GlslForPlatform(PLANET_VS).c_str(), GlslForPlatform(PLANET_FS).c_str());
-    app.locLight = GetShaderLocation(app.shader, "lightDir");
-    app.locRelBeta = GetShaderLocation(app.shader, "relBeta");
-    app.locSunInfo = GetShaderLocation(app.shader, "sunInfo");
-    app.locScars = GetShaderLocation(app.shader, "scars");
-    app.locScarCount = GetShaderLocation(app.shader, "scarInfo");
-    app.locRelDir = GetShaderLocation(app.shader, "relDir");
-    app.locLightObj = GetShaderLocation(app.shader, "lightDirObj");
-    app.locC1 = GetShaderLocation(app.shader, "color1");
-    app.locC2 = GetShaderLocation(app.shader, "color2");
-    app.locAtm = GetShaderLocation(app.shader, "atmColor");
-    app.locParams = GetShaderLocation(app.shader, "params");
-    app.locRingInfo = GetShaderLocation(app.shader, "ringInfo");
-    app.locDetail = GetShaderLocation(app.shader, "detail");
-    app.locOcc = GetShaderLocation(app.shader, "occ");
-    app.locOccN = GetShaderLocation(app.shader, "occN");
-    app.locSunAng = GetShaderLocation(app.shader, "sunAng");
-    app.locAtmBeta = GetShaderLocation(app.shader, "atmBeta");
-    app.locAtmMie = GetShaderLocation(app.shader, "atmMie");
-    app.locAtmOzone = GetShaderLocation(app.shader, "atmOzone");
-    app.locAtmExt = GetShaderLocation(app.shader, "atmExt");
-    app.locAtmAlb = GetShaderLocation(app.shader, "atmAlb");
-    app.locAtmHaze = GetShaderLocation(app.shader, "atmHaze");
-    app.locHazeAir = GetShaderLocation(app.shader, "hazeAir");
-    app.locHazeSky = GetShaderLocation(app.shader, "hazeSky");
-    app.locHazeBeta = GetShaderLocation(app.shader, "hazeBeta");
-    app.locCamUp = GetShaderLocation(app.shader, "camUp");
-    app.locTerrA = GetShaderLocation(app.shader, "terrA");
-    app.locTerrB = GetShaderLocation(app.shader, "terrB");
-    app.locTerrC = GetShaderLocation(app.shader, "terrC");
-    app.locTerrD = GetShaderLocation(app.shader, "terrD");
-    app.locTerrRing = GetShaderLocation(app.shader, "terrRing");
-    app.locTerrStep = GetShaderLocation(app.shader, "terrStep");
-    app.locDetA = GetShaderLocation(app.shader, "detA");
-    app.locDetB = GetShaderLocation(app.shader, "detB");
-    app.locTerrE = GetShaderLocation(app.shader, "terrE");
+    app.locLight = PlanetLoc(app, "lightDir");
+    app.locRelBeta = PlanetLoc(app, "relBeta");
+    app.locSunInfo = PlanetLoc(app, "sunInfo");
+    app.locScars = PlanetLoc(app, "scars");
+    app.locScarCount = PlanetLoc(app, "scarInfo");
+    app.locRelDir = PlanetLoc(app, "relDir");
+    app.locLightObj = PlanetLoc(app, "lightDirObj");
+    app.locC1 = PlanetLoc(app, "color1");
+    app.locC2 = PlanetLoc(app, "color2");
+    app.locAtm = PlanetLoc(app, "atmColor");
+    app.locParams = PlanetLoc(app, "params");
+    app.locRingInfo = PlanetLoc(app, "ringInfo");
+    app.locDetail = PlanetLoc(app, "detail");
+    app.locOcc = PlanetLoc(app, "occ");
+    app.locOccN = PlanetLoc(app, "occN");
+    app.locSunAng = PlanetLoc(app, "sunAng");
+    app.locAtmBeta = PlanetLoc(app, "atmBeta");
+    app.locAtmMie = PlanetLoc(app, "atmMie");
+    app.locAtmOzone = PlanetLoc(app, "atmOzone");
+    app.locAtmExt = PlanetLoc(app, "atmExt");
+    app.locAtmAlb = PlanetLoc(app, "atmAlb");
+    app.locAtmHaze = PlanetLoc(app, "atmHaze");
+    app.locHazeAir = PlanetLoc(app, "hazeAir");
+    app.locHazeSky = PlanetLoc(app, "hazeSky");
+    app.locHazeBeta = PlanetLoc(app, "hazeBeta");
+    app.locCamUp = PlanetLoc(app, "camUp");
+    app.locTerrA = PlanetLoc(app, "terrA");
+    app.locTerrB = PlanetLoc(app, "terrB");
+    app.locTerrC = PlanetLoc(app, "terrC");
+    app.locTerrD = PlanetLoc(app, "terrD");
+    app.locTerrRing = PlanetLoc(app, "terrRing");
+    app.locTerrStep = PlanetLoc(app, "terrStep");
+    app.locDetA = PlanetLoc(app, "detA");
+    app.locDetB = PlanetLoc(app, "detB");
+    app.locTerrE = PlanetLoc(app, "terrE");
     TerrainOff(app);
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
@@ -452,11 +452,11 @@ int main(int argc, char** argv) {
     app.shader.locs[SHADER_LOC_MAP_ROUGHNESS] = GetShaderLocation(app.shader, "texture3");   // DrawMesh が texture3 に割り当てる
     app.shader.locs[SHADER_LOC_MAP_OCCLUSION] = GetShaderLocation(app.shader, "texture4");   // 同じく texture4（地球の細かい標高）
     LoadBodyMaps(app);
-    app.locMapInfo = GetShaderLocation(app.shader, "mapInfo");
-    app.locMapInfo2 = GetShaderLocation(app.shader, "mapInfo2");
-    app.locMapLatK = GetShaderLocation(app.shader, "mapLatK");
-    app.locOppB0 = GetShaderLocation(app.shader, "oppB0");
-    app.locExposure = GetShaderLocation(app.shader, "exposure");
+    app.locMapInfo = PlanetLoc(app, "mapInfo");
+    app.locMapInfo2 = PlanetLoc(app, "mapInfo2");
+    app.locMapLatK = PlanetLoc(app, "mapLatK");
+    app.locOppB0 = PlanetLoc(app, "oppB0");
+    app.locExposure = PlanetLoc(app, "exposure");
     app.skyShader = LoadShaderFromMemory(GlslForPlatform(SKY_VS).c_str(), GlslForPlatform(SKY_FS).c_str());
     app.beltShader = LoadShaderFromMemory(GlslForPlatform(BELT_VS).c_str(), GlslForPlatform(BELT_FS).c_str());
     app.miniShader = LoadShaderFromMemory(GlslForPlatform(MINIGLOBE_VS).c_str(), GlslForPlatform(MINIGLOBE_FS).c_str());
@@ -487,7 +487,7 @@ int main(int argc, char** argv) {
     app.locShipExposure = GetShaderLocation(app.shipShader, "exposure");
     {   // 露出の倍率は毎フレーム UpdateExposure で渡す。それより前に描いても暗くならないよう 1 にしておく
         float one = 1;
-        SetShaderValue(app.shader, app.locExposure, &one, SHADER_UNIFORM_FLOAT);
+        PlanetUniform(app, app.locExposure, &one, SHADER_UNIFORM_FLOAT);
         SetShaderValue(app.shipShader, app.locShipExposure, &one, SHADER_UNIFORM_FLOAT);
     }
     app.locSunDir = GetShaderLocation(app.shipShader, "sunDir");
@@ -928,6 +928,8 @@ int main(int argc, char** argv) {
     for (Mesh& m : app.probeMesh) UnloadMesh(m);
     UnloadShader(app.shipShader);
     UnloadShader(app.shader);
+    for (App::PlanetVar& v : app.planetVars)
+        if (v.ok) UnloadShader(v.sh);
     UnloadShader(app.skyShader);
     UnloadShader(app.miniShader);
     UnloadShader(app.beltShader);
