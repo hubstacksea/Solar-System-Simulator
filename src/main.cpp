@@ -96,6 +96,16 @@ EM_JS(int, WebViewH, (), {
     var h = window.innerHeight, base = Math.max(1, 720 / h);
     return Math.round(h * Math.max(base, Math.min(window.devicePixelRatio || 1, 1440 / h)));
 });
+// 起動の進み具合（0〜1）を読み込み画面のバーに出す（web/shell.html）。重い処理の合間に一度ブラウザへ戻って
+// （ASYNCIFY）バーを描き替えさせる。戻らないと、データが届いてから最初の画面までバーが止まって見える
+EM_JS(void, WebLoadProgress, (double f), { if (Module.loadProgress) Module.loadProgress(f); });
+EM_JS(void, WebLoadDone, (), { if (Module.loadDone) Module.loadDone(); });
+static void LoadStep(double f) {
+    WebLoadProgress(f);
+    emscripten_sleep(0);
+}
+#else
+static void LoadStep(double) {}
 #endif
 
 // ---------------------------------------------------------------- 各部（src/app/。この順に読み込む）
@@ -267,6 +277,7 @@ int main(int argc, char** argv) {
     LoadSettings();
 #if defined(__EMSCRIPTEN__)
     // ブラウザ版: 大きさはページに合わせて毎フレーム自分で変える（raylib の自動の変更は縮小表示に対応しない）
+    WebDecodeStart("/assets/earth_color.jpg");   // 地球の色の画像の展開を先に頼んでおく（ほかの準備と並んで進む）
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_VSYNC_HINT);
     InitWindow(WebViewW(), WebViewH(), "Solar System Voyager");
     g_dpiScale = (float)WebDpiScale();
@@ -308,6 +319,9 @@ int main(int argc, char** argv) {
     // 画面（ディスプレイ）につながらない・OpenGL 3.3 が使えないなど。GLFW が初期化できないまま
     // ウィンドウの関数を呼ぶと落ちるので、すぐに終わる
     if (!IsWindowReady()) {
+#if defined(__EMSCRIPTEN__)
+        WebLoadDone();
+#endif
         fprintf(stderr, "Solar System Voyager: could not create the window (a display and OpenGL 3.3 are required)\n");
         return 1;
     }
@@ -380,6 +394,7 @@ int main(int argc, char** argv) {
     if (LoadPlaceNames(app)) allText += PlaceNameChars();   // ブラウザ版は地名が届いてからフォントを作り直す
     g_fontText = allText;
     g_jpFont = fontload::LoadJapaneseFont(allText, 36, &g_font);
+    LoadStep(0.07);
     if (!g_jpFont) g_font = GetFontDefault();
     // 言語: 起動オプション > 保存された設定 > 日本語（フォントがあれば）。共有リンクの lang= は後で
     std::string lang = opt.lang ? opt.lang : GetSetting("lang");
@@ -401,6 +416,7 @@ int main(int argc, char** argv) {
         sfx::Init(GetSetting("sound") == "0");
         sfx::MusicInit(GetSetting("music") == "0");
     }
+    LoadStep(0.09);
 
     app.shader = LoadShaderFromMemory(GlslForPlatform(PLANET_VS).c_str(), GlslForPlatform(PLANET_FS).c_str());
     app.locLight = PlanetLoc(app, "lightDir");
@@ -444,9 +460,11 @@ int main(int argc, char** argv) {
     TerrainOff(app);
     app.mat = LoadMaterialDefault();
     LoadEarthTextures(app);
+    LoadStep(0.45);   // 地球の画像の展開（起動で最も重い）
     LoadMoonTextures(app);
     app.milkyWay = LoadEmbeddedTexture(MilkyWayJpg(), ".jpg");
     app.deepSkyTex = MakeDeepSkyTextures();
+    LoadStep(0.62);
     for (const RingSet& rs : RingSets()) {   // 環の不透明度の表と形
         app.ringTex.push_back(LoadRingTexture(rs));
         double R = app.B[rs.body].d.radius;
@@ -487,6 +505,7 @@ int main(int argc, char** argv) {
 #if defined(__EMSCRIPTEN__)
     StartDeferredAssetDownloads();   // 地図・形・月などは、起動してから裏で読み込む
 #endif
+    LoadStep(0.63);
     app.shipShader = LoadShaderFromMemory(GlslForPlatform(SHIP_VS).c_str(), GlslForPlatform(SHIP_FS).c_str());
     app.locShipExposure = GetShaderLocation(app.shipShader, "exposure");
     {   // 露出の倍率は毎フレーム UpdateExposure で渡す。それより前に描いても暗くならないよう 1 にしておく
@@ -583,10 +602,13 @@ int main(int argc, char** argv) {
     }
     app.probeEvents = FindProbeEvents(app);
     app.cometEvents = FindCometEvents(app);
+    LoadStep(0.74);
     app.historyEvents = FindHistoryEvents(app);
+    LoadStep(0.84);
     app.voyageEvents = FindVoyages(app);
     app.apolloEvents = FindApolloFlights(app);
     StartPendingVoyage(app);
+    LoadStep(0.93);   // 残りは最初の画面を描くまで
     app.sl9Dirs = Sl9FixedDirs(app.B);
     app.eventsPage = std::max(0, std::min(EV_PAGES - 1, opt.eventsPage));
     if (opt.showEvents) {
@@ -775,7 +797,8 @@ int main(int argc, char** argv) {
         if (app.toastTime > 0) app.toastTime -= dt;
 
 #if defined(__EMSCRIPTEN__)
-        if (static int lastPending = -1; DeferredAssetsPending() != lastPending) {   // ファイルが届くたびに組み込む
+        // ファイルが届くたびに組み込む。最初の画面を出すまでは組み込まない（起動中に届いた分で最初の画面が遅れる）
+        if (static int lastPending = -1; frame >= 1 && DeferredAssetsPending() != lastPending) {
             lastPending = DeferredAssetsPending();
             RefreshDeferredAssets(app);
         }
@@ -921,6 +944,9 @@ int main(int argc, char** argv) {
             Toast(app, msg.c_str());
         }
         EndDrawing();
+#if defined(__EMSCRIPTEN__)
+        if (frame == 1) WebLoadDone();   // 最初の画面を描いてから読み込み画面を消す
+#endif
         if (quitAfterShot) break;
     }
 

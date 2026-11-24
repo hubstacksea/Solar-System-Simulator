@@ -230,7 +230,7 @@ On the first launch a short guide (4 pages) introduces the controls and highligh
 
 Try it in your browser without installing anything: **https://hubstacksea.github.io/Solar-System-Simulator/**
 
-- Runs in browsers with WebGL2 (recent Chrome / Edge / Firefox / Safari). Only the 21 MB needed to start is loaded first; the planet and moon maps, asteroid shapes, Moon maps, Earth's clouds and seasons, the fine elevations of Earth, the Moon and Mars, and the asteroid belt (about 126 MB) are loaded in the background while you play. Until they arrive, surfaces are drawn procedurally and "Loading maps (N left)" is shown at the bottom left
+- Runs in browsers with WebGL2 (recent Chrome / Edge / Firefox / Safari). Only the 21 MB needed to start is loaded first (the loading bar covers both the download and the preparation after it); the planet and moon maps, asteroid shapes, Moon maps, Earth's clouds and seasons, the fine elevations of Earth, the Moon and Mars, and the asteroid belt (about 126 MB) are loaded in the background while you play. Until they arrive, surfaces are drawn procedurally and "Loading maps (N left)" is shown at the bottom left
 - Music is not included (sound effects are). Japanese text uses the bundled Noto Sans JP font
 - Click the view to steer with the mouse (Esc to release). Settings and bookmarks are kept in the browser
 - On phones and tablets, on-screen buttons appear: drag to steer, Thrust / Brake / Stop on the right, Target / Warp / Autopilot on the left, Tour / Events / Map / Settings / Help / Share at the top, and tap the engine bar to switch engines. Quality starts at Low, and small screens are rendered at 720 pixels high and scaled down

@@ -60,13 +60,22 @@
     document.documentElement.lang = shellLang;
     document.getElementById('msg').textContent = shellLang === 'en' ? 'Loading…' : '読み込み中…';
   }
+  // バーはデータのダウンロードで 0〜40%、起動の処理（画像の展開など）で 40〜100% まで進める。
+  // 読み込み画面は、プログラムが最初の画面を描いてから消す（loadDone）
+  const shellBar = 0.4;
   // 描画の大きさはプログラムがページの大きさに合わせて決め、CSS で画面いっぱいに表示する
   var Module = {
     canvas: document.getElementById('canvas'),
     setStatus: function (t) {
       const m = t.match(/\((\d+(\.\d+)?)\/(\d+)\)/);
-      if (m) document.getElementById('fill').style.width = (100 * m[1] / m[3]) + '%';
-      if (!t) { document.getElementById('status').style.display = 'none'; document.getElementById('credit').style.display = 'none'; }
+      if (m) document.getElementById('fill').style.width = (100 * shellBar * m[1] / m[3]) + '%';
+    },
+    loadProgress: function (f) {
+      document.getElementById('fill').style.width = (100 * (shellBar + (1 - shellBar) * f)) + '%';
+    },
+    loadDone: function () {
+      document.getElementById('status').style.display = 'none';
+      document.getElementById('credit').style.display = 'none';
     },
   };
 </script>

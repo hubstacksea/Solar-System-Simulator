@@ -339,17 +339,16 @@ static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext, int terrai
         T.earth = terrainBody == B_EARTH;
         T.body = terrainBody;
         T.wide = wide;
-        Color* px = LoadImageColors(img);
+        // RGBA の画像は画素をそのまま読む（LoadImageColors で 8192x4096 の写しを作らない。起動を速く）
+        bool rgba = img.format == PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+        Color* px = rgba ? (Color*)img.data : LoadImageColors(img);
         T.v.resize((size_t)T.w * T.h);
         for (size_t k = 0; k < T.v.size(); k++) T.v[k] = T.earth ? px[k].r : (unsigned short)(px[k].r * 256 + px[k].a);
-        UnloadImageColors(px);
-        T.lo = 1e9;
-        T.hi = -1e9;
-        for (size_t k = 0; k < T.v.size(); k++) {
-            double h = T.Km((int)k);
-            T.lo = std::min(T.lo, h);
-            T.hi = std::max(T.hi, h);
-        }
+        if (!rgba) UnloadImageColors(px);
+        // 高さは値とともに増える（Km）ので、最も低い・高い所は値の最小・最大の所
+        auto mm = std::minmax_element(T.v.begin(), T.v.end());
+        T.lo = T.Km((int)(mm.first - T.v.begin()));
+        T.hi = T.Km((int)(mm.second - T.v.begin()));
         Body& b = app->B[terrainBody];
         b.terrain = (int)g_terrain.size();
         b.outer = std::max(b.outer, b.d.radius + T.hi);
@@ -797,7 +796,63 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     TerrainOff(app);
 }
 
+#if defined(__EMSCRIPTEN__)
+// ブラウザ版: 地球の色の画像（8192x4096 の JPEG）はブラウザに展開させる。wasm の中で展開するより速く、起動の初めに
+// 頼んでおくと（WebDecodeStart）ほかの準備と並んで進む。できない時は 0 を返し、今までどおり wasm で展開する
+EM_JS_DEPS(sv_decode, "$FS,$GL");
+EM_JS(void, WebDecodeStart, (const char* path), {
+    var p = UTF8ToString(path);
+    try {
+        var blob = new Blob([FS.readFile(p)], {type: "image/jpeg"});
+        Module.svDecode = Module.svDecode || {};
+        Module.svDecode[p] = createImageBitmap(blob, {premultiplyAlpha: "none", colorSpaceConversion: "none"})
+                                 .catch(function() { return null; });
+    } catch (e) {}
+});
+EM_ASYNC_JS(int, WebDecodedTexture, (const char* path, int* size), {
+    var p = UTF8ToString(path);
+    var pr = Module.svDecode && Module.svDecode[p];
+    if (!pr) return 0;
+    delete Module.svDecode[p];
+    var bmp = await pr;
+    if (!bmp) return 0;
+    var gl = GLctx, tex = gl.createTexture();
+    gl.getError();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB8, gl.RGB, gl.UNSIGNED_BYTE, bmp);
+    var ok = gl.getError() == 0;
+    if (ok) gl.generateMipmap(gl.TEXTURE_2D);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    HEAP32[size >> 2] = bmp.width;
+    HEAP32[(size >> 2) + 1] = bmp.height;
+    bmp.close();
+    if (!ok) {
+        gl.deleteTexture(tex);
+        return 0;
+    }
+    var id = GL.getNewId(GL.textures);
+    tex.name = id;
+    GL.textures[id] = tex;
+    return id;
+});
+#endif
+
 static void LoadEarthTextures(App& app) {
+#if defined(__EMSCRIPTEN__)
+    int size[2] = {0, 0};
+    if (unsigned int id = WebDecodedTexture("/assets/earth_color.jpg", size)) {
+        Texture2D& t = app.earthColor;
+        t = {id, size[0], size[1], 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8};
+        while ((std::max(size[0], size[1]) >> t.mipmaps) > 0) t.mipmaps++;   // 1x1 までの段数
+        SetTextureFilter(t, TEXTURE_FILTER_TRILINEAR);
+        rlTextureParameters(t.id, RL_TEXTURE_FILTER_ANISOTROPIC, 8);
+        rlTextureParameters(t.id, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_REPEAT);
+        rlTextureParameters(t.id, RL_TEXTURE_WRAP_T, RL_TEXTURE_WRAP_CLAMP);
+    } else
+#endif
     app.earthColor = LoadEmbeddedTexture(EarthColorJpg(), ".jpg");
     app.earthData = LoadEmbeddedTexture(EarthDataPng(), ".png", B_EARTH, &app);
     app.earthTex = app.earthColor.id && app.earthData.id;

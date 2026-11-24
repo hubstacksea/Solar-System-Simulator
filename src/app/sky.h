@@ -243,8 +243,16 @@ static Image DeepSkyImage(const DeepSky& o, int seed) {
     for (int y = 0; y < N; y++)
         for (int x = 0; x < N; x++) {
             float u = ((x + 0.5f) / N * 2 - 1) * 1.25f, v = ((y + 0.5f) / N * 2 - 1) * 1.25f;
-            float r = std::sqrt(u * u + v * v), th = std::atan2(v, u);
-            float n = DsoFbm(u * 3 + 7, v * 3 + 3, seed), n2 = DsoFbm(u * 7 + 1, v * 7 + 5, seed + 101);
+            float r = std::sqrt(u * u + v * v);
+            if (r >= 1.25f) {   // 四隅は縁で消える（fade = 0）ので計算しない（起動を速く）
+                px[y * N + x] = {0, 0, 0, 255};
+                continue;
+            }
+            // 雑音は使う種類の時だけ求める（結果は同じ）
+            bool useN = o.kind == DSO_SPIRAL || o.kind == DSO_EDGEON || o.kind == DSO_IRREGULAR || o.kind == DSO_PLANETARY;
+            bool useN2 = o.kind == DSO_SPIRAL || o.kind == DSO_EDGEON || o.kind == DSO_IRREGULAR || o.kind == DSO_SHELL;
+            float th = o.kind == DSO_SPIRAL ? std::atan2(v, u) : 0;
+            float n = useN ? DsoFbm(u * 3 + 7, v * 3 + 3, seed) : 0, n2 = useN2 ? DsoFbm(u * 7 + 1, v * 7 + 5, seed + 101) : 0;
             float rgb[3] = {0, 0, 0};
             auto add = [&](const unsigned char* c, float k) {
                 for (int i = 0; i < 3; i++) rgb[i] += c[i] * k;

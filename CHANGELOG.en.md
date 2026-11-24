@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.1 (2026-11-24)
+
+- The browser version's loading bar now keeps moving while it gets ready after the data arrives (unpacking Earth's images and so on). The bar used to reach the end with the download alone and seemed stuck until the first frame. The download now fills 40% of the bar and getting ready the rest, and the loading screen goes away after the first frame is drawn
+- The browser version starts faster. The browser unpacks Earth's color image alongside the other preparation (it looks the same), and maps that arrive during startup are added after the first frame. In local measurements, the time from the data arriving to the first frame went from 4.0 s to 3.7 s (from 11.9 s to 10.7 s with the CPU slowed 4×)
+- Made drawing the nebula and galaxy images and reading the elevations of Earth and other bodies lighter (same results; the desktop version also starts a little faster)
+
 ## 2.70.0 (2026-11-24)
 
 - Fixed Earth's coastlines. Land and sea were decided from elevations sampled every 5 arc-minutes (about 9 km), and shallow sea that did not look like water in the surface image counted as land, so most of the Seto Inland Sea was land and Shikoku and Kyushu looked joined to Honshu (inland seas such as the Seto Inland Sea and Tokyo Bay are nearly black in the surface image). Land and sea are now decided from ETOPO 2022 at 60 arc-seconds (about 1.85 km), and the coastline follows the share of land in each texel. Dark areas no longer count as land even when shallow (the Dutch polders and the lowlands north of the Caspian stay land). Coasts such as Denmark, the Aegean, the Philippines and the Canadian Arctic islands are also finer
