@@ -60,6 +60,15 @@
     document.documentElement.lang = shellLang;
     document.getElementById('msg').textContent = shellLang === 'en' ? 'Loading…' : '読み込み中…';
   }
+  // マウスを捕まえる要求（ポインタロック）をブラウザが断ると、断りの Promise を誰も受け取らず、ページの例外になる
+  // （ロックを外した直後の要求・ヘッドレスの Chrome など）。断られても、もう一度クリックすれば捕まえられるので、断りは捨てる
+  const shellCanvas = document.getElementById('canvas');
+  const shellLock = shellCanvas.requestPointerLock;
+  if (shellLock) shellCanvas.requestPointerLock = function () {
+    const p = shellLock.apply(this, arguments);
+    if (p && p.catch) p.catch(function () {});
+    return p;
+  };
   // バーはデータのダウンロードで 0〜40%、起動の処理（画像の展開など）で 40〜100% まで進める。
   // 読み込み画面は、プログラムが最初の画面を描いてから消す（loadDone）
   const shellBar = 0.4;

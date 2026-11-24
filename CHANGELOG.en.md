@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.2 (2026-11-24)
+
+- In the browser version, a page error was raised when the browser refused to capture the mouse (for example right after releasing it). It is now ignored; clicking again captures the mouse as before (behavior is unchanged)
+
 ## 2.70.1 (2026-11-24)
 
 - The browser version's loading bar now keeps moving while it gets ready after the data arrives (unpacking Earth's images and so on). The bar used to reach the end with the download alone and seemed stuck until the first frame. The download now fills 40% of the bar and getting ready the rest, and the loading screen goes away after the first frame is drawn
