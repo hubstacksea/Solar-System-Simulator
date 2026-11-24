@@ -5,35 +5,38 @@
 
 データ（いずれも商用を含め自由に再配布できるもの）:
   - NASA Blue Marble Next Generation (2004年4月, 地形陰影なし)  … 地表の色
-  - NOAA NCEI ETOPO 2022 (60 秒角, 氷床表面) を 5 分角に間引いたもの … 標高・水深・海陸
+  - NOAA NCEI ETOPO 2022 (60 秒角, 氷床表面) を 2 分角に間引いたもの … 標高・水深
+    同じデータの 60 秒角そのもの（make_earth_detail.py と同じファイル） … 海陸
   - NASA Black Marble 2016                                    … 夜の街明かり
 
 出力:
   earth_color.jpg  地表の色（海は周囲の陸の色で埋めてある）
-  earth_data.png   R: 高さコード, G: 夜景, B: 海陸マスク（少しぼかし）, A: 海氷
+  earth_data.png   R: 高さコード, G: 夜景, B: 海陸マスク（テクセルの中の陸の割合）, A: 海氷
+  どちらも 8192x4096（配布する版も。--hq を付けても同じ）
 
-使い方: python3 tools/make_earth_assets.py <作業ディレクトリ> [出力先=assets] [--hq]
-  --hq: 高画質版（8192x4096。地表の色は 21600x10800、標高は 2 個おきに取得）
-必要なもの: Pillow（ダウンロード 約 50 MB、--hq では 約 300 MB）
+使い方: python3 tools/make_earth_assets.py <作業ディレクトリ> [出力先=assets]
+必要なもの: Pillow と NumPy（ダウンロード 約 300 MB。ほかに make_earth_detail.py と同じ 約 930 MB）
 """
 import os
 import sys
 import struct
 import urllib.request
+import numpy as np
 from PIL import Image, ImageChops, ImageFilter, ImageMath
 
-HQ = "--hq" in sys.argv
+import make_earth_detail
+
 BASE = "https://assets.science.nasa.gov/content/dam/science/esd/eo/images"
 SOURCES = {
-    "color": BASE + "/bmng/bmng-base/april/world.200404.3x%s.jpg" % ("21600x10800" if HQ else "5400x2700"),
+    "color": BASE + "/bmng/bmng-base/april/world.200404.3x21600x10800.jpg",
     "lights": BASE + "/imagerecords/144000/144898/BlackMarble_2016_3km.jpg",
 }
-# ETOPO 2022 60 秒角 (21600x10800) を 5 個おきに取得 → 4320x2160（--hq では 2 個おきで 10800x5400。float32, OPeNDAP バイナリ)
-ETOPO_STRIDE = 2 if HQ else 5
+# ETOPO 2022 60 秒角 (21600x10800) を 2 個おきに取得 → 10800x5400（float32, OPeNDAP バイナリ)
+ETOPO_STRIDE = 2
 ETOPO_URL = ("https://oceanwatch.pifsc.noaa.gov/erddap/griddap/ETOPO_2022_v1_60s.dods"
              "?z%%5B0:%d:10799%%5D%%5B0:%d:21599%%5D" % (ETOPO_STRIDE, ETOPO_STRIDE))
 ETOPO_FILE = "etopo2022_60s_stride%d.dods" % ETOPO_STRIDE
-W, H = (8192, 4096) if HQ else (4096, 2048)
+W, H = 8192, 4096
 LAND_MAX, SEA_MAX = 8900.0, 11000.0  # 高さコードの範囲 (m)。シェーダの earthHeightM と合わせる
 
 
@@ -70,6 +73,28 @@ def ev(expr, **kw):
     return getattr(ImageMath, "unsafe_eval")(expr, **kw) if hasattr(ImageMath, "unsafe_eval") else ImageMath.eval(expr, **kw)
 
 
+def land_fraction(work, color):
+    """60 秒角（1 画素 約 1.85 km）で海陸を決め、W x H の 1 テクセルの中の陸の割合 (0..255) にする。
+    5 分角に間引いた標高で決めると、瀬戸内海のような幅 10〜50 km の海が陸になる（四国・九州が本州と陸続きに見えた）。
+    海陸: 標高 0 m 以上を陸とする。ただし地表画像で水の色の所（カスピ海などの湖）は水、
+    海面下でも暗くなく水の色でない浅い所（オランダの干拓地・カスピ海の北の低地など）は陸。
+    地表画像の浅い内海はほとんど黒い（瀬戸内海・東京湾）ので、暗い所はこの例外から除く"""
+    big = make_earth_detail.W, make_earth_detail.H
+    tile = make_earth_detail.TILE
+    land = np.zeros((big[1], big[0]), np.uint8)
+    for r in range(big[1] // tile):
+        e = make_earth_detail.load_band(work, r)
+        e = np.concatenate([e[:, big[0] // 2:], e[:, :big[0] // 2]], axis=1)   # 経度 -180° を左端に
+        ch = color.size[1] * tile // big[1]
+        c = np.asarray(color.crop((0, r * ch, color.size[0], (r + 1) * ch)).resize((big[0], tile), Image.BILINEAR),
+                       np.float32)
+        R, G, B = c[..., 0], c[..., 1], c[..., 2]
+        water = (B > np.maximum(R, G) + 8) | ((R + G + B < 100) & (B >= R))
+        landish = (e >= 0) | ((e > -50) & (R >= B) & (R + G + B >= 60))
+        land[r * tile:(r + 1) * tile] = (landish & ~water) * 255
+    return Image.fromarray(land).resize((W, H), Image.BOX)
+
+
 def fill_ocean(color, land):
     """海のピクセルを周囲の陸の色で埋める（プッシュプル法）。
     シェーダは海岸線をテクセルより細かく引くので、陸の色に海の青が混ざらないようにする。"""
@@ -103,14 +128,10 @@ def main():
     src = {k: fetch(work, u) for k, u in SOURCES.items()}
 
     elev = load_etopo(fetch(work, ETOPO_URL, ETOPO_FILE)).resize((W, H), Image.BILINEAR)
-    color = Image.open(src["color"]).convert("RGB").resize((W, H), Image.LANCZOS)
-    # 海陸: 標高 0 m 以上を陸とする。ただし地表画像で水の色の所（カスピ海などの湖）は水、
-    # 海面下でも水の色でない浅い所（オランダの干拓地・死海周辺など）は陸
-    r, g, b = [c.convert("F") for c in color.split()]
-    water = ev("convert(max(b > max(r, g) + 8, (r + g + b < 100) * (b >= r)) * 255, 'L')", r=r, g=g, b=b)
-    landish = ev("convert(max(e >= 0, (e > -50) * (r >= b)) * 255, 'L')", e=elev, r=r, b=b)
-    land = ImageChops.multiply(landish, ImageChops.invert(water))
-    land = land.filter(ImageFilter.MedianFilter(3))
+    color_src = Image.open(src["color"]).convert("RGB")
+    color = color_src.resize((W, H), Image.LANCZOS)
+    frac = land_fraction(work, color_src)
+    land = frac.point(lambda v: 255 if v >= 128 else 0)
     # 海氷: 海の上の白い所（元画像の明るさから）
     gray = color.convert("L")
     seaice = ImageChops.multiply(gray.point(lambda v: max(0, min(255, (v - 100) * 4))), ImageChops.invert(land))
@@ -124,8 +145,8 @@ def main():
     # G: 夜景。月明かりに照らされた地表（〜55）を除く
     lights = Image.open(src["lights"]).convert("L").resize((W, H), Image.LANCZOS)
     lights = lights.point(lambda v: int(round((max(0, v - 55) / 200) ** 1.3 * 255)))
-    # B: 少しぼかした海陸マスク（シェーダで 0.5 を境に海岸線を引き、ノイズで細かく揺らす）
-    mask = land.filter(ImageFilter.GaussianBlur(1.2))
+    # B: 陸の割合（シェーダで 0.5 を境に海岸線を引き、ノイズで細かく揺らす）。テクセルの半分より狭い海峡は閉じる
+    mask = frac
     # A: 海氷
     Image.merge("RGBA", (height, lights, mask, seaice)).save(os.path.join(out, "earth_data.png"), optimize=True)
     print("done:", out)

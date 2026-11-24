@@ -230,7 +230,7 @@
 
 インストールせずにブラウザで試せます: **https://hubstacksea.github.io/Solar-System-Simulator/**
 
-- WebGL2 が使えるブラウザ（Chrome / Edge / Firefox / Safari の最近の版）で動きます。起動に要る約 10 MB だけを先に読み込み、惑星・衛星の地図、小惑星の形、月の地図、地球の雲と季節、地球・月・火星の細かい標高、小惑星帯など（約 126 MB）は遊びながら裏で読み込みます。届くまでは手続きで描いた表面で表示し、画面左下に「地図などを読み込み中（残り N）」と出ます
+- WebGL2 が使えるブラウザ（Chrome / Edge / Firefox / Safari の最近の版）で動きます。起動に要る約 21 MB だけを先に読み込み、惑星・衛星の地図、小惑星の形、月の地図、地球の雲と季節、地球・月・火星の細かい標高、小惑星帯など（約 126 MB）は遊びながら裏で読み込みます。届くまでは手続きで描いた表面で表示し、画面左下に「地図などを読み込み中（残り N）」と出ます
 - 音楽は入っていません（効果音は鳴ります）。日本語は同梱のフォント（Noto Sans JP）で表示します
 - 画面をクリックするとマウスで機首を操作できます（Esc で解除）。設定やブックマークはブラウザに保存されます
 - スマホ・タブレットでは画面にボタンが出ます: ドラッグで機首の向き、右の「加速」「減速」「停止」、左の「ターゲット」「ワープ」「自動操縦」、上の「ツアー」「イベント」「全体図」「設定」「説明」「共有」、下のエンジン欄をタップで切り替え。画質は最初「低」になり、縦の画面が小さい時は縦 720 ピクセル相当で描いて縮めて表示します
@@ -498,7 +498,7 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 `assets/` の画像は `tools/make_earth_assets.py` と `tools/make_moon_assets.py` で NASA・NOAA のデータから作り、ビルド時に実行ファイルへ埋め込みます（実行時にファイルは不要）。
 
 - 地表の色: NASA Earth Observatory, Blue Marble: Next Generation（2004年4月）
-- 標高・水深: NOAA NCEI, ETOPO 2022 Global Relief Model（60 秒角・氷床表面。全球は 5 分角に間引き、陸の地表の近くはカメラの周りだけ 60 秒角をそのまま使用。`tools/make_earth_detail.py` で変換、約 930 MB をダウンロード）
+- 標高・水深: NOAA NCEI, ETOPO 2022 Global Relief Model（60 秒角・氷床表面。全球の標高は 5 分角に間引き、海陸の境は 60 秒角から。陸の地表の近くはカメラの周りだけ 60 秒角をそのまま使用。`tools/make_earth_detail.py` で変換、約 930 MB をダウンロード）
 - 夜の街明かり: NASA Earth Observatory, Black Marble 2016
 - 月の色・標高: NASA's Scientific Visualization Studio, CGI Moon Kit（LROC WAC / LOLA）
 - 有名な山などの地域だけの細かい標高（`assets/earth_patches.bin`・`moon_patches.bin`・`mars_patches.bin`）: 地球は ESA の Copernicus DEM GLO-90（3 秒角、約 90 m。produced using Copernicus WorldDEM™-90 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved）、月は SLDEM2015（LRO の LOLA と かぐや の地形カメラ、Barker ほか 2016。512 ピクセル/度、約 60 m）、火星は USGS の MOLA と HRSC の合成標高（200 m を 288 ピクセル/度、約 206 m に縮めたもの）。`tools/make_detail_patches.py` で作成
@@ -525,7 +525,7 @@ Xbox / PlayStation / Switch Pro など、SDL のコントローラ DB に載っ�
 - 音楽（月）: ドビュッシー「月の光」 ピアノ: Laurens Goedhart（2011 年）。CC BY 3.0
 - 音源はいずれも Wikimedia Commons から取得。作り直す場合は `python3 tools/make_music_assets.py <作業フォルダ>`（ffmpeg が必要、約 350 MB をダウンロード）
 
-いずれも商用を含め自由に使用・再配布できるデータです（詳細は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。作り直す場合は `python3 tools/make_earth_assets.py <作業フォルダ>`（約 50 MB をダウンロード）・`python3 tools/make_earth_detail.py <作業フォルダ>`（地球の陸の細かい標高、NumPy も必要、約 930 MB）・`python3 tools/make_body_detail.py <作業フォルダ>`（月と火星の細かい標高、NumPy も必要、約 11.5 GB。火星の元データが 11.4 GB）・`python3 tools/make_detail_patches.py <作業フォルダ>`（有名な山などの地域だけの細かい標高、NumPy が必要、地球 約 80 MB・月 約 0.6 GB と火星の元データ）・`python3 tools/make_surface_props.py <作業フォルダ>`（月の岩の多さと火星の熱慣性・砂丘地帯、NumPy も必要、約 140 MB）と `python3 tools/make_moon_assets.py <作業フォルダ>`（約 45 MB）。いずれも Pillow が必要です。地名は `python3 tools/make_place_names.py <作業フォルダ>`（Python だけで動く、約 50 MB）。地球・地球の季節と雲・月・天の川・惑星と衛星の地図のツールは、最後に `--hq` を付けると高画質版（地球・月の色と水星・火星の地図は 8192×4096 など）を作ります。別のフォルダに出力し、`cmake -B build-hq -DEMBED_ASSET_DIR=<そのフォルダ>` でビルドすると、それを埋め込みます（実行ファイル約 178 MB、テクスチャ約 1.2 GB。配布する版は通常の画質です）。月の 8k の色の取得元（svs.gsfc.nasa.gov）は中間証明書を送らないので、取得に失敗する場合は Let's Encrypt の中間証明書を加えてください。
+いずれも商用を含め自由に使用・再配布できるデータです（詳細は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。作り直す場合は `python3 tools/make_earth_assets.py <作業フォルダ>`（地球の色と標高・海陸、8192×4096。約 300 MB をダウンロード。海陸の境に make_earth_detail.py と同じ 約 930 MB も使う、NumPy も必要）・`python3 tools/make_earth_detail.py <作業フォルダ>`（地球の陸の細かい標高、NumPy も必要、約 930 MB）・`python3 tools/make_body_detail.py <作業フォルダ>`（月と火星の細かい標高、NumPy も必要、約 11.5 GB。火星の元データが 11.4 GB）・`python3 tools/make_detail_patches.py <作業フォルダ>`（有名な山などの地域だけの細かい標高、NumPy が必要、地球 約 80 MB・月 約 0.6 GB と火星の元データ）・`python3 tools/make_surface_props.py <作業フォルダ>`（月の岩の多さと火星の熱慣性・砂丘地帯、NumPy も必要、約 140 MB）と `python3 tools/make_moon_assets.py <作業フォルダ>`（約 45 MB）。いずれも Pillow が必要です。地名は `python3 tools/make_place_names.py <作業フォルダ>`（Python だけで動く、約 50 MB）。地球・地球の季節と雲・月・天の川・惑星と衛星の地図のツールは、最後に `--hq` を付けると高画質版（月の色と水星・火星の地図は 8192×4096 など。地球の色と標高は通常版でも 8192×4096）を作ります。別のフォルダに出力し、`cmake -B build-hq -DEMBED_ASSET_DIR=<そのフォルダ>` でビルドすると、それを埋め込みます（実行ファイル約 178 MB、テクスチャ約 1.2 GB。配布する版は通常の画質です）。月の 8k の色の取得元（svs.gsfc.nasa.gov）は中間証明書を送らないので、取得に失敗する場合は Let's Encrypt の中間証明書を加えてください。
 
 ## 表示言語（日本語 / English）
 

@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.0 (2026-11-24)
+
+- Fixed Earth's coastlines. Land and sea were decided from elevations sampled every 5 arc-minutes (about 9 km), and shallow sea that did not look like water in the surface image counted as land, so most of the Seto Inland Sea was land and Shikoku and Kyushu looked joined to Honshu (inland seas such as the Seto Inland Sea and Tokyo Bay are nearly black in the surface image). Land and sea are now decided from ETOPO 2022 at 60 arc-seconds (about 1.85 km), and the coastline follows the share of land in each texel. Dark areas no longer count as land even when shallow (the Dutch polders and the lowlands north of the Caspian stay land). Coasts such as Denmark, the Aegean, the Philippines and the Canadian Arctic islands are also finer
+- Earth's surface colors and elevation and coastline image are now 8192×4096 (from 4096×2048; the cloud and season images are unchanged). The Akashi Strait opens, and Awaji and Shodoshima stand apart. The Kanmon Strait (about 0.6 km) and the Naruto Strait (about 1.3 km) are too narrow and stay closed. The executable grows by about 11 MB, the browser version's startup data from 10.5 MB to 20.8 MB, and startup takes about 0.8 s longer (drawing speed is unchanged)
+- Retook the README images of daytime Earth above Japan and Europe at night
+
 ## 2.69.3 (2026-11-24)
 
 - Fixed the images in the README galleries on GitHub being of unequal size side by side (Earth and the Moon and others; the column with longer captions was wider). Each column now takes half the width
