@@ -1114,9 +1114,9 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     float hN = earthHeightM(textureGrad(texture1, uv - vec2(0.0, st.y), dx, dy).r);
     float hS = earthHeightM(textureGrad(texture1, uv + vec2(0.0, st.y), dx, dy).r);
     float hm = earthHeightM(td.r);
-    const float R = 6378137.0, EXAG = 2.5;   // 起伏は 2.5 倍に強調
-    float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R * EXAG;
-    float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R * EXAG;
+    const float R = 6378137.0;   // 起伏の陰影は実際の傾きのまま（強調しない）
+    float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R;
+    float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R;
     vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
     vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
@@ -1124,7 +1124,7 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     vec2 sl;
     float dm, dw = detGradient(uv, dx, dy, lat, R, sl, dm), s = length(sl);
     if (dw > 0.0) {
-        grad = mix(grad, (east * sl.x + north * sl.y) * EXAG, dw);
+        grad = mix(grad, east * sl.x + north * sl.y, dw);
         if (hm > 0.0 || dm > 0.0) hm = mix(hm, dm, dw);
     }
 
@@ -1159,7 +1159,7 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
 
     // 起伏: データの勾配 + テクセルより細かい山肌（標高が高いほど険しい）
     float rough = (0.03 + 0.3 * clamp(hm / 4000.0, 0.0, 1.0)) / 1400.0;
-    vec4 h = vec4(hm / R * EXAG, grad) * land;
+    vec4 h = vec4(hm / R, grad) * land;
     // 窓の中は 1 分角より細かい山肌（地形の格子の高さと同じ。陰影は画素まで細かく）
     vec2 l2;
     float fLo = dw > 0.0 ? mix(detB.y, detD.y, det2Weight(uv, l2)) / (2.0 * PI) : 0.0;
@@ -1366,19 +1366,20 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         //  - 暗い砂の吹きだまり: 低い所（手続きの起伏の谷）にたまる、境目のはっきりした斑（地表の 4 分の 1 ほど、周りの 0.85 倍）。
         //    塵の積もった所には無い
         //  - 崩れたクレーターの埋まった底: 暗い砂がたまる（0.75 倍）
-        //  - 岩塊・砂丘の砂: 玄武岩で周りより暗い（0.82 倍・0.85 倍）
+        //  - 岩塊: 玄武岩で周りより暗い（0.82 倍）
         //  - ゆるやかなむら ±8%
         //  - 崖: むき出しの岩で 0.9 倍。地層ごとに ±12% の縞
-        // 地図の画素の平均の明るさが変わらないよう、斑の分は割り戻す
+        // 地図の画素の平均の明るさが変わらないよう、斑の分は割り戻す（斑が画素より細かくなって消える遠くでは割り戻さない）。
+        // 砂丘の砂の暗さは地図の色に入っている（砂丘地帯の地図は色の地図より粗いので、地図より細かい明暗にはならない）
         float Rm = R;
         if (rock > 0.0) mat = boulders(p, Rm / 20.0, 0.12 * rock * (1.0 - g_ice), 0.6, o * 0.53);
         float bare = (1.0 - dust) * (1.0 - g_ice);
         float drift = smoothstep(0.25, 0.45, fbmL(p, 9000.0, 12, 0.5, o + 71.0) * 0.6 - Tn.x * 0.5) * bare;
-        float mot = (1.0 - 0.15 * drift) / (1.0 - 0.15 * 0.25 * bare);
+        float mot = (1.0 - 0.15 * drift) / (1.0 - 0.15 * 0.25 * bare * lodW(9000.0));
         mot *= 1.0 - 0.25 * clamp(g_floor, 0.0, 1.0) * (1.0 - g_ice);
         mot *= 1.0 - 0.18 * step(1e-10, mat.x);
         if (sand > 0.0) mat += sandWaves(p, 6.2832 * Rm / 25.0, 0.1, 6.2832 * Rm / 300.0, 0.35, o + 61.0) * sand;
-        mot *= (1.0 - 0.15 * sand) * (1.0 + 0.08 * fbmL(p, 2000.0, 14, 0.55, o + 83.0));
+        mot *= 1.0 + 0.08 * fbmL(p, 2000.0, 14, 0.55, o + 83.0);
         if (cliff > 0.0) {   // 地層の縞（隣の層と境目の 2 割でなじませる。段と同じく細かすぎる所は消す）
             float t = strataT(hd, p, o), i = floor(t);
             float b = mix(hash1(ivec3(int(i), 17, 29)), hash1(ivec3(int(i) + 1, 17, 29)), smoothstep(0.8, 1.0, t - i));

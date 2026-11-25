@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.5 (2026-11-25)
+
+- Earth's relief shading is no longer exaggerated 2.5 times and follows the real slopes. The terrain near the ground is built at its true height, but its shading used slopes 2.5 times steeper, so the shapes and the shading did not match. Mountain ranges seen from space are shaded more softly. With the Sun low, more mountain slopes face away from it and look darker than before (the Moon's 1.5 times shading exaggeration is unchanged)
+- Mars's dune fields were drawn at 0.85 times their map colors, even from afar. The dune field map is coarser than the color map, so the darkness of the sand, already in the map colors, was counted twice
+- Mars's ground was up to about 4% too bright from afar. The correction for the dark sand drifts finer than the map stayed on even when the drifts were too small to see
+- Retook the README image of the Everest massif
+
 ## 2.70.4 (2026-11-25)
 
 - Fixed patches of water drawn on the Antarctic ice sheet. Bare ice where the wind has blown the snow away (bright bluish ice in the surface image) was taken for water. Bright blue above sea level no longer counts as water (about 110,000 texels in Antarctica and about 2,000 on glaciers in Greenland, Patagonia, Alaska and elsewhere become land; frozen lakes are dark and stay water). A little sea-colored area remains along the Antarctic coast, where the ice sheet elevations and the coastline in the surface image do not line up
