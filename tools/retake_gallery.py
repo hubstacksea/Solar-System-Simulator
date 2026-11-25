@@ -48,6 +48,8 @@ COCKPIT = ["--cockpit", "--photo", "2"]
 SHOTS = {
     "sunset": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 02:09"), "--target", "3", "--at", "35", "-134", "0.1",
                         "--face-sun", "3"], None),
+    "haze": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 02:39"), "--target", "3", "--at", "35", "139", "10",
+                      "--photo", "1"], None),   # 日本の上空 10 km
     "mars_sky": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 08:09"), "--target", "4", "--at", "0", "0", "0.1",
                           "--face-sun", "20"], None),   # 太陽高度 約 20°
     "mars_map": (lambda: ["--frames", "220", "--photo", "2", "--hours", hours("2026-10-29 15:43"), "--target", "4", "--warp"],

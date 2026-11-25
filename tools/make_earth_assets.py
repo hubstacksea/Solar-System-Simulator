@@ -15,7 +15,7 @@
   どちらも 8192x4096（配布する版も。--hq を付けても同じ）
 
 使い方: python3 tools/make_earth_assets.py <作業ディレクトリ> [出力先=assets]
-必要なもの: Pillow と NumPy（ダウンロード 約 300 MB。ほかに make_earth_detail.py と同じ 約 930 MB）
+必要なもの: Pillow と NumPy と SciPy（ダウンロード 約 300 MB。ほかに make_earth_detail.py と同じ 約 930 MB）
 """
 import os
 import sys
@@ -23,6 +23,7 @@ import struct
 import urllib.request
 import numpy as np
 from PIL import Image, ImageChops, ImageFilter, ImageMath
+from scipy import ndimage
 
 import make_earth_detail
 
@@ -78,10 +79,15 @@ def land_fraction(work, color):
     5 分角に間引いた標高で決めると、瀬戸内海のような幅 10〜50 km の海が陸になる（四国・九州が本州と陸続きに見えた）。
     海陸: 標高 0 m 以上を陸とする。ただし地表画像で水の色の所（カスピ海などの湖）は水、
     海面下でも暗くなく水の色でない浅い所（オランダの干拓地・カスピ海の北の低地など）は陸。
-    地表画像の浅い内海はほとんど黒い（瀬戸内海・東京湾）ので、暗い所はこの例外から除く"""
+    地表画像の浅い内海はほとんど黒い（瀬戸内海・東京湾）ので、暗い所はこの例外から除く。
+    海とつながっていない海面下の土地は、地表画像で砂や岩の色（赤みがあって明るい）の所を陸にする（カッターラ低地 -133 m・
+    トルファン盆地 -154 m・ダナキル低地 -125 m・デスバレー -86 m・ヨルダン渓谷など。どれも 50 m より深い）。
+    海とつながった所は広げない（南極などの海氷・凍った入り江が陸になる）。水の色の所（死海・ソルトン湖）と、
+    凍った湖（白い）・濁った湖の岸（赤みが無いか暗い）は水のまま"""
     big = make_earth_detail.W, make_earth_detail.H
     tile = make_earth_detail.TILE
-    land = np.zeros((big[1], big[0]), np.uint8)
+    land = np.zeros((big[1], big[0]), bool)
+    dry = np.zeros((big[1], big[0]), bool)   # 海面下でも、海から離れていれば陸にする色の所
     for r in range(big[1] // tile):
         e = make_earth_detail.load_band(work, r)
         e = np.concatenate([e[:, big[0] // 2:], e[:, :big[0] // 2]], axis=1)   # 経度 -180° を左端に
@@ -91,8 +97,29 @@ def land_fraction(work, color):
         R, G, B = c[..., 0], c[..., 1], c[..., 2]
         water = (B > np.maximum(R, G) + 8) | ((R + G + B < 100) & (B >= R))
         landish = (e >= 0) | ((e > -50) & (R >= B) & (R + G + B >= 60))
-        land[r * tile:(r + 1) * tile] = (landish & ~water) * 255
-    return Image.fromarray(land).resize((W, H), Image.BOX)
+        land[r * tile:(r + 1) * tile] = landish & ~water
+        dry[r * tile:(r + 1) * tile] = ~water & (R >= B + 15) & (R + G + B >= 150)
+    # 水のつながり（斜めも含む）。経度 ±180° の端どうしもつなぎ、いちばん大きいものを海とする
+    lab, n = ndimage.label(~land, np.ones((3, 3), bool))
+    parent = np.arange(n + 1)
+
+    def root(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+    for dy in (-1, 0, 1):
+        a = lab[max(0, -dy):big[1] - max(0, dy), -1]
+        b = lab[max(0, dy):big[1] - max(0, -dy), 0]
+        for p, q in set(zip(a[(a > 0) & (b > 0)].tolist(), b[(a > 0) & (b > 0)].tolist())):
+            parent[root(p)] = root(q)
+    roots = np.array([root(i) for i in range(n + 1)])
+    size = np.bincount(roots[lab].ravel(), minlength=n + 1)
+    size[0] = 0
+    sea = roots[lab] == size.argmax()
+    del lab
+    land |= dry & ~sea
+    return Image.fromarray(land.astype(np.uint8) * 255).resize((W, H), Image.BOX)
 
 
 def fill_ocean(color, land):

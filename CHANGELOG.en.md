@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.3 (2026-11-25)
+
+- Dry land below sea level on Earth was drawn as sea (the Qattara Depression at -133 m, the Danakil Depression, the Turpan Depression, Death Valley, the Jordan Valley, the depressions in Argentina and so on). Land below sea level that is not connected to the ocean now counts as land where the surface image shows sand or rock. Lakes that look like water, such as the Dead Sea and the Salton Sea, stay water (their shapes are also closer to the real ones). Areas connected to the ocean are unchanged. The elevation data cannot hold land below 0 m, so the depressions are drawn as flat land at 0 m. The salt ponds south of the Dead Sea, pale blue-green in the 2004 surface image, are mostly land
+- Retook the README image of the hazy horizon from 10 km up with the current version
+
 ## 2.70.2 (2026-11-24)
 
 - In the browser version, a page error was raised when the browser refused to capture the mouse (for example right after releasing it). It is now ignored; clicking again captures the mouse as before (behavior is unchanged)
