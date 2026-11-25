@@ -1177,7 +1177,10 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
         if (forest > 0.0) {
             vec4 cr = canopy(p, R / 8.0, o * 0.61);
             m += cr * (0.5 * forest);
-            base *= mix(1.0, 0.6 + 0.35 * clamp(cr.x * (R / 8.0), 0.0, 1.4), forest * land);
+            // くぼみを暗く、冠の上を明るく。地図の色は樹冠の陰も含めた平均なので、平均の明るさは変えない
+            // （canopy の値の平均は 1 段目 0.5、2 段目 0.5 / 2.1 に、遠くで画素より細かくなって消える割合を掛けたもの）
+            float w1 = lodW(R / 8.0), cm = 0.5 * w1 + (w1 > 0.0 ? 0.5 * 0.5 / 2.1 * lodW(R / 8.0 * 2.1) : 0.0);
+            base *= mix(1.0, 1.0 + 0.35 * (cr.x * (R / 8.0) - cm), forest * land);
         }
         if (g_ice > 0.0) {
             vec3 e = cross(vec3(0.0, 1.0, 0.0), p);

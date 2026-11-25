@@ -48,6 +48,9 @@ COCKPIT = ["--cockpit", "--photo", "2"]
 SHOTS = {
     "sunset": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 02:09"), "--target", "3", "--at", "35", "-134", "0.1",
                         "--face-sun", "3"], None),
+    "earth_day": (lambda: ["--frames", "150", "--hours", hours("2026-11-17 03:00"), "--target", "3", "--at", "36", "138", "3000"],
+                  None),
+    "earth_alps": (lambda: ["--frames", "240", *COCKPIT, "--share", at("Earth", 6378.137, 43, 9, 300, 0, -40, 9816.95)], None),
     "haze": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 02:39"), "--target", "3", "--at", "35", "139", "10",
                       "--photo", "1"], None),   # 日本の上空 10 km
     "mars_sky": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 08:09"), "--target", "4", "--at", "0", "0", "0.1",

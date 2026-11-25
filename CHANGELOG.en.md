@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.4 (2026-11-25)
+
+- Fixed patches of water drawn on the Antarctic ice sheet. Bare ice where the wind has blown the snow away (bright bluish ice in the surface image) was taken for water. Bright blue above sea level no longer counts as water (about 110,000 texels in Antarctica and about 2,000 on glaciers in Greenland, Patagonia, Alaska and elsewhere become land; frozen lakes are dark and stay water). A little sea-colored area remains along the Antarctic coast, where the ice sheet elevations and the coastline in the surface image do not line up
+- Earth's forests were drawn darker than their map colors (0.6 times from afar and about 0.8 times on average up close). The shading of the bumpy canopy counted again the shadows already in the map colors. The light and dark of the canopy stay, and the average brightness now matches the map. Mountain areas such as Japan's look less navy blue through the haze from above
+- Retook the README images of the Alps from above and of the hazy horizon from 10 km up
+
 ## 2.70.3 (2026-11-25)
 
 - Dry land below sea level on Earth was drawn as sea (the Qattara Depression at -133 m, the Danakil Depression, the Turpan Depression, Death Valley, the Jordan Valley, the depressions in Argentina and so on). Land below sea level that is not connected to the ocean now counts as land where the surface image shows sand or rock. Lakes that look like water, such as the Dead Sea and the Salton Sea, stay water (their shapes are also closer to the real ones). Areas connected to the ocean are unchanged. The elevation data cannot hold land below 0 m, so the depressions are drawn as flat land at 0 m. The salt ponds south of the Dead Sea, pale blue-green in the 2004 surface image, are mostly land
