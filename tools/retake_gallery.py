@@ -68,7 +68,12 @@ SHOTS = {
     "pluto_sputnik": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Pluto", 1188.3, 15, 178, 12, 270, -12, 9831.35)], None),
     # トリトンのカンタロープ地形（太陽高度が低く、窪みの陰影が出る時刻）
     "triton_cantaloupe": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Triton", 1353.4, 22, -15, 150, 270, -45, 9832.9)], None),
+    "lunar_eclipse": (lambda: ["--frames", "200", "--hours", hours("2028-12-31 16:52"), "--target", "10", "--warp", "--face",
+                                   "--photo", "1"], None),   # 2028 年 12 月 31 日の皆既月食の最大（天体の名前が月に重なるので表示を隠す）
+    "apollo15_undock": (lambda: ["--frames", "400", "--photo", "2", "--share", "?apollo=15&scene=10"], None),
     "apollo15_landing": (lambda: ["--frames", "600", "--photo", "2", "--share", "?apollo=15&scene=12"], None),
+    # 深宇宙での船外活動（飛行士がハッチの外に出たところ）
+    "apollo15_eva": (lambda: ["--frames", "4200", "--photo", "2", "--share", "?apollo=15&scene=24"], None),
     # スカイクレーン: 着地の 8.5 秒前のパーシビアランス（中心から 3391.6015 km）の南 69 m・上 55.5 m から北へ 36° 見下ろす
     # （着陸機は地形の上に降ろすので、地表の高さが変わると合わせ直す）
     "perseverance_skycrane": (lambda: ["--frames", "200", "--zoom", "12", "--dpi", "2", *COCKPIT, "--share",
