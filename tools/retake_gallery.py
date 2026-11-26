@@ -57,6 +57,8 @@ SHOTS = {
                           "--face-sun", "20"], None),   # 太陽高度 約 20°
     "mars_map": (lambda: ["--frames", "220", "--photo", "2", "--hours", hours("2026-10-29 15:43"), "--target", "4", "--warp"],
                  None),   # マリネリス峡谷が正面
+    "moon": (lambda: ["--frames", "150", "--hours", hours("2026-11-24 12:00"), "--target", "10", "--at", "0", "0", "4500", "--face"],
+             None),   # 月の表側（満月の前日）
     "moon_terrain": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Moon", 1737.4, 25.9, 3.3, 0.5, 50, -3, 9819.0)], None),
     "mars_terrain": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Mars", 3395.4, -12.5, -66, 3, 100, -8, 9816.9)], None),
     "earth_mountains": (lambda: ["--frames", "240", *COCKPIT, "--share",

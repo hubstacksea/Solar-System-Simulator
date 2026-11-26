@@ -4,6 +4,11 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.7 (2026-11-26)
+
+- The Moon's map colors are no longer raised to the power 1.3 to exaggerate their contrast, and are drawn with the contrast of NASA's map (the LROC WAC Hapke-normalized mosaic, adjusted to match human vision). The map's highlands are already about twice as bright as its maria. The maria become about 20% brighter. The Moon's average brightness, and the crater density that differs between maria and highlands, are unchanged
+- Retook the README images of the Moon's near side, the Moon's terrain and the Apollo 15 landing, and the three Mars images (taken before 2.70.5). Added the Moon's near side to the retake tool (tools/retake_gallery.py)
+
 ## 2.70.6 (2026-11-26)
 
 - The Moon's relief shading is no longer exaggerated 1.5 times and follows the real slopes (as Earth's has since 2.70.5). Mountain slopes under a low Sun are shaded more softly

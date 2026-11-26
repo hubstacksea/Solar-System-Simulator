@@ -1261,7 +1261,9 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);
     dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);
-    vec3 tc = pow(textureGrad(texture0, uv, dx, dy).rgb, vec3(1.3)) * 1.25;   // 海と高地の明暗差を少し強調
+    // 地図の色（NASA SVS CGI Moon Kit。LROC WAC の Hapke 正規化モザイクを、見た目に合わせて調整したもの）の明暗差はそのまま。
+    // 1.062 倍は、以前の明暗差の強調（1.3 乗して 1.25 倍）と面積の平均の明るさをそろえる値
+    vec3 raw = textureGrad(texture0, uv, dx, dy).rgb, tc = raw * 1.062;
 
     vec2 texel = 1.0 / vec2(textureSize(texture1, 0));
     vec2 st = max(texel, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
@@ -1284,8 +1286,8 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
         hm = mix(hm, hd, dw);
     }
 
-    // 海（暗い所）はクレーターが少なく平ら（moonDark と同じ）
-    float dark = 1.0 - smoothstep(0.12, 0.3, dot(tc, vec3(0.333)));
+    // 海（暗い所）はクレーターが少なく平ら
+    float dark = moonDark(raw);
     vec4 C = craters(p, mix(0.55, 0.2, dark), 260.0, o * 0.37, 0.0);
     vec4 T = fbmD(p, 600.0, 20, 0.48, o) * (mix(0.004, 0.0015, dark) / 260.0);
     base = tc * (0.92 + 0.16 * (fbmL(p, 900.0, 16, 0.5, o + 5.0) * 0.5 + 0.5)) * (1.0 + g_ray * 0.35);
