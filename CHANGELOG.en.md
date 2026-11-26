@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.6 (2026-11-26)
+
+- The Moon's relief shading is no longer exaggerated 1.5 times and follows the real slopes (as Earth's has since 2.70.5). Mountain slopes under a low Sun are shaded more softly
+- Ice sheet several hundred meters above sea level along the Antarctic coast was drawn as sea (about 6,400 texels). Where the coastline of the surface image (Blue Marble) lies up to about 20 km inland of the elevation data (ETOPO), as at Prydz Bay, the ice sheet was painted in sea colors. South of 60° S, nothing more than 50 m above sea level is water, and the sea-colored parts are filled with the colors of the surrounding ice. Slightly darker blue bare ice that had become water is now land too
+- Mars's ground close up was darker than its map colors where rocks are common (up to about 1.6%) and on the floors of worn craters (about 0.2%). The average share of the surface covered by dark boulders and sand-filled floors is now compensated
+- Retook the README images of the Moon's terrain and the Apollo 15 landing
+
 ## 2.70.5 (2026-11-25)
 
 - Earth's relief shading is no longer exaggerated 2.5 times and follows the real slopes. The terrain near the ground is built at its true height, but its shading used slopes 2.5 times steeper, so the shapes and the shading did not match. Mountain ranges seen from space are shaded more softly. With the Sun low, more mountain slopes face away from it and look darker than before (the Moon's 1.5 times shading exaggeration is unchanged)

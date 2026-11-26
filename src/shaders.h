@@ -712,6 +712,20 @@ vec4 boulders(vec3 p, float F, float cover, float tall, vec3 salt) {
     return s;
 }
 
+// boulders が地表を覆う割合（3 段のうち画素より大きく見える段。1 段は セルに置く確率 × 球の体積の割合の平均 0.0313）
+float bouldersArea(float F, float cover) {
+    float a = 1.0, f = F;
+    for (int k = 0; k < 3; k++, f *= 2.3) if (lodW(f) > 0.0) a *= 1.0 - min(cover * 30.0, 1.0) * 0.0313;
+    return 1.0 - a;
+}
+// craters の g_floor の平均（崩れたクレーターの底の割合）。1 個の平均（底の球の体積 × (1 - 新しさ)。r と新しさの分布での平均
+// 0.00444）に層ごとの置く確率と、平均の半径 0.15 での重みを掛けて足す
+float craterFloorMean(float density, float F0, float worn) {
+    float s = 0.0, F = F0, dk = density;
+    for (int i = 0; i < 16 && lodW(F * 1.7) > 0.0; i++, F *= 2.2, dk *= craterLayerK(worn)) s += min(dk, 1.0) * 0.00444 * lodW(F / 0.3);
+    return s;
+}
+
 // 砂の波（さざ波・砂丘）: 決まった 2 つの向きの波を、場所ごとにゆっくり変わる重みで混ぜる（向きそのものを場所で変えると、
 // 細かい波の位相が乱れるため）。断面は風下側が急な非対称。峰は数波長ごとに曲がり、高さは峰の曲がりと同じノイズでむらにする。
 // 大小 2 つの波（さざ波と砂丘）をまとめて求める。F1, F2: 波数（単位球の長さあたり、波長 = 2π / F）、k1, k2: 傾きの大きさ
@@ -1256,9 +1270,9 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     float hN = moonHeightM(textureGrad(texture1, uv - vec2(0.0, st.y), dx, dy));
     float hS = moonHeightM(textureGrad(texture1, uv + vec2(0.0, st.y), dx, dy));
     float hm = moonHeightM(textureGrad(texture1, uv, dx, dy));
-    const float R = 1737400.0, EXAG = 1.5;
-    float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R * EXAG;
-    float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R * EXAG;
+    const float R = 1737400.0;   // 起伏の陰影は実際の傾きのまま（強調しない。地球と同じ）
+    float dhdLon = (hE - hW) / (2.0 * st.x) / (2.0 * PI) / R;
+    float dhdLat = (hN - hS) / (2.0 * st.y) / PI / R;
     vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
     vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
@@ -1266,7 +1280,7 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     vec2 sl;
     float hd, dw = detGradient(uv, dx, dy, lat, R, sl, hd);
     if (dw > 0.0) {
-        grad = mix(grad, (east * sl.x + north * sl.y) * EXAG, dw);
+        grad = mix(grad, east * sl.x + north * sl.y, dw);
         hm = mix(hm, hd, dw);
     }
 
@@ -1282,7 +1296,7 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
         Bk = boulders(p, R / 20.0, ra, 0.6, o * 0.53);
         base *= 1.0 + 0.2 * step(1e-10, Bk.x);
     }
-    return vec4(hm / R * EXAG, grad) + C + T + Bk;
+    return vec4(hm / R, grad) + C + T + Bk;
 }
 
 // 探査機の画像による地図のある天体（水星・火星・ケレス・ベスタ・衛星・冥王星など）。月と同じ並びの地図を貼る。
@@ -1365,19 +1379,21 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         // 地図（1 画素 約 5 km）より細かい明るさのむら mot（値はどれも HiRISE などの画像の見た目からの目安）:
         //  - 暗い砂の吹きだまり: 低い所（手続きの起伏の谷）にたまる、境目のはっきりした斑（地表の 4 分の 1 ほど、周りの 0.85 倍）。
         //    塵の積もった所には無い
-        //  - 崩れたクレーターの埋まった底: 暗い砂がたまる（0.75 倍）
-        //  - 岩塊: 玄武岩で周りより暗い（0.82 倍）
+        //  - 崩れたクレーターの埋まった底: 暗い砂がたまる（0.75 倍。平均では 0.2% ほど）
+        //  - 岩塊: 玄武岩で周りより暗い（0.82 倍。岩の多い所で地表の 9% ほどを覆い、平均では 1.6% ほど）
         //  - ゆるやかなむら ±8%
         //  - 崖: むき出しの岩で 0.9 倍。地層ごとに ±12% の縞
-        // 地図の画素の平均の明るさが変わらないよう、斑の分は割り戻す（斑が画素より細かくなって消える遠くでは割り戻さない）。
+        // 地図の画素の平均の明るさが変わらないよう、斑・底・岩塊の分は割り戻す（画素より細かくなって消える遠くでは割り戻さない）。
         // 砂丘の砂の暗さは地図の色に入っている（砂丘地帯の地図は色の地図より粗いので、地図より細かい明暗にはならない）
         float Rm = R;
-        if (rock > 0.0) mat = boulders(p, Rm / 20.0, 0.12 * rock * (1.0 - g_ice), 0.6, o * 0.53);
+        float bc = 0.12 * rock * (1.0 - g_ice);
+        if (rock > 0.0) mat = boulders(p, Rm / 20.0, bc, 0.6, o * 0.53);
         float bare = (1.0 - dust) * (1.0 - g_ice);
         float drift = smoothstep(0.25, 0.45, fbmL(p, 9000.0, 12, 0.5, o + 71.0) * 0.6 - Tn.x * 0.5) * bare;
         float mot = (1.0 - 0.15 * drift) / (1.0 - 0.15 * 0.25 * bare * lodW(9000.0));
-        mot *= 1.0 - 0.25 * clamp(g_floor, 0.0, 1.0) * (1.0 - g_ice);
-        mot *= 1.0 - 0.18 * step(1e-10, mat.x);
+        float fm = cov > 0.0 ? 0.25 * (1.0 - g_ice) * craterFloorMean(0.35 * kC, 260.0, craterWorn(st)) : 0.0;
+        mot *= (1.0 - 0.25 * clamp(g_floor, 0.0, 1.0) * (1.0 - g_ice)) / (1.0 - fm);
+        mot *= (1.0 - 0.18 * step(1e-10, mat.x)) / (1.0 - 0.18 * (rock > 0.0 ? bouldersArea(Rm / 20.0, bc) : 0.0));
         if (sand > 0.0) mat += sandWaves(p, 6.2832 * Rm / 25.0, 0.1, 6.2832 * Rm / 300.0, 0.35, o + 61.0) * sand;
         mot *= 1.0 + 0.08 * fbmL(p, 2000.0, 14, 0.55, o + 83.0);
         if (cliff > 0.0) {   // 地層の縞（隣の層と境目の 2 割でなじませる。段と同じく細かすぎる所は消す）

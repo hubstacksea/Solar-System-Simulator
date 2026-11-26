@@ -84,11 +84,15 @@ def land_fraction(work, color):
     海とつながっていない海面下の土地は、地表画像で砂や岩の色（赤みがあって明るい）の所を陸にする（カッターラ低地 -133 m・
     トルファン盆地 -154 m・ダナキル低地 -125 m・デスバレー -86 m・ヨルダン渓谷など。どれも 50 m より深い）。
     海とつながった所は広げない（南極などの海氷・凍った入り江が陸になる）。水の色の所（死海・ソルトン湖）と、
-    凍った湖（白い）・濁った湖の岸（赤みが無いか暗い）は水のまま"""
+    凍った湖（白い）・濁った湖の岸（赤みが無いか暗い）は水のまま。
+    南緯 60° より南では、海面から 50 m より高い所を水にしない（南極に、この解像度で見える湖は無い。ドライバレーの湖は数 km で、
+    地表画像でも岩の色）。地表画像の海岸線が ETOPO より最大 20 km ほど内陸にずれている所（プリッツ湾・ベリングスハウゼン海の岸など）は、
+    標高数百 m の氷床が海の色で塗られているので、陸にしたうえで色も使わない（2 つ目の戻り値。fill_ocean で周りの陸の色で埋める）"""
     big = make_earth_detail.W, make_earth_detail.H
     tile = make_earth_detail.TILE
     land = np.zeros((big[1], big[0]), bool)
     dry = np.zeros((big[1], big[0]), bool)   # 海面下でも、海から離れていれば陸にする色の所
+    badc = np.zeros((big[1], big[0]), bool)  # 陸なのに地表画像が海の色の所
     for r in range(big[1] // tile):
         e = make_earth_detail.load_band(work, r)
         e = np.concatenate([e[:, big[0] // 2:], e[:, :big[0] // 2]], axis=1)   # 経度 -180° を左端に
@@ -98,8 +102,12 @@ def land_fraction(work, color):
         R, G, B = c[..., 0], c[..., 1], c[..., 2]
         water = (B > np.maximum(R, G) + 8) | ((R + G + B < 100) & (B >= R))
         water &= (e <= 0) | (R + G + B < 450)   # 海面より高い所の明るい青は氷（南極・グリーンランドの裸氷。凍った湖は暗い）
+        lat = 90.0 - (np.arange(r * tile, (r + 1) * tile) + 0.5) * 180.0 / big[1]
+        ice = (lat[:, None] < -60) & (e > 50) & water   # 南極の、海面より高い「水」
+        water &= ~ice
         landish = (e >= 0) | ((e > -50) & (R >= B) & (R + G + B >= 60))
         land[r * tile:(r + 1) * tile] = landish & ~water
+        badc[r * tile:(r + 1) * tile] = ice & (R + G + B < 300)   # 青い裸氷（明るい）は色をそのまま使う
         dry[r * tile:(r + 1) * tile] = ~water & (R >= B + 15) & (R + G + B >= 150)
     # 水のつながり（斜めも含む）。経度 ±180° の端どうしもつなぎ、いちばん大きいものを海とする
     lab, n = ndimage.label(~land, np.ones((3, 3), bool))
@@ -121,7 +129,8 @@ def land_fraction(work, color):
     sea = roots[lab] == size.argmax()
     del lab
     land |= dry & ~sea
-    return Image.fromarray(land.astype(np.uint8) * 255).resize((W, H), Image.BOX)
+    return (Image.fromarray(land.astype(np.uint8) * 255).resize((W, H), Image.BOX),
+            Image.fromarray(badc.astype(np.uint8) * 255).resize((W, H), Image.BOX))
 
 
 def fill_ocean(color, land):
@@ -159,13 +168,15 @@ def main():
     elev = load_etopo(fetch(work, ETOPO_URL, ETOPO_FILE)).resize((W, H), Image.BILINEAR)
     color_src = Image.open(src["color"]).convert("RGB")
     color = color_src.resize((W, H), Image.LANCZOS)
-    frac = land_fraction(work, color_src)
+    frac, badc = land_fraction(work, color_src)
     land = frac.point(lambda v: 255 if v >= 128 else 0)
     # 海氷: 海の上の白い所（元画像の明るさから）
     gray = color.convert("L")
     seaice = ImageChops.multiply(gray.point(lambda v: max(0, min(255, (v - 100) * 4))), ImageChops.invert(land))
     # 陸の内側だけを使って海を埋める（海岸のテクセルは海の色が混ざっているので除く）
     inner = land.filter(ImageFilter.MinFilter(7))
+    # 地表画像が海の色の陸（南極の海岸）と、その縁の海の色が混ざったテクセルも除く
+    inner = ImageChops.multiply(inner, badc.point(lambda v: 255 if v == 0 else 0).filter(ImageFilter.MinFilter(5)))
     fill_ocean(color, inner).save(os.path.join(out, "earth_color.jpg"), quality=88, optimize=True)
     # R: 高さコード 海 0..127（127 が 0 m）, 陸 128..255。低い所ほど細かくなるよう平方根で詰める
     hl = ev("convert(128 + (min(max(e, 0), L) / L) ** 0.5 * 127 + 0.5, 'L')", e=elev, L=LAND_MAX)
