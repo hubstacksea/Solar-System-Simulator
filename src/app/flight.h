@@ -794,7 +794,17 @@ static void UpdateShip(App& app, double dt) {
 }
 
 // 地表近く（高度 100 km 以下）で止まっている時は、天体の自転と一緒に回る（地上から空を見る・着陸した時に地面が流れない）。
-// spin0 は時刻を進める前の自転角
+// 自転角だけでなく自転軸の向きの変化（月の秤動・地球の歳差）も入れて、天体に固定した座標のまま動かす
+struct BodyFrame {
+    V3 X, P, Z;   // 本体座標の X 軸（経度 0）・自転軸・Z 軸
+};
+static BodyFrame BodyFrameOf(const Body& b) {
+    BodyFrame f;
+    BodyFixedAxes(b, &f.X, &f.Z);
+    f.P = b.pole;
+    return f;
+}
+
 static bool HeldByGround(const App& app, int ref) {
     const Ship& s = app.ship;
     if (app.physics || app.autopilot || app.warpT >= 0 || s.speed != 0 || s.thrusting || s.ref != ref) return false;
@@ -802,15 +812,16 @@ static bool HeldByGround(const App& app, int ref) {
     return b.d.kind != KIND_PROBE && SurfaceDist(b, ShipWorld(app)) <= 100;
 }
 
-static void CoRotateWithGround(App& app, int ref, double spin0) {
+// f0 は時刻を進める前の天体の座標軸
+static void CoRotateWithGround(App& app, int ref, const BodyFrame& f0) {
     Ship& s = app.ship;
     if (!HeldByGround(app, ref)) return;
-    const Body& b = app.B[ref];
-    double a = b.spin - spin0;
-    if (a == 0) return;
-    double x = Dot(s.local, b.ex), y = Dot(s.local, b.pole), z = Dot(s.local, b.ez), c = std::cos(a), sn = std::sin(a);
-    s.local = b.ex * (x * c + z * sn) + b.pole * y + b.ez * (-x * sn + z * c);   // 自転軸のまわりに a だけ回す
-    s.q = QuaternionNormalize(QuaternionMultiply(QuaternionFromAxisAngle(ToF(b.pole), (float)a), s.q));
+    BodyFrame f1 = BodyFrameOf(app.B[ref]);
+    if (Len(f1.X - f0.X) == 0 && Len(f1.P - f0.P) == 0) return;
+    double x = Dot(s.local, f0.X), y = Dot(s.local, f0.P), z = Dot(s.local, f0.Z);
+    s.local = f1.X * x + f1.P * y + f1.Z * z;
+    Quaternion q0 = QuatFromBasis(-f0.Z, f0.P), q1 = QuatFromBasis(-f1.Z, f1.P);   // 天体の向きの変化を機体の向きにも
+    s.q = QuaternionNormalize(QuaternionMultiply(QuaternionMultiply(q1, QuaternionInvert(q0)), s.q));
 }
 
 static void UpdateCamera(App& app) {

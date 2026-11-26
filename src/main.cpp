@@ -733,11 +733,11 @@ int main(int argc, char** argv) {
         // 自機が古い地形の上の探査機に合わせて置かれたまま地面に押し上げられることがない（ワープした直後など）
         UpdateDetailWindows(app);
         int spinRef = app.ship.ref;
-        double spin0 = app.B[spinRef].spin;
+        BodyFrame frame0 = BodyFrameOf(app.B[spinRef]);
         UpdateBodies(app.B, app.tDays);
         ApolloTdeShiftBodies(app);
         ApolloDockPort(app);
-        CoRotateWithGround(app, spinRef, spin0);
+        CoRotateWithGround(app, spinRef, frame0);
         UpdateMeteors(app, dt, simDt);
         UpdateShip(app, simDt);
         UpdateVoyage(app, dt);

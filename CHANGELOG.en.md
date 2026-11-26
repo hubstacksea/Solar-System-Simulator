@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.9 (2026-11-26)
+
+- Stopped on the Moon's surface with time sped up, the ground slid away (about 0.7 km a day, about 40 km a month). Near the surface a stopped ship turns with the body's rotation, but only the change of the rotation angle was applied, not the change of the spin axis direction from the Moon's libration. The ship now keeps its body-fixed position and heading using the body's axes before and after each time step (Earth's precession is included too)
+
 ## 2.70.8 (2026-11-26)
 
 - Retook the README images of the lunar module undocking, the Apollo 15 spacewalk and the total lunar eclipse with the Moon's look as changed in 2.70.6 and 2.70.7. The eclipse is taken with the display hidden, since body names overlapped the Moon. Added the three shots to the retake tool (tools/retake_gallery.py)
