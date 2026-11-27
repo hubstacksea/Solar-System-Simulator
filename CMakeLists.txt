@@ -42,9 +42,10 @@ if(EMSCRIPTEN)
       "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
   # 起動に要るものだけを index.data に入れ（約 21 MB）、大きなデータはページの assets/ に置いて起動後に取得する
   set(WEB_PRELOAD stars.bin sky.txt probes.bin apollo.bin landers.bin earth_color.jpg earth_data.png milkyway.jpg saturn_rings.png icon.png)
-  set(WEB_DEFERRED maps.bin shapes.bin moon_data.png moon_color.jpg earth_clouds.jpg asteroids.bin earth_months.jpg earth_detail.bin moon_detail.bin mars_detail.bin mars_detail2.bin mars_patches.bin earth_patches.bin moon_patches.bin moon_rock.png mars_ti.png place_names.txt)
-  # 極の細かい標高は、その天体に近づいた時だけ取得する（embedded_assets_files.cpp の RequestAsset）
-  set(WEB_ON_DEMAND moon_south.bin moon_north.bin mars_south.bin mars_north.bin)
+  set(WEB_DEFERRED maps.bin shapes.bin moon_data.png moon_color.jpg earth_clouds.jpg asteroids.bin earth_months.jpg earth_detail.bin earth_patches.bin moon_rock.png mars_ti.png place_names.txt)
+  # 月・火星の細かい標高は、その天体に近づいた時だけ取得する（embedded_assets_files.cpp の RequestAsset）
+  set(WEB_ON_DEMAND moon_detail.bin moon_patches.bin moon_south.bin moon_north.bin mars_detail.bin mars_detail2.bin mars_patches.bin
+                    mars_south.bin mars_north.bin)
   foreach(f ${WEB_PRELOAD})
     list(APPEND WEB_LINK "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/assets/${f}@/assets/${f}")
   endforeach()

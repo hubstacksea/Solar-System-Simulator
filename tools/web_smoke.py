@@ -5,15 +5,17 @@
 
 Chrome の DevTools プロトコルを標準ライブラリだけで話す（WebSocket も自前）。WebGL2 はソフトウェア描画
 （SwiftShader）で動かす。各 URL について、起動（raylib の初期化のログ）を待ってから指定の秒数ごとに画面を撮る。
-起動しなかった URL、ページで捕まえられなかった例外、撮れなかった画面、取得に失敗した後から読むデータがあれば終了コード 1。
+起動しなかった URL、ページで捕まえられなかった例外、撮れなかった画面、log の操作で出なかった行、取得に失敗した後から読むデータがあれば
+終了コード 1。
 後から読むデータ（地図など）がページを開いてから全部届くまでの秒数（assets=。開いている間に届かなければ -）と、近づいた時だけ
-取得するデータ（極の細かい標高）が頼んでから届くまでの秒数も表示する（アプリのログの "ASSETS:" の行から）。
+取得するデータ（月・火星の細かい標高）が頼んでから届くまでの秒数も表示する（アプリのログの "ASSETS:" の行から）。
 
 使い方: python3 tools/web_smoke.py <出力ディレクトリ> <ページの URL> [<クエリ>[|<操作>] ...]
   例: python3 tools/web_smoke.py shots-web http://localhost:8000/ "" "?voyage=BepiColombo&scene=arrive"
 操作（クエリの後ろに | で区切って ; でつなぐ）を書くと、決まった秒数ごとに撮る代わりに、起動してから順に行う:
   wait:<秒>  shot:<名前>  js:<JavaScript（; は使えない）>  key:<キー>（Enter / BracketRight / BracketLeft / KeyP / F3 など）
   click:<x>,<y>  drag:<x1>,<y1>,<x2>,<y2>（x は 1 以下なら画面の幅に対する割合、y は負なら下端からのピクセル）
+  log:<文字列>（アプリのログにその文字列を含む行が出るまで待つ。LOG_TIMEOUT 秒たっても出なければ失敗）
   例: "?voyage=BepiColombo&scene=7|wait:15;shot:before;click:0.5,-41;wait:3;shot:after"
 環境変数 CHROME で Chrome の実行ファイルを指定できる（既定は google-chrome）
 """
@@ -39,6 +41,7 @@ BOOT_TIMEOUT = 120          # 起動を待つ最長の秒数
 # 近くでは、撮るのを頼んでから届くまで 60〜120 秒かかった。以前はページを開いた時刻から 170 秒で打ち切っていて、40 秒の画面が
 # 撮れないことがあった）
 FINISH_TIMEOUT = 300
+LOG_TIMEOUT = 240           # log: の操作で待つ最長の秒数
 
 
 # キー: (key, code, 仮想キーコード, 入力される文字)
@@ -186,8 +189,10 @@ def main():
             size = (1280, 720)
             next_at = None   # 次の操作を行う時刻
             errors = 0
-            lost = []   # 操作の shot で撮れなかった画面
-            limit = max(SHOT_AT) + FINISH_TIMEOUT + sum(float(a[5:]) for a in actions if a.startswith("wait:"))
+            lost = []   # 操作の shot で撮れなかった画面・log で出なかった行
+            log_wait = {}   # log の操作を待ち始めた時刻
+            limit = max(SHOT_AT) + FINISH_TIMEOUT + sum(float(a[5:]) for a in actions if a.startswith("wait:")) + \
+                LOG_TIMEOUT * sum(a.startswith("log:") for a in actions)
             while (time.time() - t0 < BOOT_TIMEOUT) if booted is None else (time.time() - booted < limit):
                 if booted is not None and shots and time.time() - booted >= shots[0]:
                     pending[call("Page.captureScreenshot", format="png")] = "%s_%ds.png" % (name, shots.pop(0))
@@ -202,6 +207,15 @@ def main():
                     py = lambda y: size[1] + y if y < 0 else y
                     if kind == "wait":
                         next_at = time.time() + float(arg)
+                    elif kind == "log":   # アプリのログにこの行が出るまで待つ
+                        if any(arg in line for line in log if not line.startswith("[action]")):
+                            continue
+                        if time.time() - log_wait.setdefault(arg, time.time()) < LOG_TIMEOUT:
+                            actions.insert(0, "log:" + arg)
+                            log.pop()   # 待つ間は [action] の行を重ねない
+                            next_at = time.time() + 0.5
+                        else:
+                            lost.append("log:" + arg)
                     elif kind == "js":   # ページで JavaScript を実行する（確認用）
                         evaluate(arg)
                     elif kind == "shot":   # 撮り終わるまで次の操作に進まない
@@ -265,7 +279,7 @@ def main():
                     log.append("[%s] %s %s" % (e.get("level"), e.get("text"), e.get("url", "")))
             missing = ["%ds" % t for t in shots] + list(pending.values()) + lost   # 撮れなかった画面
             if missing:
-                log.append("[smoke] screenshots not taken: " + " ".join(missing))
+                log.append("[smoke] screenshots not taken / log lines not seen: " + " ".join(missing))
             with open(os.path.join(out, name + ".log"), "w", encoding="utf-8") as f:
                 f.write("URL: %s\n" % (base + q) + "\n".join(log) + "\n")
             # 後から読むデータの届いた時間（embedded_assets_files.cpp のログ）

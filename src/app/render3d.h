@@ -500,6 +500,7 @@ static void LoadDetail(App& app, int k, EmbeddedFile f, EmbeddedFile f2 = {nullp
     Terrain& T = g_terrain[app.B[body].terrain];   // 細かいデータの山頂は全球の標高より高い（細かい起伏の分も見込む）
     T.hi = k == 0 ? std::max(T.hi, 9.4) : T.hi + 1.0;
     app.B[body].outer = std::max(app.B[body].outer, app.B[body].d.radius + T.hi);
+    TraceLog(LOG_INFO, "DETAIL: finer elevation around the camera (%d px per degree) for %s", D.W / 360, app.B[body].d.en);
 }
 
 // 地域だけのもっと細かい標高 g_detail[k + 3]（"EDP1"。tools/make_detail_patches.py）: 地域と区画の索引を読み、窓のテクスチャを作る
@@ -786,6 +787,21 @@ static void UpdatePolarMaps(App& app) {
     }
 }
 
+#if defined(__EMSCRIPTEN__)
+// ブラウザ版: 月・火星の細かい標高（全球の細かい標高と地域だけのもの）は、その天体の半径の 8 倍より近づいた時に取得する
+// （起動後に裏で読むデータを減らす。届いたら RefreshDeferredAssets で読む）。極のものは UpdatePolarMaps
+static void RequestNearbyDetail(App& app) {
+    static const struct {
+        int body;
+        const char* files[3];
+    } R[2] = {{B_MOON, {"moon_detail.bin", "moon_patches.bin", nullptr}}, {B_MARS, {"mars_detail.bin", "mars_detail2.bin", "mars_patches.bin"}}};
+    for (const auto& r : R)
+        if (Len(ShipWorld(app) - app.B[r.body].pos) < app.B[r.body].d.radius * 8)
+            for (const char* f : r.files)
+                if (f) RequestAsset(f);
+}
+#endif
+
 // 組み立てた窓（UpdateDetail）: 窓の位置と値、GPU に載せる画素（16 bit の値はすべての縮小の段も）
 struct DetailBuild {
     int x0 = 0, y0 = 0, box = -1, levels = 0;
@@ -989,6 +1005,9 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
 // 使う（その上では細かい標高は画面で見分けられない。窓を組み直すのは 1 回 約 0.1 秒かかり、時間を早回しすると真下が
 // 速く動いて毎フレーム組み直すことになる）
 static void UpdateDetailWindows(App& app) {
+#if defined(__EMSCRIPTEN__)
+    RequestNearbyDetail(app);
+#endif
     UpdatePolarMaps(app);
     V3 ship = ShipWorld(app);
     for (int k = 0; k < 3; k++) {

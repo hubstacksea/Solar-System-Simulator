@@ -4,6 +4,13 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.73.0 (2026-11-27)
+
+- In the browser version, the finer elevation and the regional elevation of the Moon and Mars are no longer part of the background loading after startup; they are fetched when you come within 8 radii of that body. The data loaded in the background after startup drops from about 175 MB to about 67 MB, and in a local test everything arrived in 11.3 s instead of 22.5 s. The desktop versions still load everything at startup
+- The log now says when the finer elevation is put to use, with its spacing and the body
+- The browser test in the release workflow now also opens pages above the Moon's south pole and Mars's north pole. It checks the log for the finer, regional and polar elevations being put to use, and fails if they do not appear
+- The README gives the spacing of the Mars finer elevation as about 1.85 km instead of about 3.7 km, matching the actual data (32 pixels per degree)
+
 ## 2.72.1 (2026-11-27)
 
 - The desktop versions (Linux, Windows, macOS) load the polar elevations of the Moon and Mars at startup again, as in 2.71.0 (they are decoded on another thread, so startup is not delayed). In 2.72.0 the desktop versions also waited until you came near that body, so for about 0.3 s after a warp the area near the pole kept the coarser elevation. Loading on approach remains for the browser version only

@@ -52,8 +52,8 @@ static EmbeddedFile Load(const char* name) {
 #if defined(__EMSCRIPTEN__)
 // 後から取得するファイル（CMakeLists.txt の WEB_DEFERRED と同じ）
 static const char* const DEFERRED[] = {"maps.bin", "shapes.bin", "moon_data.png", "moon_color.jpg", "earth_clouds.jpg",
-                                       "asteroids.bin", "earth_months.jpg", "earth_detail.bin", "moon_detail.bin",
-                                       "mars_detail.bin", "mars_detail2.bin", "mars_patches.bin", "earth_patches.bin", "moon_patches.bin", "moon_rock.png", "mars_ti.png", "place_names.txt"};
+                                       "asteroids.bin", "earth_months.jpg", "earth_detail.bin", "earth_patches.bin",
+                                       "moon_rock.png", "mars_ti.png", "place_names.txt"};
 static int g_pending = -1, g_deferredLeft = 0, g_deferredFailed = 0;
 
 // 届くまでの時間をログに出す（tools/web_smoke.py が読む）。起動時の分は、ページを開いてから全部が届く（か失敗する）まで
@@ -72,7 +72,7 @@ void StartDeferredAssetDownloads() {
 }
 int DeferredAssetsPending() { return g_pending; }
 
-// 近づいた時だけ要るファイル（CMakeLists.txt の WEB_ON_DEMAND）: 頼まれた時刻（ms）
+// 近づいた時だけ要るファイル（CMakeLists.txt の WEB_ON_DEMAND。月・火星の細かい標高）: 頼まれた時刻（ms）
 static std::map<std::string, double> g_requested;
 static void OnDemandArrived(const char* file) {
     g_pending--;

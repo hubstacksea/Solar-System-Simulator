@@ -128,10 +128,13 @@ jobs:
         run: |
           (cd build-web && python3 -m http.server 8000 > /dev/null 2>&1 &)
           sleep 2
-          # 最後は操作の確認: Enter で次の場面、] で速さ、下のタイムラインのクリック、P で停止、ドラッグで見回す
-          timeout 2400 python3 tools/web_smoke.py shots-web http://localhost:8000/index.html \
+          # 4 つ目は操作の確認: Enter で次の場面、] で速さ、下のタイムラインのクリック、P で停止、ドラッグで見回す。
+          # 最後の 2 つは月の南極と火星の北極の上空: 近づいた時に取得する細かい標高を読み込んで使い始めたこと（ログの行）を確かめる
+          timeout 3600 python3 tools/web_smoke.py shots-web http://localhost:8000/index.html \
             "" "?voyage=BepiColombo&scene=arrive" "?voyage=Lucy&scene=5" \
-            "?voyage=BepiColombo&scene=2|wait:10;shot:a_start;key:Enter;wait:3;shot:b_enter;key:BracketRight;wait:2;shot:c_fast;click:0.5,-41;wait:3;shot:d_timeline;key:KeyP;wait:2;shot:e_paused;drag:0.35,0.5,0.65,0.5;shot:f_drag;wait:8;shot:g_back"
+            "?voyage=BepiColombo&scene=2|wait:10;shot:a_start;key:Enter;wait:3;shot:b_enter;key:BracketRight;wait:2;shot:c_fast;click:0.5,-41;wait:3;shot:d_timeline;key:KeyP;wait:2;shot:e_paused;drag:0.35,0.5,0.65,0.5;shot:f_drag;wait:8;shot:g_back" \
+            "?t=9827.0&at=Moon,60.878682,-1743.337359,-0.000000,-0.984808,0.173648,-0.000000,-0.173648,-0.984808,-0.000000&p=1|log:(16 px per degree) for Moon;log:(512 px per degree) for Moon;log:Moon's south pole;shot:pole" \
+            "?t=9827.0&at=Mars,354.163339,3369.639086,-0.000000,-0.987688,-0.156434,0.000000,-0.156434,0.987688,0.000000&p=1|log:(32 px per degree) for Mars;log:(288 px per degree) for Mars;log:Mars's north pole;shot:pole"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
