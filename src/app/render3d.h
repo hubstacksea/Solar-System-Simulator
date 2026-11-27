@@ -361,7 +361,8 @@ static void LowpassLonRows(std::vector<unsigned short>& v, int w, int h) {
     std::vector<unsigned short> row(w);
     RowMean m;
     for (int r = 0; r < h; r++) {
-        double c = std::cos(PI * (0.5 - (r + 0.5) / h)), wpx = std::min((double)w, 1.0 / std::max(c, 1e-9));
+        // 極に一番近い行は一周の平均（極の高さ）。経度ごとに値が違うと、極で地表が向きによって違う高さに折れる
+        double c = std::cos(PI * (0.5 - (r + 0.5) / h)), wpx = r == 0 || r == h - 1 ? w : std::min((double)w, 1.0 / std::max(c, 1e-9));
         if (wpx <= 1.0 + 1e-9) continue;
         std::copy(v.begin() + (size_t)r * w, v.begin() + (size_t)(r + 1) * w, row.begin());
         m.Set(row.data(), w, true);
@@ -680,7 +681,7 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
             // 経度方向は緯度方向の 1 画素の幅（1 / cos(緯度) 画素。極の窓では窓の 1 画素の幅と大きい方）で平均する（LowpassLonRows）。
             // 地球は高さコード（海と陸の境があり平均できない）なのでそのまま
             double c = std::cos(PI * (0.5 - (gy + 0.5) / D.H));
-            double wpx = D.fmt == 1 ? 1.0 : std::min((double)D.W, std::max(sx, 1.0 / std::max(c, 1e-9)));
+            double wpx = D.fmt == 1 ? 1.0 : gy == 0 || gy == D.H - 1 ? D.W : std::min((double)D.W, std::max(sx, 1.0 / std::max(c, 1e-9)));
             if (wpx <= 1.0 + 1e-9) {
                 readRow(gy, x0, N, row);
                 continue;

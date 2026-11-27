@@ -216,6 +216,8 @@ float detWeight(vec2 uv, out vec2 l) {
     else l.x -= detB.x * floor(l.x / detB.x + 0.5);
     vec2 e = min(l, detA.z - 1.0 - l);
     if (detB.z > 1.0) e.x = 1e30;
+    // 極に届く窓は、極の側の縁ではなじませない（全球のデータの端）
+    e.y = min(detA.y > 0.5 ? l.y : 1e30, detA.y + detA.z < detB.y - 0.5 ? detA.z - 1.0 - l.y : 1e30);
     return clamp(min(e.x, e.y) / detA.w, 0.0, 1.0);
 }
 // 窓の画像の値 → m（地球は陸 128..255 = 0..8900 m、海は海面）

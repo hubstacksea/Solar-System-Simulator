@@ -119,7 +119,8 @@ struct DetailMap {
         if (sx > 1) x -= N * std::floor(x / N);
         else x -= W * std::floor(x / W + 0.5);
         *lx = x, *ly = y;
-        double e = std::min(sx > 1 ? 1e30 : std::min(x, N - 1 - x), std::min(y, N - 1 - y));
+        // 極に届く窓は、極の側の縁ではなじませない（全球のデータの端で、その先に細かい標高は無い）
+        double e = std::min(sx > 1 ? 1e30 : std::min(x, N - 1 - x), std::min(y0 > 0 ? y : 1e30, y0 + N < H ? N - 1 - y : 1e30));
         if (box >= 0) {   // 地域の縁
             const Box& B = boxes[box];
             double bx = x + x0 - B.c0 * tile, by = y + y0 - B.r0 * tile;

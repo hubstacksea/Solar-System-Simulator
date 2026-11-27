@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.11 (2026-11-27)
+
+- Near the Moon's south pole the ground dropped like a valley, and crossing the pole the terrain folded. The fine elevation around the ship is blended into the global elevation over 64 pixels from its edges (about 120 km on the Moon), and this was also done at the edge on the pole side, which is the end of the global data, so closer to the pole the coarse global elevation took over. That edge is no longer blended. The row nearest the pole also held different values by longitude, so the pole had a different height in each direction; it is now the average around the whole circle (the height of the pole)
+
 ## 2.70.10 (2026-11-27)
 
 - Flying near the poles, as at the Moon's south pole, the ground turned into jagged faces and rippled. Near the poles a pixel of the elevation map is only a few meters wide in longitude on the ground (at 89.9° S; about 1.9 km in latitude), and the terrain mesh vertices picked up that fine relief only here and there. Each row of the elevation map is now averaged in longitude over the width of one latitude pixel, so both directions have the same resolution (Earth is excluded, since its values encode land and sea). Near the poles (poleward of 69° on the Moon, 80° on Mars) the fine elevation around the ship now covers all 360° of longitude; covering 128° (the Moon) left more than half of the surroundings near the pole on the coarse global elevation
