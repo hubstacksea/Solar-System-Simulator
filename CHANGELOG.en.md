@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.71.0 (2026-11-27)
+
+- Added finer elevation for the Moon's south pole (poleward of 85° S): the LRO LOLA polar elevation from the NASA PDS (LDEM_85S_40M, polar stereographic, 40 m per pixel) reduced to 80 m (assets/moon_south.bin, 9.4 MB; tools/make_moon_south.py). Until now it was about 1.9 km per pixel, and the rims of craters such as Shackleton were blurred. It is used for the terrain heights, shadows and shading and for collision and altitude, blended in over 5 km at its edges. It is decoded on another thread so startup is not delayed
+- Rebuilding the fine elevation window (about 0.1 s, 0.2 to 0.4 s when switching to the polar window at 69° on the Moon or 80° on Mars) froze the screen. It is now rebuilt on another thread while the current window stays in use (the browser version and screenshots still build it on the spot)
+- Warping to the Hubble Space Telescope could attach the ship to the ISS passing nearby, so Hubble drifted out of view. Spacecraft all have a 2,000 km range, and among equal ranges the lowest-numbered one was chosen; now the nearest one is
+
 ## 2.70.12 (2026-11-27)
 
 - The ground's shading was flat near the poles (poleward of 87°). Elevation gradients were taken from longitude and latitude differences, dividing the east-west slope by cos(latitude), so near the poles that slope was held down. Poleward of 84° they are now taken from differences along two directions on the surface (sampling the reduced image that matches the offset). Between 84° and 87° both ways give nearly the same result, so there is no seam

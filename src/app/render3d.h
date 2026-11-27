@@ -589,13 +589,249 @@ static std::vector<unsigned short> DecodeDetailTile(const DetailMap& D, int i) {
     return v;
 }
 
+// 月の南極の細かい標高（g_moonSouth。"EPS1"。tools/make_moon_south.py）: 区画をすべて展開し、GPU にも全体を載せる（texture6）
+struct PolarBuild {
+    int n = 0, levels = 0;
+    float scaleM = 0;
+    std::vector<unsigned short> v;
+    std::vector<unsigned char> px;   // GPU に載せる画素（すべての縮小の段）
+};
+// 区画の展開と縮小画像（GPU には触らない。別のスレッドでも作れる）
+static bool BuildMoonSouth(EmbeddedFile f, PolarBuild& b) {
+    if (!f.data || f.size < 16 || std::memcmp(f.data, "EPS1", 4) != 0) return false;
+    int n = 0, tile = 0;
+    std::memcpy(&n, f.data + 4, 4);
+    std::memcpy(&tile, f.data + 8, 4);
+    std::memcpy(&b.scaleM, f.data + 12, 4);
+    if (n <= 0 || tile <= 0 || n % tile || b.scaleM <= 0) return false;
+    int cols = n / tile;
+    DetailMap D;   // 区画の展開は細かい標高と同じ
+    D.fmt = 2;
+    D.tile = tile;
+    D.file = f.data;
+    D.split = f.size;
+    D.pos.resize((size_t)cols * cols);
+    D.len.resize((size_t)cols * cols);
+    if (f.size < 16 + 8 * D.pos.size()) return false;
+    for (size_t i = 0; i < D.pos.size(); i++) {
+        std::memcpy(&D.pos[i], f.data + 16 + 8 * i, 4);
+        std::memcpy(&D.len[i], f.data + 20 + 8 * i, 4);
+        if ((size_t)D.pos[i] + D.len[i] > f.size) return false;
+    }
+    b.v.resize((size_t)n * n);
+    for (int r = 0; r < cols; r++)
+        for (int c = 0; c < cols; c++) {
+            std::vector<unsigned short> t = DecodeDetailTile(D, r * cols + c);
+            if (t.size() != (size_t)tile * tile) return false;
+            for (int y = 0; y < tile; y++) std::memcpy(&b.v[(size_t)(r * tile + y) * n + c * tile], &t[(size_t)y * tile], tile * sizeof(unsigned short));
+        }
+    // 16 bit の値は上位・下位バイトに分けて載せるので、縮小画像は値のまま 2x2 を平均して作る（細かい標高の窓と同じ）。
+    // 一辺が奇数の段は、最後の行・列を捨てる
+    std::vector<unsigned> lv(b.v.begin(), b.v.end());
+    for (int m = n;; m /= 2) {
+        for (unsigned x : lv) b.px.push_back((unsigned char)(x >> 8)), b.px.push_back((unsigned char)(x & 255));
+        b.levels++;
+        if (m == 1) break;
+        int h = m / 2;
+        std::vector<unsigned> next((size_t)h * h);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < h; x++) {
+                size_t a = (size_t)(2 * y) * m + 2 * x;
+                next[(size_t)y * h + x] = (lv[a] + lv[a + 1] + lv[a + m] + lv[a + m + 1] + 2) / 4;
+            }
+        lv.swap(next);
+    }
+    b.n = n;
+    return true;
+}
+// GPU に載せて使い始める
+static void ApplyMoonSouth(App& app, PolarBuild& b) {
+    Image img = {b.px.data(), b.n, b.n, b.levels, PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA};
+    app.moonSouthTex = LoadTextureFromImage(img);
+    if (!app.moonSouthTex.id) return;
+    SetTextureFilter(app.moonSouthTex, TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(app.moonSouthTex, TEXTURE_WRAP_CLAMP);
+    PolarMap& Q = g_moonSouth;
+    Q.n = b.n;
+    Q.scale = b.scaleM / (app.B[B_MOON].d.radius * 1000);
+    Q.v.swap(b.v);
+    TraceLog(LOG_INFO, "DETAIL: Moon's south pole %dx%d (%.0f m per pixel)", b.n, b.n, b.scaleM);
+}
+// 展開に約 0.4 秒かかるので、起動を待たせないよう別のスレッドで作り、できたら PollMoonSouth で使い始める（月の南極に行くまでは
+// 要らない）。画面の保存（--shot）とブラウザ版は、その場で作る
+static std::future<PolarBuild> g_moonSouthJob;
+static void LoadMoonSouth(App& app, EmbeddedFile f) {
+    if (!g_moonSouth.v.empty() || g_moonSouthJob.valid() || !f.data || app.B[B_MOON].terrain < 0) return;
+#if !defined(__EMSCRIPTEN__)
+    if (!app.shotMode) {
+        g_moonSouthJob = std::async(std::launch::async, [f] {
+            PolarBuild b;
+            if (!BuildMoonSouth(f, b)) b.n = 0;
+            return b;
+        });
+        return;
+    }
+#endif
+    PolarBuild b;
+    if (BuildMoonSouth(f, b)) ApplyMoonSouth(app, b);
+}
+static void PollMoonSouth(App& app) {
+    if (!g_moonSouthJob.valid() || g_moonSouthJob.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    PolarBuild b = g_moonSouthJob.get();
+    if (b.n) ApplyMoonSouth(app, b);
+}
+
+// 組み立てた窓（UpdateDetail）: 窓の位置と値、GPU に載せる画素（16 bit の値はすべての縮小の段も）
+struct DetailBuild {
+    int x0 = 0, y0 = 0, box = -1, levels = 0;
+    double sx = 1;
+    std::vector<unsigned short> win;
+    std::vector<unsigned char> px;
+};
+// 窓 b（x0・y0・box・sx を決めたもの）の値を区画から組み立てる。GPU には触らない（別のスレッドでも組み立てられる）
+static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
+    const int N = DetailMap::N;
+    const int x0 = b.x0, y0 = b.y0, box = b.box;
+    const double sx = b.sx;
+    const bool polar = sx > 1;
+    b.win.assign((size_t)N * N, 0);
+    // 展開した区画（最近使ったものだけ残す。細かい標高ごと）
+    static std::map<int, std::vector<unsigned short>> caches[6];
+    static std::map<int, unsigned> useds[6];
+    static unsigned stamps[6];
+    unsigned& stamp = stamps[k];
+    std::map<int, std::vector<unsigned short>>& cache = caches[k];
+    std::map<int, unsigned>& used = useds[k];
+    stamp++;
+    auto tileData = [&](int i) -> const unsigned short* {
+        used[i] = stamp;
+        auto it = cache.find(i);
+        if (it == cache.end()) it = cache.emplace(i, DecodeDetailTile(D, i)).first;
+        return it->second.empty() ? nullptr : it->second.data();
+    };
+    unsigned short sea = D.fmt == 1 ? 127 : 20000;   // 地球の陸の無い区画は海面
+    if (box >= 0) {
+        const DetailMap::Box& B = D.boxes[box];
+        int bx0 = B.c0 * D.tile, by0 = B.r0 * D.tile, bw = B.cols * D.tile, bh = B.rows * D.tile;
+        for (int j = 0; j < N; j++) {
+            int gy = std::max(0, std::min(bh - 1, y0 + j - by0)), tr = gy / D.tile, py = gy % D.tile;
+            unsigned short* row = &b.win[(size_t)j * N];
+            for (int i = 0; i < N;) {
+                int dx = x0 + i - bx0;
+                dx -= D.W * (int)std::floor((double)dx / D.W + 0.5);
+                int gx = std::max(0, std::min(bw - 1, dx)), tc = gx / D.tile, px = gx % D.tile;
+                int run = dx < 0 || dx >= bw ? 1 : std::min(N - i, D.tile - px);
+                const unsigned short* t = tileData(B.first + tr * B.cols + tc);
+                if (!t) std::fill(row + i, row + i + run, sea);
+                else if (run == 1) row[i] = t[(size_t)py * D.tile + px];
+                else std::memcpy(row + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
+                i += run;
+            }
+        }
+    } else {
+        // 全球の行 gy の、経度の画素 xs から n 画素（一周つながる）
+        auto readRow = [&](int gy, int xs, int n, unsigned short* out) {
+            int tr = gy / D.tile, py = gy % D.tile;
+            for (int i = 0; i < n;) {
+                int gx = ((xs + i) % D.W + D.W) % D.W, tc = gx / D.tile, px = gx % D.tile;
+                int run = std::min(n - i, D.tile - px);
+                const unsigned short* t = tileData(tr * D.cols + tc);
+                if (t) std::memcpy(out + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
+                else std::fill(out + i, out + i + run, sea);
+                i += run;
+            }
+        };
+        std::vector<unsigned short> src;
+        RowMean m;
+        for (int j = 0; j < N; j++) {
+            int gy = y0 + j;
+            unsigned short* row = &b.win[(size_t)j * N];
+            // 経度方向は緯度方向の 1 画素の幅（1 / cos(緯度) 画素。極の窓では窓の 1 画素の幅と大きい方）で平均する（LowpassLonRows）。
+            // 地球は高さコード（海と陸の境があり平均できない）なのでそのまま
+            double c = std::cos(PI * (0.5 - (gy + 0.5) / D.H));
+            double wpx = D.fmt == 1 ? 1.0 : gy == 0 || gy == D.H - 1 ? D.W : std::min((double)D.W, std::max(sx, 1.0 / std::max(c, 1e-9)));
+            if (wpx <= 1.0 + 1e-9) {
+                readRow(gy, x0, N, row);
+                continue;
+            }
+            // 窓の外の左右も平均に入れる（極の窓は一周。普通の窓は両側を全球の画素の数まで）
+            int pad = polar ? 0 : (int)std::min(std::ceil(wpx / 2) + 1, (D.W - N) / 2.0);
+            int n = polar ? D.W : N + 2 * pad;
+            src.resize(n);
+            readRow(gy, x0 - pad, n, src.data());
+            m.Set(src.data(), n, polar);
+            for (int i = 0; i < N; i++) {
+                double ctr = pad + (i + 0.5) * sx;
+                row[i] = (unsigned short)std::lround(m.Mean(ctr - wpx / 2, ctr + wpx / 2));
+            }
+        }
+    }
+    for (auto it = used.begin(); it != used.end();) {   // 今の窓で使わなかった区画は、多ければ捨てる
+        if (cache.size() > 48 && it->second != stamp) {
+            cache.erase(it->first);
+            it = used.erase(it);
+        } else ++it;
+    }
+    if (D.fmt == 1) {
+        b.px.assign(b.win.begin(), b.win.end());
+        return;
+    }
+    // 16 bit の値は上位・下位バイトに分けて載せるので、縮小画像は GPU に作らせず（バイトごとに丸めると上位バイトの丸めで
+    // 最大 64 m ずれる）、値のまま 2x2 を平均して作り、すべての段をまとめて載せ直す
+    std::vector<unsigned> lv(b.win.begin(), b.win.end());
+    b.levels = 0;
+    for (int n = N;; n /= 2) {
+        for (unsigned v : lv) b.px.push_back((unsigned char)(v >> 8)), b.px.push_back((unsigned char)(v & 255));
+        b.levels++;
+        if (n == 1) break;
+        std::vector<unsigned> next((size_t)(n / 2) * (n / 2));
+        for (int y = 0; y < n / 2; y++)
+            for (int x = 0; x < n / 2; x++) {
+                size_t a = (size_t)(2 * y) * n + 2 * x;
+                next[(size_t)y * (n / 2) + x] = (lv[a] + lv[a + 1] + lv[a + n] + lv[a + n + 1] + 2) / 4;
+            }
+        lv.swap(next);
+    }
+}
+// 組み立てた窓を使い始める（高度・衝突の計算と GPU）
+static void ApplyDetail(App& app, int k, DetailBuild& b) {
+    DetailMap& D = g_detail[k];
+    const int N = DetailMap::N;
+    D.win.swap(b.win);
+    D.x0 = b.x0;
+    D.y0 = b.y0;
+    D.sx = b.sx;
+    D.box = b.box;
+    D.active = true;
+    if (D.fmt == 1) {
+        UpdateTexture(app.detailTex[k], b.px.data());
+        GenTextureMipmaps(&app.detailTex[k]);
+        return;
+    }
+    UnloadTexture(app.detailTex[k]);
+    Image img = {b.px.data(), N, N, b.levels, PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA};
+    app.detailTex[k] = LoadTextureFromImage(img);
+    SetTextureFilter(app.detailTex[k], TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(app.detailTex[k], TEXTURE_WRAP_CLAMP);
+    if (D.sx > 1) rlTextureParameters(app.detailTex[k].id, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_REPEAT);   // 極の窓は経度方向に一周する
+}
+
 // 窓をカメラの真下（緯度 lat・経度 lon rad）に合わせる。中心から窓の 1/4 以上ずれたら区画から組み直して GPU に載せる。
 // 地域だけのもの（boxes）は、カメラに一番近い地域が窓の半分より近い時だけ、その地域の窓を作る（地域の外の画素は
-// 地域の縁の値で埋める。重みは 0）
+// 地域の縁の値で埋める。重みは 0）。組み直し（約 0.1 秒、極の窓に切り替える時は 0.2〜0.4 秒）は、窓がある間は別のスレッドで
+// 進め、できるまで今の窓を使う（画面が止まらない）。窓が無い時（地表に降りた時など）と画面の保存（--shot）では、その場で
+// 組み立てる（保存する画面を毎回同じにする）。ブラウザ版はスレッドを使わない
+static std::future<DetailBuild> g_detailJobs[6];
 static void UpdateDetail(App& app, int k, double lat, double lon) {
     DetailMap& D = g_detail[k];
     const int N = DetailMap::N;
     if (!D.file || !app.detailTex[k].id) return;
+    std::future<DetailBuild>& job = g_detailJobs[k];
+    if (job.valid()) {   // 組み立て中の窓: できていれば使い始める。窓が無ければ待つ
+        if (D.active && job.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        DetailBuild b = job.get();
+        ApplyDetail(app, k, b);
+    }
     double cx = (lon / (2 * PI) + 0.5) * D.W - 0.5, cy = (0.5 - lat / PI) * D.H - 0.5;
     int box = -1;
     if (!D.boxes.empty()) {
@@ -628,116 +864,19 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
     int ddx = x0 - D.x0;
     ddx -= D.W * (int)std::floor((double)ddx / D.W + 0.5);
     if (D.active && box == D.box && sx == D.sx && std::abs(ddx) <= N / 4 && std::abs(y0 - D.y0) <= N / 4) return;
-    // 展開した区画（最近使ったものだけ残す。細かい標高ごと）
-    static std::map<int, std::vector<unsigned short>> caches[6];
-    static std::map<int, unsigned> useds[6];
-    static unsigned stamp = 0;
-    std::map<int, std::vector<unsigned short>>& cache = caches[k];
-    std::map<int, unsigned>& used = useds[k];
-    stamp++;
-    auto tileData = [&](int i) -> const unsigned short* {
-        used[i] = stamp;
-        auto it = cache.find(i);
-        if (it == cache.end()) it = cache.emplace(i, DecodeDetailTile(D, i)).first;
-        return it->second.empty() ? nullptr : it->second.data();
-    };
-    unsigned short sea = D.fmt == 1 ? 127 : 20000;   // 地球の陸の無い区画は海面
-    if (box >= 0) {
-        const DetailMap::Box& B = D.boxes[box];
-        int bx0 = B.c0 * D.tile, by0 = B.r0 * D.tile, bw = B.cols * D.tile, bh = B.rows * D.tile;
-        for (int j = 0; j < N; j++) {
-            int gy = std::max(0, std::min(bh - 1, y0 + j - by0)), tr = gy / D.tile, py = gy % D.tile;
-            unsigned short* row = &D.win[(size_t)j * N];
-            for (int i = 0; i < N;) {
-                int dx = x0 + i - bx0;
-                dx -= D.W * (int)std::floor((double)dx / D.W + 0.5);
-                int gx = std::max(0, std::min(bw - 1, dx)), tc = gx / D.tile, px = gx % D.tile;
-                int run = dx < 0 || dx >= bw ? 1 : std::min(N - i, D.tile - px);
-                const unsigned short* t = tileData(B.first + tr * B.cols + tc);
-                if (!t) std::fill(row + i, row + i + run, sea);
-                else if (run == 1) row[i] = t[(size_t)py * D.tile + px];
-                else std::memcpy(row + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
-                i += run;
-            }
-        }
-    } else {
-        // 全球の行 gy の、経度の画素 xs から n 画素（一周つながる）
-        auto readRow = [&](int gy, int xs, int n, unsigned short* out) {
-            int tr = gy / D.tile, py = gy % D.tile;
-            for (int i = 0; i < n;) {
-                int gx = ((xs + i) % D.W + D.W) % D.W, tc = gx / D.tile, px = gx % D.tile;
-                int run = std::min(n - i, D.tile - px);
-                const unsigned short* t = tileData(tr * D.cols + tc);
-                if (t) std::memcpy(out + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
-                else std::fill(out + i, out + i + run, sea);
-                i += run;
-            }
-        };
-        std::vector<unsigned short> src;
-        RowMean m;
-        for (int j = 0; j < N; j++) {
-            int gy = y0 + j;
-            unsigned short* row = &D.win[(size_t)j * N];
-            // 経度方向は緯度方向の 1 画素の幅（1 / cos(緯度) 画素。極の窓では窓の 1 画素の幅と大きい方）で平均する（LowpassLonRows）。
-            // 地球は高さコード（海と陸の境があり平均できない）なのでそのまま
-            double c = std::cos(PI * (0.5 - (gy + 0.5) / D.H));
-            double wpx = D.fmt == 1 ? 1.0 : gy == 0 || gy == D.H - 1 ? D.W : std::min((double)D.W, std::max(sx, 1.0 / std::max(c, 1e-9)));
-            if (wpx <= 1.0 + 1e-9) {
-                readRow(gy, x0, N, row);
-                continue;
-            }
-            // 窓の外の左右も平均に入れる（極の窓は一周。普通の窓は両側を全球の画素の数まで）
-            int pad = polar ? 0 : (int)std::min(std::ceil(wpx / 2) + 1, (D.W - N) / 2.0);
-            int n = polar ? D.W : N + 2 * pad;
-            src.resize(n);
-            readRow(gy, x0 - pad, n, src.data());
-            m.Set(src.data(), n, polar);
-            for (int i = 0; i < N; i++) {
-                double ctr = pad + (i + 0.5) * sx;
-                row[i] = (unsigned short)std::lround(m.Mean(ctr - wpx / 2, ctr + wpx / 2));
-            }
-        }
-    }
-    for (auto it = used.begin(); it != used.end();) {   // 今の窓で使わなかった区画は、多ければ捨てる
-        if (cache.size() > 48 && it->second != stamp) {
-            cache.erase(it->first);
-            it = used.erase(it);
-        } else ++it;
-    }
-    D.x0 = x0;
-    D.y0 = y0;
-    D.sx = sx;
-    D.box = box;
-    D.active = true;
-    if (D.fmt == 1) {
-        std::vector<unsigned char> px(D.win.begin(), D.win.end());
-        UpdateTexture(app.detailTex[k], px.data());
-        GenTextureMipmaps(&app.detailTex[k]);
+    DetailBuild b;
+    b.x0 = x0, b.y0 = y0, b.box = box, b.sx = sx;
+#if !defined(__EMSCRIPTEN__)
+    if (D.active && !app.shotMode) {
+        job = std::async(std::launch::async, [&D, k, b]() mutable {
+            BuildDetail(D, k, b);
+            return b;
+        });
         return;
     }
-    // 16 bit の値は上位・下位バイトに分けて載せるので、縮小画像は GPU に作らせず（バイトごとに丸めると上位バイトの丸めで
-    // 最大 64 m ずれる）、値のまま 2x2 を平均して作り、すべての段をまとめて載せ直す
-    std::vector<unsigned char> px;
-    std::vector<unsigned> lv(D.win.begin(), D.win.end());
-    int levels = 0;
-    for (int n = N;; n /= 2) {
-        for (unsigned v : lv) px.push_back((unsigned char)(v >> 8)), px.push_back((unsigned char)(v & 255));
-        levels++;
-        if (n == 1) break;
-        std::vector<unsigned> next((size_t)(n / 2) * (n / 2));
-        for (int y = 0; y < n / 2; y++)
-            for (int x = 0; x < n / 2; x++) {
-                size_t a = (size_t)(2 * y) * n + 2 * x;
-                next[(size_t)y * (n / 2) + x] = (lv[a] + lv[a + 1] + lv[a + n] + lv[a + n + 1] + 2) / 4;
-            }
-        lv.swap(next);
-    }
-    UnloadTexture(app.detailTex[k]);
-    Image img = {px.data(), N, N, levels, PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA};
-    app.detailTex[k] = LoadTextureFromImage(img);
-    SetTextureFilter(app.detailTex[k], TEXTURE_FILTER_TRILINEAR);
-    SetTextureWrap(app.detailTex[k], TEXTURE_WRAP_CLAMP);
-    if (D.sx > 1) rlTextureParameters(app.detailTex[k].id, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_REPEAT);   // 極の窓は経度方向に一周する
+#endif
+    BuildDetail(D, k, b);
+    ApplyDetail(app, k, b);
 }
 
 // 自機の真下に、近くの天体（半径の 8 倍まで）の細かい標高の窓を合わせる。描く前に、高度・衝突の計算にも同じ窓を
@@ -745,6 +884,7 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
 // 使う（その上では細かい標高は画面で見分けられない。窓を組み直すのは 1 回 約 0.1 秒かかり、時間を早回しすると真下が
 // 速く動いて毎フレーム組み直すことになる）
 static void UpdateDetailWindows(App& app) {
+    PollMoonSouth(app);
     V3 ship = ShipWorld(app);
     for (int k = 0; k < 3; k++) {
         const Body& b = app.B[k == 0 ? B_EARTH : k == 1 ? B_MOON : B_MARS];
@@ -773,7 +913,9 @@ static void TerrainOff(App& app) {
     PlanetUniform(app, app.locTerrA, a, SHADER_UNIFORM_VEC4);
     PlanetUniform(app, app.locDetB, a, SHADER_UNIFORM_VEC4);
     PlanetUniform(app, app.locDetD, a, SHADER_UNIFORM_VEC4);
-    if (app.mat.maps) app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = app.mat.maps[MATERIAL_MAP_EMISSION].texture = Texture2D{};
+    PlanetUniform(app, app.locDetF, a, SHADER_UNIFORM_VEC4);
+    if (app.mat.maps)
+        app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = app.mat.maps[MATERIAL_MAP_EMISSION].texture = app.mat.maps[MATERIAL_MAP_HEIGHT].texture = Texture2D{};
 }
 
 // 標高データのある天体（地球・月・火星）の地表近く: カメラの真下を中心に、近くほど細かい格子を地平線の先まで敷き、
@@ -871,6 +1013,11 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
         PlanetUniform(app, app.locDetD, dd, SHADER_UNIFORM_VEC4);
         PlanetUniform(app, app.locDetE, de, SHADER_UNIFORM_VEC4);
         app.mat.maps[MATERIAL_MAP_EMISSION].texture = app.detailTex[dk + 3];
+    }
+    if (T.body == B_MOON && !g_moonSouth.v.empty() && app.moonSouthTex.id) {   // 月の南極の細かい標高
+        float df[4] = {(float)g_moonSouth.n, (float)g_moonSouth.scale, 1, (float)PolarMap::MARGIN};
+        PlanetUniform(app, app.locDetF, df, SHADER_UNIFORM_VEC4);
+        app.mat.maps[MATERIAL_MAP_HEIGHT].texture = app.moonSouthTex;
     }
     // データより細かい手続きの起伏: 半径 m・全球の標高の周波数・種類（1 月, 2 地図のある天体）・細かい標高の周波数
     float te[4] = {(float)(d.radius * 1000), (float)(texH / (2 * PI)), (float)T.bumps, (float)(det ? g_detail[dk].H / (2 * PI) : 0)};
@@ -1047,6 +1194,7 @@ static void LoadMoonTextures(App& app) {
     }
     LoadDetail(app, 1, MoonDetailBin());
     LoadPatches(app, 1, MoonPatchesBin());
+    LoadMoonSouth(app, MoonSouthBin());
 }
 
 // 天の川の光: 赤道座標の全天画像を、カメラを中心とする球の内側に薄く貼る（星より先に描く）。

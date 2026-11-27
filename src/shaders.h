@@ -283,6 +283,29 @@ float det2Mix(vec2 uv, float s, float h, out float w2, out vec2 l2) {
     float lod = log2(max(s * detD.y / 3.1415927, 1.0));
     return mix(h, lod > 0.0 ? det2Decode(textureLod(texture5, (l2 + 0.5) / detC.z, lod)) : det2Height(l2), w2);
 }
+// 月の南極（南緯 85° より極側）の細かい標高（texture6。極中心の平射図法、1 画素 80 m。bodies.h の PolarMap と同じ計算）。
+// 本体の座標系の向き o（単位）の画素 l と重み（範囲の外は 0、縁から detF.w 画素で 1）
+uniform sampler2D texture6;
+uniform vec4 detF;   // x: 一辺の画素数, y: 1 画素の大きさ（単位球の長さ）, z: 1 で使う, w: 縁でなじませる幅（画素）
+float polarWeight(vec3 o, out vec2 l) {
+    l = vec2(0.0);
+    if (detF.z < 0.5 || o.y > -0.5) return 0.0;
+    float k = 2.0 / (1.0 - o.y) / detF.y, c = (detF.x - 1.0) * 0.5;
+    l = vec2(c - o.z * k, c - o.x * k);
+    vec2 e = min(l, detF.x - 1.0 - l);
+    return clamp(min(e.x, e.y) / detF.w, 0.0, 1.0);
+}
+float polarDecode(vec4 t) { return (t.r * 255.0 * 256.0 + t.a * 255.0) * 0.5 - 10000.0; }
+// 画素 l の標高 m。lod が 0 より大きければ縮小画像から（間隔に合わせて）、そうでなければ 4 画素の双線形（CPU と同じ）
+float polarHeight(vec2 l, float lod) {
+    if (lod > 0.0) return polarDecode(textureLod(texture6, (l + 0.5) / detF.x, lod));
+    ivec2 i = ivec2(floor(l)), n = ivec2(int(detF.x) - 1);
+    vec2 f = l - floor(l);
+    ivec2 a = clamp(i, ivec2(0), n), b = clamp(i + 1, ivec2(0), n);
+    float h00 = polarDecode(texelFetch(texture6, a, 0)), h10 = polarDecode(texelFetch(texture6, ivec2(b.x, a.y), 0));
+    float h01 = polarDecode(texelFetch(texture6, ivec2(a.x, b.y), 0)), h11 = polarDecode(texelFetch(texture6, b, 0));
+    return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
 // 1 分角より細かい山肌（手続き。地形の格子の高さと陰影の両方に使う）。x: 高さ（単位球の長さ）, yzw: 勾配。
 // 振幅は標高の傾き s（tan）で決め、急な山ほど険しく、平野は穏やかにする。h: 標高 m（海面の近くでは 0 へ）。
 // sp: 頂点・画素の間隔（単位球の長さ）。それより細かいオクターブは省く。fLo: 標高データにある周波数（地域だけのもっと
@@ -455,6 +478,9 @@ float bodyHeight(vec3 d, float sp, float hm) {
         hm = mix(hm, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w);
         hm = det2Mix(uv, sp, hm, w2, l2);
     }
+    vec2 lq;
+    float wq = polarWeight(d, lq);   // 月の南極
+    if (wq > 0.0) hm = mix(hm, polarHeight(lq, log2(max(sp / detF.y, 1.0))), wq);
     if (terrE.z < 0.5) return hm;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
     g_cliff = 0.0; g_wall = 0.0;
@@ -465,7 +491,7 @@ float bodyHeight(vec3 d, float sp, float hm) {
         if (k > 0.0) hm += k * STRATA_M * (strataStep(t, dd) - t);
         g_cliff = cliffWall(s) * w; g_wall = cliffRidgeA(s) * w;
     }
-    return hm + vertexBumps(d, sp, 20.0 / terrE.x, mix(mix(terrE.y, terrE.w, w), detD.y / 6.2831853, w2), o) * terrE.x;
+    return hm + vertexBumps(d, sp, 20.0 / terrE.x, mix(mix(mix(terrE.y, terrE.w, w), detD.y / 6.2831853, w2), 0.5 / detF.y, wq), o) * terrE.x;
 }
 // 地形の影に使う標高 m: 全球の標高と細かい標高の窓だけ（手続きの起伏は入れない。bumpAt を呼ぶ所を増やさないためでもある）。
 // s: 調べる間隔（単位球の長さ）。それに合わせて縮小した画像から引く
@@ -479,6 +505,9 @@ float dataHeight(vec3 d, float s) {
         float lod = log2(max(s * detB.y / 3.1415927, 1.0));
         h = det2Mix(uv, s, mix(h, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w), w2, l2);
     }
+    vec2 lq;
+    float wq = polarWeight(d, lq);   // 月の南極
+    if (wq > 0.0) h = mix(h, polarHeight(lq, log2(max(s / detF.y, 1.0))), wq);
     return h;
 }
 // 地形の影（太陽高度 20° より低い時）: 頂点から太陽の方向へ地面に沿って 16 歩たどり（歩幅は頂点の間隔か標高の 1 画素から
@@ -1326,6 +1355,21 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     if (dw > 0.0) {
         grad = mix(grad, east * sl.x + north * sl.y, dw);
         hm = mix(hm, hd, dw);
+    }
+    // 月の南極の細かい標高: 地表に沿った 2 つの向きの差分（極でも使える。poleK）
+    vec2 lq;
+    float wq = polarWeight(p, lq);
+    if (wq > 0.0) {
+        vec3 t1, t2;
+        poleTangents(p, t1, t2);
+        float s = max(detF.y, fw), lod = log2(s / detF.y);
+        vec2 la, lb, lc, ld;
+        polarWeight(normalize(p + t1 * s), la); polarWeight(normalize(p - t1 * s), lb);
+        polarWeight(normalize(p + t2 * s), lc); polarWeight(normalize(p - t2 * s), ld);
+        float a = polarHeight(la, max(lod, 0.001)) - polarHeight(lb, max(lod, 0.001));
+        float b = polarHeight(lc, max(lod, 0.001)) - polarHeight(ld, max(lod, 0.001));
+        grad = mix(grad, (t1 * a + t2 * b) / (2.0 * s * R), wq);
+        hm = mix(hm, polarHeight(lq, max(lod, 0.001)), wq);
     }
 
     // 海（暗い所）はクレーターが少なく平ら

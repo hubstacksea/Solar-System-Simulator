@@ -52,6 +52,7 @@ struct App {
     bool paused = false;
     int target = B_MOON;
     bool cockpit = false, showOrbits = true, showMoonMarkers = true, showHelp = false, invertY = false;
+    bool shotMode = false;        // 画面を保存して終わる起動（--shot）。毎回同じ画面になるよう、細かい標高の窓をその場で組み立てる
     bool mouseCaptured = true;
     int pad = -1;                 // 使用中のゲームパッド番号（-1: なし）
     bool padTrigSeen[2] = {false, false};
@@ -174,6 +175,7 @@ struct App {
     Material mat{};
     Shader shader{};
     Texture2D earthColor{}, earthData{};  // 地球の実データ（読めなければ手続き生成で描く）
+    Texture2D moonSouthTex{};  // 月の南極の細かい標高（g_moonSouth。texture6）
     Texture2D detailTex[6]{};  // 地球・月・火星の細かい標高と、その地域だけのもっと細かい標高のカメラの周りの窓（g_detail）
     Texture2D earthMonths{}, earthClouds{};  // 地球の 12 か月の地表の色と雲（読めなければ 4 月の色と手続きの雲）
     bool earthTex = false;
@@ -206,7 +208,7 @@ struct App {
     int locHazeAir = -1, locHazeSky = -1, locHazeBeta = -1;
     Mesh terrainMesh{};                   // 地表近くの地形の格子（頂点は (u, φ)。形はシェーダで作る）
     int locTerrA = -1, locTerrB = -1, locTerrC = -1, locTerrD = -1, locTerrRing = -1, locTerrStep = -1;
-    int locDetA = -1, locDetB = -1, locDetC = -1, locDetD = -1, locDetE = -1, locTerrE = -1;
+    int locDetA = -1, locDetB = -1, locDetC = -1, locDetD = -1, locDetE = -1, locDetF = -1, locTerrE = -1;
     std::vector<Vector3> dust;
     double glow = 0;
     double camYaw = NAN, camPitch = 0, camDist = 60;
@@ -233,10 +235,14 @@ static void UpdateReferenceFrame(App& app) {
     }
     const Body& cur = app.B[app.ship.ref];
     bool onGround = cur.d.kind != KIND_PROBE && SurfaceDist(cur, w) < 100;
+    // 範囲の同じもの（探査機・人工衛星はどれも 2000 km）は一番近いものに（ハッブルにワープした時、2000 km 以内を通る ISS に
+    // 乗り移り、ハッブルが流れていくことがあった）
+    double bestDist = 1e301;
     for (size_t i = 1; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         if (!b.active || (onGround && b.d.kind == KIND_PROBE)) continue;
-        if (Len(w - b.pos) < b.soi && b.soi < bestSoi) { best = (int)i; bestSoi = b.soi; }
+        double d = Len(w - b.pos);
+        if (d < b.soi && (b.soi < bestSoi || (b.soi == bestSoi && d < bestDist))) { best = (int)i; bestSoi = b.soi; bestDist = d; }
     }
     if (best != app.ship.ref) {
         app.ship.ref = best;
