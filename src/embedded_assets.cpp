@@ -37,6 +37,9 @@ INCBIN(g_mars_patches_bin, "mars_patches.bin")
 INCBIN(g_earth_patches_bin, "earth_patches.bin")
 INCBIN(g_moon_patches_bin, "moon_patches.bin")
 INCBIN(g_moon_south_bin, "moon_south.bin")
+INCBIN(g_moon_north_bin, "moon_north.bin")
+INCBIN(g_mars_south_bin, "mars_south.bin")
+INCBIN(g_mars_north_bin, "mars_north.bin")
 INCBIN(g_moon_color_jpg, "moon_color.jpg")
 INCBIN(g_moon_data_png, "moon_data.png")
 INCBIN(g_moon_rock_png, "moon_rock.png")
@@ -76,6 +79,9 @@ EmbeddedFile MarsPatchesBin() { return {g_mars_patches_bin, (size_t)(g_mars_patc
 EmbeddedFile EarthPatchesBin() { return {g_earth_patches_bin, (size_t)(g_earth_patches_bin_end - g_earth_patches_bin)}; }
 EmbeddedFile MoonPatchesBin() { return {g_moon_patches_bin, (size_t)(g_moon_patches_bin_end - g_moon_patches_bin)}; }
 EmbeddedFile MoonSouthBin() { return {g_moon_south_bin, (size_t)(g_moon_south_bin_end - g_moon_south_bin)}; }
+EmbeddedFile MoonNorthBin() { return {g_moon_north_bin, (size_t)(g_moon_north_bin_end - g_moon_north_bin)}; }
+EmbeddedFile MarsSouthBin() { return {g_mars_south_bin, (size_t)(g_mars_south_bin_end - g_mars_south_bin)}; }
+EmbeddedFile MarsNorthBin() { return {g_mars_north_bin, (size_t)(g_mars_north_bin_end - g_mars_north_bin)}; }
 EmbeddedFile MoonColorJpg() { return {g_moon_color_jpg, (size_t)(g_moon_color_jpg_end - g_moon_color_jpg)}; }
 EmbeddedFile MoonDataPng() { return {g_moon_data_png, (size_t)(g_moon_data_png_end - g_moon_data_png)}; }
 EmbeddedFile MoonRockPng() { return {g_moon_rock_png, (size_t)(g_moon_rock_png_end - g_moon_rock_png)}; }
@@ -102,3 +108,4 @@ EmbeddedFile MusicOgg(int i) {
     if (i < 0 || i >= MUSIC_COUNT) return {nullptr, 0};
     return {B[i], (size_t)(E[i] - B[i])};
 }
+void RequestAsset(const char*) {}   // 初めから実行ファイルの中にある

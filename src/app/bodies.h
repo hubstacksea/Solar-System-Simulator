@@ -154,21 +154,24 @@ struct DetailMap {
 };
 static DetailMap g_detail[6];   // 地球・月・火星、その地域だけの細かいもの（DetailIndex + 3）
 
-// 月の南極（南緯 85° より極側）の細かい標高（assets/moon_south.bin。LOLA、極中心の平射図法、1 画素 80 m。tools/make_moon_south.py）。
+// 月と火星の極の細かい標高（assets/moon_south.bin・moon_north.bin・mars_south.bin・mars_north.bin。月は LOLA で緯度 85° より
+// 極側・1 画素 80 m、火星は MOLA で緯度 80° より極側・460 m。極中心の平射図法。tools/make_polar_detail.py）。
 // 全体を展開して持ち、GPU にも全体を載せる（texture6）。細かい標高の窓・地域の窓の上に重ね、縁から MARGIN 画素でなじませる。
-// シェーダ（shaders.h の polarWeight・polarHeight）と同じ計算。本体の座標系の向き o（単位）の点は、極からの距離
-// 2 tan(45° + φ / 2) = 2 (1 + sin φ) / cos φ の所の、右へ −o.z、上へ o.x の向き: 画素は中心 c から (−o.z, −o.x) × 2 / (1 − o.y) / scale
+// シェーダ（shaders.h の polarWeight・polarHeight）と同じ計算。地図の緯度の向き m（単位。MapLatScale）の点は、極からの距離
+// 2 tan(45° − |φ| / 2) = 2 cos φ / (1 + |sin φ|) の所の、右へ −m.z、南極は上へ・北極は下へ m.x の向き:
+// 画素は中心 c から (−m.z, pole × m.x) × 2 / (1 + pole × m.y) / scale
 struct PolarMap {
     static const int MARGIN = 64;
     int n = 0;                        // 一辺の画素数
-    double scale = 0;                 // 1 画素の大きさ（単位球の長さ）
+    int pole = 0;                     // 1 北極, −1 南極
+    double scale = 0;                 // 1 画素の大きさ（投影の球の半径を 1 とする長さ。地表の長さとしても使う）
     std::vector<unsigned short> v;    // 値（0.5 m 単位、−10000 m から）
-    // 向き o の画素 (lx, ly) と重み（範囲の外・南緯 30° より北は 0）
-    double Weight(V3 o, double* lx, double* ly) const {
-        if (v.empty() || o.y > -0.5) return 0;
-        double k = 2 / (1 - o.y) / scale, c = (n - 1) * 0.5;
-        *lx = c - o.z * k;
-        *ly = c - o.x * k;
+    // 地図の緯度の向き m の画素 (lx, ly) と重み（範囲の外・緯度 30° より赤道側は 0）
+    double Weight(V3 m, double* lx, double* ly) const {
+        if (v.empty() || m.y * pole < 0.5) return 0;
+        double k = 2 / (1 + m.y * pole) / scale, c = (n - 1) * 0.5;
+        *lx = c - m.z * k;
+        *ly = c + pole * m.x * k;
         double e = std::min(std::min(*lx, n - 1 - *lx), std::min(*ly, n - 1 - *ly));
         return std::max(0.0, std::min(1.0, e / MARGIN));
     }
@@ -184,7 +187,9 @@ struct PolarMap {
         return (at(i, j) * (1 - fx) + at(i + 1, j) * fx) * (1 - fy) + (at(i, j + 1) * (1 - fx) + at(i + 1, j + 1) * fx) * fy;
     }
 };
-static PolarMap g_moonSouth;
+static PolarMap g_polar[4];   // 月の南極・北極、火星の南極・北極
+// 天体の極（north: 北極）の細かい標高の番号（無ければ −1）
+static int PolarIndex(int body, bool north) { return body == B_MOON ? (north ? 1 : 0) : body == B_MARS ? (north ? 3 : 2) : -1; }
 static int DetailIndex(int body) { return body == B_EARTH ? 0 : body == B_MOON ? 1 : body == B_MARS ? 2 : -1; }
 
 // ---- シェーダの手続きの起伏（NOISE_GLSL・BUMPS_GLSL）と同じ計算（float で同じ順に）。地形の格子の高さと合わせ、
@@ -458,9 +463,12 @@ static double TerrainKm(const Body& b, V3 o) {
     const DetailMap* P = k >= 0 ? &g_detail[k + 3] : nullptr;
     double plx = 0, ply = 0, w2 = 0;
     if (P && w > 0 && (w2 = P->Weight(u, v, &plx, &ply)) > 0) km = km * (1 - w2) + P->Height(plx, ply) / 1000 * w2;
-    // 月の南極の細かい標高（窓の上に重ねる）
-    double qlx = 0, qly = 0, wq = T.body == B_MOON ? g_moonSouth.Weight(o, &qlx, &qly) : 0;
-    if (wq > 0) km = km * (1 - wq) + g_moonSouth.Height(qlx, qly) / 1000 * wq;
+    // 極の細かい標高（窓の上に重ねる）
+    V3 m = Norm(V3(o.x, o.y * MapLatScale(b.d), o.z));
+    int qi = PolarIndex(T.body, m.y > 0);
+    const PolarMap* Q = qi >= 0 ? &g_polar[qi] : nullptr;
+    double qlx = 0, qly = 0, wq = Q ? Q->Weight(m, &qlx, &qly) : 0;
+    if (wq > 0) km = km * (1 - wq) + Q->Height(qlx, qly) / 1000 * wq;
     auto slope = [&](double R) {   // 標高の傾き（tan）
         double s = D->Slope(lx, ly, lat, R);
         return w2 > 0 ? s * (1 - w2) + P->Slope(plx, ply, lat, R) * w2 : s;
@@ -473,7 +481,7 @@ static double TerrainKm(const Body& b, V3 o) {
     } else if (T.bumps) {   // データより細かい手続きの起伏
         double R = b.d.radius * 1000, fLo = T.h / (2 * PI) * (1 - w) + (D ? D->H / (2 * PI) * w : 0);
         if (w2 > 0) fLo = fLo * (1 - w2) + P->H / (2 * PI) * w2;
-        if (wq > 0) fLo = fLo * (1 - wq) + 0.5 / g_moonSouth.scale * wq;   // データの 1 画素の半波長の周波数
+        if (wq > 0) fLo = fLo * (1 - wq) + 0.5 / Q->scale * wq;   // データの 1 画素の半波長の周波数
         float L = (float)(BUMP_MIN_M / R);   // 地形の格子と同じく、地表に固定した一番細かい格子点の段で求める
         const float seed = (float)(T.body * 7.31);
         const F3 o{seed, seed * 1.37f, seed * 0.71f}, pf{(float)p.x, (float)p.y, (float)p.z};

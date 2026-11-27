@@ -13,6 +13,7 @@
 #include "raylib.h"
 #endif
 
+#include <algorithm>
 #include <cstdio>
 #include <map>
 #include <string>
@@ -52,16 +53,42 @@ static EmbeddedFile Load(const char* name) {
 // 後から取得するファイル（CMakeLists.txt の WEB_DEFERRED と同じ）
 static const char* const DEFERRED[] = {"maps.bin", "shapes.bin", "moon_data.png", "moon_color.jpg", "earth_clouds.jpg",
                                        "asteroids.bin", "earth_months.jpg", "earth_detail.bin", "moon_detail.bin",
-                                       "mars_detail.bin", "mars_detail2.bin", "mars_patches.bin", "earth_patches.bin", "moon_patches.bin", "moon_south.bin", "moon_rock.png", "mars_ti.png", "place_names.txt"};
-static int g_pending = -1;
+                                       "mars_detail.bin", "mars_detail2.bin", "mars_patches.bin", "earth_patches.bin", "moon_patches.bin", "moon_rock.png", "mars_ti.png", "place_names.txt"};
+static int g_pending = -1, g_deferredLeft = 0, g_deferredFailed = 0;
 
+// 届くまでの時間をログに出す（tools/web_smoke.py が読む）。起動時の分は、ページを開いてから全部が届く（か失敗する）まで
+static void Arrived(bool ok) {
+    g_pending--;
+    if (!ok) g_deferredFailed++;
+    if (--g_deferredLeft == 0)
+        emscripten_log(EM_LOG_CONSOLE, "ASSETS: all %d deferred files arrived %.1f s after the page opened (%d failed)",
+                       (int)(sizeof DEFERRED / sizeof DEFERRED[0]), emscripten_get_now() / 1000, g_deferredFailed);
+}
 void StartDeferredAssetDownloads() {
-    g_pending = (int)(sizeof DEFERRED / sizeof DEFERRED[0]);
+    g_pending = g_deferredLeft = (int)(sizeof DEFERRED / sizeof DEFERRED[0]);
     for (const char* name : DEFERRED)
         emscripten_async_wget((std::string("assets/") + name).c_str(), (std::string("/assets/") + name).c_str(),
-                              [](const char*) { g_pending--; }, [](const char*) { g_pending--; });
+                              [](const char*) { Arrived(true); }, [](const char*) { Arrived(false); });
 }
 int DeferredAssetsPending() { return g_pending; }
+
+// 近づいた時だけ要るファイル（CMakeLists.txt の WEB_ON_DEMAND）: 頼まれた時刻（ms）
+static std::map<std::string, double> g_requested;
+static void OnDemandArrived(const char* file) {
+    g_pending--;
+    std::string name = std::string(file).substr(8);   // "/assets/" の後
+    emscripten_log(EM_LOG_CONSOLE, "ASSETS: %s arrived %.1f s after it was requested", name.c_str(),
+                   (emscripten_get_now() - g_requested[name]) / 1000);
+}
+void RequestAsset(const char* name) {
+    if (g_requested.count(name)) return;
+    g_requested[name] = emscripten_get_now();
+    g_pending = std::max(g_pending, 0) + 1;
+    emscripten_async_wget((std::string("assets/") + name).c_str(), (std::string("/assets/") + name).c_str(), OnDemandArrived,
+                          [](const char*) { g_pending--; });
+}
+#else
+void RequestAsset(const char*) {}   // macOS 版: 初めから .app の中にある
 #endif
 
 EmbeddedFile EarthColorJpg() { return Load("earth_color.jpg"); }
@@ -76,6 +103,9 @@ EmbeddedFile MarsPatchesBin() { return Load("mars_patches.bin"); }
 EmbeddedFile EarthPatchesBin() { return Load("earth_patches.bin"); }
 EmbeddedFile MoonPatchesBin() { return Load("moon_patches.bin"); }
 EmbeddedFile MoonSouthBin() { return Load("moon_south.bin"); }
+EmbeddedFile MoonNorthBin() { return Load("moon_north.bin"); }
+EmbeddedFile MarsSouthBin() { return Load("mars_south.bin"); }
+EmbeddedFile MarsNorthBin() { return Load("mars_north.bin"); }
 EmbeddedFile MoonColorJpg() { return Load("moon_color.jpg"); }
 EmbeddedFile MoonDataPng() { return Load("moon_data.png"); }
 EmbeddedFile MoonRockPng() { return Load("moon_rock.png"); }

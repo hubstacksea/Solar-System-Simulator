@@ -4,6 +4,15 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.72.0 (2026-11-27)
+
+- Added finer elevation for the Moon's north pole (poleward of 85° N), as for the south pole: the LRO LOLA polar elevation from the NASA PDS (LDEM_85N_40M, 40 m per pixel) reduced to 80 m (assets/moon_north.bin, 9.3 MB)
+- Added finer elevation for both poles of Mars (poleward of 80°): the MGS MOLA polar elevations from the NASA PDS (MEGT_S_512_1 and MEGT_N_512_1, polar stereographic, 512 pixels per degree = about 115 m) reduced to about 460 m (assets/mars_south.bin and mars_north.bin, 7.3 MB together). Until now it was about 1.85 km per pixel. MOLA measurements fall in only 10 to 40% of the cells of the 115 m grid but in more than 90% of the 460 m cells between 80° and 87°, so this spacing was chosen. The spacecraft's orbit did not reach within 3° of the poles, so poleward of 87° is mostly interpolated
+- The polar elevations are now loaded not at startup but when you come within 8 body radii of that body, on that pole's hemisphere. The browser version downloads them then and decodes them about 6 ms per frame (the screen does not stop). In 2.71.0 the browser version also loaded the Moon's south pole data (9.4 MB) in the background at startup, so "Loading maps" stayed on screen longer. When the data arrives and the ground height changes, a ship near the surface keeps its height above the ground (it does not float or sink right after landing)
+- Merged the tool into tools/make_polar_detail.py (the four poles of the Moon and Mars; replaces tools/make_moon_south.py)
+- The browser version now logs how many seconds after the page opened all the background data had arrived, and how long the data loaded on approach took to arrive after it was requested. tools/web_smoke.py shows them on its result lines and fails if any data could not be downloaded
+- The README said the browser version loads about 126 MB in the background; corrected to the actual 175 MB
+
 ## 2.71.0 (2026-11-27)
 
 - Added finer elevation for the Moon's south pole (poleward of 85° S): the LRO LOLA polar elevation from the NASA PDS (LDEM_85S_40M, polar stereographic, 40 m per pixel) reduced to 80 m (assets/moon_south.bin, 9.4 MB; tools/make_moon_south.py). Until now it was about 1.9 km per pixel, and the rims of craters such as Shackleton were blurred. It is used for the terrain heights, shadows and shading and for collision and altitude, blended in over 5 km at its edges. It is decoded on another thread so startup is not delayed

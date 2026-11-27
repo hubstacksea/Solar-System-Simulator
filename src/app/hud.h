@@ -1613,7 +1613,6 @@ static void RefreshDeferredAssets(App& app) {
     if (!g_detail[1].file && app.moonTex) LoadDetail(app, 1, MoonDetailBin());
     if (!g_detail[3].file && app.earthTex) LoadPatches(app, 0, EarthPatchesBin());
     if (!g_detail[4].file && app.moonTex) LoadPatches(app, 1, MoonPatchesBin());
-    if (g_moonSouth.v.empty() && app.moonTex) LoadMoonSouth(app, MoonSouthBin());
     if (!g_detail[2].file && !app.maps.empty()) LoadDetail(app, 2, MarsDetailBin(), MarsDetail2Bin(), true);
     if (!g_detail[5].file && !app.maps.empty()) LoadPatches(app, 2, MarsPatchesBin());
     if (!app.moonRock.id && app.moonTex && MoonRockPng().data) app.moonRock = LoadEmbeddedTexture(MoonRockPng(), ".png");

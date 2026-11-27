@@ -19,7 +19,12 @@ EmbeddedFile MarsDetailBin();   // 火星の細かい標高 (NASA PDS MGS MOLA)�
 EmbeddedFile MarsDetail2Bin();  // その後ろ半分の区画（GitHub のファイルの大きさの上限のため分けてある）
 EmbeddedFile MarsPatchesBin();  // 地域（オリンポス山・タルシス三山）だけのもっと細かい標高（約 206 m）
 EmbeddedFile EarthPatchesBin();  // 地域（エベレスト・富士山など）だけのもっと細かい標高（Copernicus DEM GLO-90、約 90 m）
-EmbeddedFile MoonSouthBin();    // 月の南極（南緯 85° より極側）の細かい標高（LOLA、1 画素 80 m。tools/make_moon_south.py）
+// 月と火星の極の細かい標高（tools/make_polar_detail.py）。月は緯度 85° より極側（LOLA、1 画素 80 m）、火星は 80° より極側（MOLA、460 m）。
+// ブラウザ版では、RequestAsset で取得を頼むまで空
+EmbeddedFile MoonSouthBin();
+EmbeddedFile MoonNorthBin();
+EmbeddedFile MarsSouthBin();
+EmbeddedFile MarsNorthBin();
 EmbeddedFile MoonPatchesBin();  // 地域（アポロ 15 号・17 号の着陸地点など）だけのもっと細かい標高（SLDEM2015、約 60 m）
 EmbeddedFile MoonColorJpg();   // 月の地表の色 (NASA SVS / LROC)
 EmbeddedFile MoonDataPng();    // 月の標高 16 bit: グレー=上位, アルファ=下位 (NASA SVS / LOLA)
@@ -46,3 +51,6 @@ EmbeddedFile MusicOgg(int i);
 void StartDeferredAssetDownloads();
 int DeferredAssetsPending();
 #endif
+// 近づいた時だけ要るデータ（極の細かい標高）の取得を頼む。ブラウザ版は 1 回目だけ取得を始め（届くまでは DeferredAssetsPending
+// にも数える）、ほかの版は何もしない（初めから読める）
+void RequestAsset(const char* name);

@@ -199,6 +199,17 @@ float rockyBand(vec3 p, int style, vec3 o, float sp, float fLo) {
 float moonDark(vec3 c) { return 1.0 - smoothstep(0.12, 0.3, dot(pow(c, vec3(1.3)) * 1.25, vec3(0.333))); }
 )"
 
+// 地図の緯度（頂点・フラグメントシェーダの両方で、使う所より前に置く）
+#define MAPDIR_GLSL R"(
+uniform float mapLatK;
+// 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
+// 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
+vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
+// 地図の緯度 rad。asin(y) は極の近くで y のわずかな誤差を大きく広げる（float の丸めだけで南緯 89.9° では 60 m ほど、GPU の
+// asin の近似ではさらに大きく、地表の標高を数百 m 離れた所から引いて地形が CPU の高さとずれた）ので、atan で求める
+float mapLat(vec3 p) { vec3 m = mapDir(p); return atan(m.y, length(m.xz)); }
+)"
+
 // 細かい標高（地球 1 分角・月 16 ピクセル/度・火星 32 ピクセル/度）。CPU がカメラの真下を中心に展開した窓（texture4。bodies.h の DetailMap と
 // 同じ計算）
 #define DETAIL_GLSL R"(
@@ -283,15 +294,16 @@ float det2Mix(vec2 uv, float s, float h, out float w2, out vec2 l2) {
     float lod = log2(max(s * detD.y / 3.1415927, 1.0));
     return mix(h, lod > 0.0 ? det2Decode(textureLod(texture5, (l2 + 0.5) / detC.z, lod)) : det2Height(l2), w2);
 }
-// 月の南極（南緯 85° より極側）の細かい標高（texture6。極中心の平射図法、1 画素 80 m。bodies.h の PolarMap と同じ計算）。
-// 本体の座標系の向き o（単位）の画素 l と重み（範囲の外は 0、縁から detF.w 画素で 1）
+// 月と火星の極の細かい標高（texture6。極中心の平射図法、月は緯度 85° より極側で 1 画素 80 m、火星は 80° より極側で 460 m。
+// bodies.h の PolarMap と同じ計算）。球のメッシュの点 o の画素 l と重み（範囲の外は 0、縁から detF.w 画素で 1）
 uniform sampler2D texture6;
-uniform vec4 detF;   // x: 一辺の画素数, y: 1 画素の大きさ（単位球の長さ）, z: 1 で使う, w: 縁でなじませる幅（画素）
+uniform vec4 detF;   // x: 一辺の画素数, y: 1 画素の大きさ（単位球の長さ）, z: 極（1 北, −1 南, 0 は使わない）, w: 縁でなじませる幅（画素）
 float polarWeight(vec3 o, out vec2 l) {
     l = vec2(0.0);
-    if (detF.z < 0.5 || o.y > -0.5) return 0.0;
-    float k = 2.0 / (1.0 - o.y) / detF.y, c = (detF.x - 1.0) * 0.5;
-    l = vec2(c - o.z * k, c - o.x * k);
+    vec3 m = mapDir(o);
+    if (detF.z == 0.0 || m.y * detF.z < 0.5) return 0.0;
+    float k = 2.0 / (1.0 + m.y * detF.z) / detF.y, c = (detF.x - 1.0) * 0.5;
+    l = vec2(c - m.z * k, c + detF.z * m.x * k);
     vec2 e = min(l, detF.x - 1.0 - l);
     return clamp(min(e.x, e.y) / detF.w, 0.0, 1.0);
 }
@@ -355,7 +367,6 @@ uniform sampler2D texture2;  // 地図のある天体: 撮影された範囲（R
 uniform vec4 params;     // z: 天体ごとのシード（フラグメントシェーダと同じ）
 uniform vec4 mapInfo;    // y: 地図の種類（2 模様だけ）
 uniform vec4 mapInfo2;   // x: 撮影されていない所の表面模様の種類, z: 1 なら撮影範囲の画像のアルファが液体
-uniform float mapLatK;
 out vec3 fragObj;
 out vec3 fragNormal;
 out vec3 fragWorld;
@@ -363,14 +374,7 @@ out float fragAlt;   // 地形の高さ km（金星のもやの計算に使う�
 out float fragShade; // 地形の影: 日なたの割合（地形の格子の頂点で求めて補間する。地形でなければ 1）
 uniform vec3 lightDirObj;  // 本体（自転込み）の座標系での太陽方向
 uniform float sunAng;      // 太陽の視半径 rad
-
-// 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
-// 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
-vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
-// 地図の緯度 rad。asin(y) は極の近くで y のわずかな誤差を大きく広げる（float の丸めだけで南緯 89.9° では 60 m ほど、GPU の
-// asin の近似ではさらに大きく、地表の標高を数百 m 離れた所から引いて地形が CPU の高さとずれた）ので、atan で求める
-float mapLat(vec3 p) { vec3 m = mapDir(p); return atan(m.y, length(m.xz)); }
-
+)" MAPDIR_GLSL R"(
 float terrDecode(vec4 t) {
     if (terrA.w < 1.5) {   // 陸 128..255 = 0..8900 m（平方根で詰めてある）。海は海面（0）
         float v = t.r * 255.0, s = (v - 128.0) / 127.0;
@@ -479,7 +483,7 @@ float bodyHeight(vec3 d, float sp, float hm) {
         hm = det2Mix(uv, sp, hm, w2, l2);
     }
     vec2 lq;
-    float wq = polarWeight(d, lq);   // 月の南極
+    float wq = polarWeight(d, lq);   // 極
     if (wq > 0.0) hm = mix(hm, polarHeight(lq, log2(max(sp / detF.y, 1.0))), wq);
     if (terrE.z < 0.5) return hm;
     vec3 o = vec3(params.z, params.z * 1.37, params.z * 0.71);
@@ -506,7 +510,7 @@ float dataHeight(vec3 d, float s) {
         h = det2Mix(uv, s, mix(h, lod > 0.0 ? detDecode(textureLod(texture4, (l + 0.5) / detA.z, lod)) : detHeight(l), w), w2, l2);
     }
     vec2 lq;
-    float wq = polarWeight(d, lq);   // 月の南極
+    float wq = polarWeight(d, lq);   // 極
     if (wq > 0.0) h = mix(h, polarHeight(lq, log2(max(s / detF.y, 1.0))), wq);
     return h;
 }
@@ -654,7 +658,7 @@ float whiteness(vec3 c) {
     return smoothstep(0.55, 0.75, mn) * (1.0 - smoothstep(0.12, 0.25, (mx - mn) / max(mx, 1e-3)));
 }
 
-)" NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
+)" MAPDIR_GLSL NOISE_GLSL BUMPS_GLSL DETAIL_GLSL R"(
 // 周波数 f の模様の重み: 画素より細かくなったら消す
 float lodW(float f) { return 1.0 - smoothstep(0.15, 0.5, f * fw); }
 
@@ -951,13 +955,6 @@ vec4 sastrugi(vec3 p, float F, vec3 a, vec3 o) {
     return w * vec4((n.x - 0.5) / F, n.yzw - a * (dot(n.yzw, a) * 0.85));
 }
 
-uniform float mapLatK;
-// 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
-// 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
-vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
-// 地図の緯度 rad。asin(y) は極の近くで y のわずかな誤差を大きく広げる（float の丸めだけで南緯 89.9° では 60 m ほど、GPU の
-// asin の近似ではさらに大きく、地表の標高を数百 m 離れた所から引いて地形が CPU の高さとずれた）ので、atan で求める
-float mapLat(vec3 p) { vec3 m = mapDir(p); return atan(m.y, length(m.xz)); }
 // 地図の uv（経度・地図の緯度）
 vec2 mapUV(vec3 p) { return vec2(atan(-p.z, p.x) / (2.0 * PI) + 0.5, 0.5 - mapLat(p) / PI); }
 // 極の近くの標高の勾配: 経度・緯度の差分では東西の傾きを cos(緯度) で割るので、極の近く（緯度 87° より極側）では東西の傾きを
@@ -966,6 +963,23 @@ vec2 mapUV(vec3 p) { return vec2(atan(-p.z, p.x) / (2.0 * PI) + 0.5, 0.5 - mapLa
 // 平均してある）。poleK: 移す割合
 float poleK(float lat) { return smoothstep(0.1, 0.05, cos(lat)); }
 void poleTangents(vec3 p, out vec3 t1, out vec3 t2) { t1 = normalize(cross(vec3(1.0, 0.0, 0.0), p)); t2 = cross(p, t1); }
+// 極の細かい標高（polarWeight）: 陰影の勾配 grad と標高 hm を、地表に沿った 2 つの向きの差分（極でも使える。poleK）と混ぜる。
+// fw: 画素の大きさ（単位球の長さ）, R: 半径 m
+void polarGradient(vec3 p, float fw, float R, inout vec3 grad, inout float hm) {
+    vec2 lq;
+    float wq = polarWeight(p, lq);
+    if (wq <= 0.0) return;
+    vec3 t1, t2;
+    poleTangents(p, t1, t2);
+    float s = max(detF.y, fw), lod = max(log2(s / detF.y), 0.001);
+    vec2 la, lb, lc, ld;
+    polarWeight(normalize(p + t1 * s), la); polarWeight(normalize(p - t1 * s), lb);
+    polarWeight(normalize(p + t2 * s), lc); polarWeight(normalize(p - t2 * s), ld);
+    float a = polarHeight(la, lod) - polarHeight(lb, lod);
+    float b = polarHeight(lc, lod) - polarHeight(ld, lod);
+    grad = mix(grad, (t1 * a + t2 * b) / (2.0 * s * R), wq);
+    hm = mix(hm, polarHeight(lq, lod), wq);
+}
 
 // 緯度・経度 (lon は -PI..PI)
 vec2 latLon(vec3 p) { return vec2(atan(p.y, length(p.xz)), atan(p.z, p.x)); }
@@ -1356,21 +1370,7 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
         grad = mix(grad, east * sl.x + north * sl.y, dw);
         hm = mix(hm, hd, dw);
     }
-    // 月の南極の細かい標高: 地表に沿った 2 つの向きの差分（極でも使える。poleK）
-    vec2 lq;
-    float wq = polarWeight(p, lq);
-    if (wq > 0.0) {
-        vec3 t1, t2;
-        poleTangents(p, t1, t2);
-        float s = max(detF.y, fw), lod = log2(s / detF.y);
-        vec2 la, lb, lc, ld;
-        polarWeight(normalize(p + t1 * s), la); polarWeight(normalize(p - t1 * s), lb);
-        polarWeight(normalize(p + t2 * s), lc); polarWeight(normalize(p - t2 * s), ld);
-        float a = polarHeight(la, max(lod, 0.001)) - polarHeight(lb, max(lod, 0.001));
-        float b = polarHeight(lc, max(lod, 0.001)) - polarHeight(ld, max(lod, 0.001));
-        grad = mix(grad, (t1 * a + t2 * b) / (2.0 * s * R), wq);
-        hm = mix(hm, polarHeight(lq, max(lod, 0.001)), wq);
-    }
+    polarGradient(p, fw, R, grad, hm);   // 極の細かい標高
 
     // 海（暗い所）はクレーターが少なく平ら
     float dark = moonDark(raw);
@@ -1525,6 +1525,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
             grad = mix(grad, east * sl.x + north * sl.y, dw);
             hm = mix(hm, hd, dw);
         }
+        polarGradient(p, fw, R, grad, hm);   // 極の細かい標高
         if (cliff > 0.0) {   // 火星の崖: 地層の段（頂点の bodyHeight と同じ）と尾根・溝
             float k = strataK(cs, fw * R) * dw, t = strataT(hm, p, o), dd, st = strataStep(t, dd);
             h += vec4(k * STRATA_M / R * (st - t), 0.0, 0.0, 0.0) + cov * cliffRidgeA(cs) * dw * ridgeD(p, 1200.0, 7, 0.5, o + 43.0);

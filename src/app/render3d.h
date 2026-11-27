@@ -589,96 +589,199 @@ static std::vector<unsigned short> DecodeDetailTile(const DetailMap& D, int i) {
     return v;
 }
 
-// 月の南極の細かい標高（g_moonSouth。"EPS1"。tools/make_moon_south.py）: 区画をすべて展開し、GPU にも全体を載せる（texture6）
-struct PolarBuild {
-    int n = 0, levels = 0;
-    float scaleM = 0;
-    std::vector<unsigned short> v;
-    std::vector<unsigned char> px;   // GPU に載せる画素（すべての縮小の段）
+// 極の細かい標高（g_polar。"EPS2"。tools/make_polar_detail.py）: 区画をすべて展開し、GPU にも全体を載せる（texture6）
+struct PolarFile {
+    const char* name;
+    EmbeddedFile (*file)();
+    int body;
+    const char* label;
 };
-// 区画の展開と縮小画像（GPU には触らない。別のスレッドでも作れる）
-static bool BuildMoonSouth(EmbeddedFile f, PolarBuild& b) {
-    if (!f.data || f.size < 16 || std::memcmp(f.data, "EPS1", 4) != 0) return false;
-    int n = 0, tile = 0;
-    std::memcpy(&n, f.data + 4, 4);
+static const PolarFile POLAR_FILES[4] = {{"moon_south.bin", MoonSouthBin, B_MOON, "Moon's south pole"},
+                                         {"moon_north.bin", MoonNorthBin, B_MOON, "Moon's north pole"},
+                                         {"mars_south.bin", MarsSouthBin, B_MARS, "Mars's south pole"},
+                                         {"mars_north.bin", MarsNorthBin, B_MARS, "Mars's north pole"}};
+// 展開の途中（PolarStep で少しずつ進める。ブラウザ版は 1 フレームに数 ms ずつ）
+struct PolarBuild {
+    DetailMap D;   // 区画の展開は細かい標高と同じ
+    int n = 0, pole = 0, levels = 0;
+    float scaleM = 0, radiusKm = 0;
+    int tiles = 0, next = 0;            // 区画の数と、次に展開する区画
+    std::vector<unsigned short> v;
+    std::vector<unsigned> lv, half;     // 作っている縮小の段の値と、その次の段
+    int m = 0, row = 0;                 // 作っている段の一辺と、次の行
+    std::vector<unsigned char> px;      // GPU に載せる画素（すべての縮小の段）
+    bool done = false, ok = true;
+    double work = 0;                    // かかった時間 s（ログ用）
+    int steps = 0;                      // PolarStep を呼んだ回数
+};
+// 見出しと索引を読む
+static bool PolarOpen(EmbeddedFile f, PolarBuild& b) {
+    if (!f.data || f.size < 24 || std::memcmp(f.data, "EPS2", 4) != 0) return false;
+    int tile = 0;
+    std::memcpy(&b.n, f.data + 4, 4);
     std::memcpy(&tile, f.data + 8, 4);
     std::memcpy(&b.scaleM, f.data + 12, 4);
-    if (n <= 0 || tile <= 0 || n % tile || b.scaleM <= 0) return false;
-    int cols = n / tile;
-    DetailMap D;   // 区画の展開は細かい標高と同じ
+    std::memcpy(&b.radiusKm, f.data + 16, 4);
+    std::memcpy(&b.pole, f.data + 20, 4);
+    if (b.n <= 0 || tile <= 0 || b.n % tile || b.scaleM <= 0 || b.radiusKm <= 0 || (b.pole != 1 && b.pole != -1)) return false;
+    int cols = b.n / tile;
+    DetailMap& D = b.D;
     D.fmt = 2;
     D.tile = tile;
     D.file = f.data;
     D.split = f.size;
     D.pos.resize((size_t)cols * cols);
     D.len.resize((size_t)cols * cols);
-    if (f.size < 16 + 8 * D.pos.size()) return false;
+    if (f.size < 24 + 8 * D.pos.size()) return false;
     for (size_t i = 0; i < D.pos.size(); i++) {
-        std::memcpy(&D.pos[i], f.data + 16 + 8 * i, 4);
-        std::memcpy(&D.len[i], f.data + 20 + 8 * i, 4);
+        std::memcpy(&D.pos[i], f.data + 24 + 8 * i, 4);
+        std::memcpy(&D.len[i], f.data + 28 + 8 * i, 4);
         if ((size_t)D.pos[i] + D.len[i] > f.size) return false;
     }
-    b.v.resize((size_t)n * n);
-    for (int r = 0; r < cols; r++)
-        for (int c = 0; c < cols; c++) {
-            std::vector<unsigned short> t = DecodeDetailTile(D, r * cols + c);
-            if (t.size() != (size_t)tile * tile) return false;
-            for (int y = 0; y < tile; y++) std::memcpy(&b.v[(size_t)(r * tile + y) * n + c * tile], &t[(size_t)y * tile], tile * sizeof(unsigned short));
-        }
-    // 16 bit の値は上位・下位バイトに分けて載せるので、縮小画像は値のまま 2x2 を平均して作る（細かい標高の窓と同じ）。
-    // 一辺が奇数の段は、最後の行・列を捨てる
-    std::vector<unsigned> lv(b.v.begin(), b.v.end());
-    for (int m = n;; m /= 2) {
-        for (unsigned x : lv) b.px.push_back((unsigned char)(x >> 8)), b.px.push_back((unsigned char)(x & 255));
-        b.levels++;
-        if (m == 1) break;
-        int h = m / 2;
-        std::vector<unsigned> next((size_t)h * h);
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < h; x++) {
-                size_t a = (size_t)(2 * y) * m + 2 * x;
-                next[(size_t)y * h + x] = (lv[a] + lv[a + 1] + lv[a + m] + lv[a + m + 1] + 2) / 4;
-            }
-        lv.swap(next);
-    }
-    b.n = n;
+    b.tiles = cols * cols;
+    b.v.resize((size_t)b.n * b.n);
+    b.px.reserve((size_t)b.n * b.n * 8 / 3 + 64);
     return true;
 }
-// GPU に載せて使い始める
-static void ApplyMoonSouth(App& app, PolarBuild& b) {
-    Image img = {b.px.data(), b.n, b.n, b.levels, PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA};
-    app.moonSouthTex = LoadTextureFromImage(img);
-    if (!app.moonSouthTex.id) return;
-    SetTextureFilter(app.moonSouthTex, TEXTURE_FILTER_TRILINEAR);
-    SetTextureWrap(app.moonSouthTex, TEXTURE_WRAP_CLAMP);
-    PolarMap& Q = g_moonSouth;
-    Q.n = b.n;
-    Q.scale = b.scaleM / (app.B[B_MOON].d.radius * 1000);
-    Q.v.swap(b.v);
-    TraceLog(LOG_INFO, "DETAIL: Moon's south pole %dx%d (%.0f m per pixel)", b.n, b.n, b.scaleM);
-}
-// 展開に約 0.4 秒かかるので、起動を待たせないよう別のスレッドで作り、できたら PollMoonSouth で使い始める（月の南極に行くまでは
-// 要らない）。画面の保存（--shot）とブラウザ版は、その場で作る
-static std::future<PolarBuild> g_moonSouthJob;
-static void LoadMoonSouth(App& app, EmbeddedFile f) {
-    if (!g_moonSouth.v.empty() || g_moonSouthJob.valid() || !f.data || app.B[B_MOON].terrain < 0) return;
-#if !defined(__EMSCRIPTEN__)
-    if (!app.shotMode) {
-        g_moonSouthJob = std::async(std::launch::async, [f] {
-            PolarBuild b;
-            if (!BuildMoonSouth(f, b)) b.n = 0;
-            return b;
-        });
-        return;
+// 区画の展開と縮小画像を budget 秒ほど進める（0 以下は最後まで）。GPU には触らない（別のスレッドでも作れる）
+static void PolarStep(PolarBuild& b, double budget) {
+    auto t0 = std::chrono::steady_clock::now();
+    auto elapsed = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(); };
+    auto over = [&] { return budget > 0 && elapsed() > budget; };
+    struct Count {   // 抜ける時に時間を足す
+        PolarBuild& b;
+        decltype(elapsed)& e;
+        ~Count() { b.work += e(); b.steps++; }
+    } count{b, elapsed};
+    const int tile = b.D.tile, cols = b.n / tile;
+    while (!b.done && !over()) {
+        if (b.next < b.tiles) {   // 区画を 1 つ展開する
+            int r = b.next / cols, c = b.next % cols;
+            std::vector<unsigned short> t = DecodeDetailTile(b.D, b.next);
+            if (t.size() != (size_t)tile * tile) {
+                b.ok = false;
+                b.done = true;
+                return;
+            }
+            for (int y = 0; y < tile; y++) std::memcpy(&b.v[(size_t)(r * tile + y) * b.n + c * tile], &t[(size_t)y * tile], tile * sizeof(unsigned short));
+            if (++b.next == b.tiles) {
+                b.lv.assign(b.v.begin(), b.v.end());
+                b.m = b.n;
+                b.row = 0;
+                b.half.assign((size_t)(b.m / 2) * (b.m / 2), 0);
+            }
+            continue;
+        }
+        // 16 bit の値は上位・下位バイトに分けて載せるので、縮小画像は値のまま 2x2 を平均して作る（細かい標高の窓と同じ）。
+        // 一辺が奇数の段は、最後の行・列を捨てる。64 行ずつ進める
+        const int m = b.m, h = m / 2;
+        for (int y = b.row; y < std::min(b.row + 64, m); y++) {
+            for (int x = 0; x < m; x++) {
+                unsigned u = b.lv[(size_t)y * m + x];
+                b.px.push_back((unsigned char)(u >> 8));
+                b.px.push_back((unsigned char)(u & 255));
+            }
+            if ((y & 1) && y / 2 < h)
+                for (int x = 0; x < h; x++) {
+                    size_t a = (size_t)(y - 1) * m + 2 * x;
+                    b.half[(size_t)(y / 2) * h + x] = (b.lv[a] + b.lv[a + 1] + b.lv[a + m] + b.lv[a + m + 1] + 2) / 4;
+                }
+        }
+        b.row = std::min(b.row + 64, m);
+        if (b.row < m) continue;
+        b.levels++;
+        if (m == 1) {
+            b.done = true;
+            b.lv.clear();
+            b.half.clear();
+            break;
+        }
+        b.lv.swap(b.half);
+        b.m = h;
+        b.row = 0;
+        b.half.assign((size_t)(h / 2) * (h / 2), 0);
     }
-#endif
-    PolarBuild b;
-    if (BuildMoonSouth(f, b)) ApplyMoonSouth(app, b);
 }
-static void PollMoonSouth(App& app) {
-    if (!g_moonSouthJob.valid() || g_moonSouthJob.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
-    PolarBuild b = g_moonSouthJob.get();
-    if (b.n) ApplyMoonSouth(app, b);
+// GPU に載せて使い始める
+static void ApplyPolar(App& app, int i, PolarBuild& b) {
+    Image img = {b.px.data(), b.n, b.n, b.levels, PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA};
+    app.polarTex[i] = LoadTextureFromImage(img);
+    if (!app.polarTex[i].id) return;
+    SetTextureFilter(app.polarTex[i], TEXTURE_FILTER_TRILINEAR);
+    SetTextureWrap(app.polarTex[i], TEXTURE_WRAP_CLAMP);
+    PolarMap& Q = g_polar[i];
+    Q.n = b.n;
+    Q.pole = b.pole;
+    Q.scale = b.scaleM / (b.radiusKm * 1000.0);
+    Q.v.swap(b.v);
+    TraceLog(LOG_INFO, "DETAIL: %s %dx%d (%.0f m per pixel, built in %.2f s over %d steps)", POLAR_FILES[i].label, b.n, b.n, b.scaleM,
+             b.work, b.steps);
+}
+// 使い始めると地表の高さが変わる（全球の細かい標高との差は数百 m）ので、地表の近く（高度 100 km まで）にいる自機は地表からの
+// 高さを保つ（降りた所で読み込みが終わっても、浮いたり埋まったりしない）
+static void ApplyPolarKeepAltitude(App& app, int i, PolarBuild& b) {
+    const Body& body = app.B[POLAR_FILES[i].body];
+    V3 rel = ShipWorld(app) - body.pos;
+    double d = Len(rel);
+    V3 dir = rel * (1.0 / d);
+    double r0 = SurfaceRadius(body, dir);
+    ApplyPolar(app, i, b);
+    if (d - r0 < 100) SetShipWorld(app, body.pos + dir * (d + SurfaceRadius(body, dir) - r0));
+}
+// 極の細かい標高は、その天体の半径の 8 倍（立体の地形を描く距離）より近く、その極の側の半球に来た時に読み込む（ブラウザ版は
+// その時に取得する）。展開に約 0.3 秒かかるので、別のスレッドで作り、できたら使い始める。画面の保存（--shot）はその場で作り、
+// ブラウザ版（スレッドを使わない）は 1 フレームに 6 ms か、前のフレームにかかった時間の 1/4 の長いほうずつ進める（遅い環境でも
+// 何秒かで終わる）
+static std::future<PolarBuild> g_polarJob[4];
+static PolarBuild g_polarStep[4];
+static bool g_polarStepping[4], g_polarStarted[4];   // 少しずつ作っている / 作り始めた（失敗しても、もう読まない）
+static void UpdatePolarMaps(App& app) {
+    V3 ship = ShipWorld(app);
+    for (int i = 0; i < 4; i++) {
+        if (g_polarJob[i].valid()) {
+            if (g_polarJob[i].wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+            PolarBuild b = g_polarJob[i].get();
+            if (b.ok) ApplyPolarKeepAltitude(app, i, b);
+            continue;
+        }
+        if (g_polarStepping[i]) {
+            PolarStep(g_polarStep[i], std::max(0.006, 0.25 * GetFrameTime()));
+            if (!g_polarStep[i].done) continue;
+            if (g_polarStep[i].ok) ApplyPolarKeepAltitude(app, i, g_polarStep[i]);
+            g_polarStep[i] = PolarBuild();
+            g_polarStepping[i] = false;
+            continue;
+        }
+        if (g_polarStarted[i]) continue;
+        const PolarFile& P = POLAR_FILES[i];
+        const Body& b = app.B[P.body];
+        bool global = P.body == B_MOON ? app.moonTex : b.map >= 0 && !app.maps.empty();   // 全球の標高が読めている
+        V3 rel = ship - b.pos;
+        if (b.terrain < 0 || !global || Len(rel) > b.d.radius * 8 || (Dot(rel, b.pole) > 0) != (i % 2 == 1)) continue;
+        RequestAsset(P.name);
+        EmbeddedFile f = P.file();
+        PolarBuild pb;
+        if (!f.data) continue;
+        g_polarStarted[i] = true;
+        if (!PolarOpen(f, pb)) {
+            TraceLog(LOG_WARNING, "DETAIL: %s is unreadable", P.name);
+            continue;
+        }
+#if defined(__EMSCRIPTEN__)
+        g_polarStep[i] = std::move(pb);
+        g_polarStepping[i] = true;
+#else
+        if (app.shotMode) {
+            PolarStep(pb, 0);
+            if (pb.ok) ApplyPolarKeepAltitude(app, i, pb);
+        } else {
+            g_polarJob[i] = std::async(std::launch::async, [pb = std::move(pb)]() mutable {
+                PolarStep(pb, 0);
+                return std::move(pb);
+            });
+        }
+#endif
+    }
 }
 
 // 組み立てた窓（UpdateDetail）: 窓の位置と値、GPU に載せる画素（16 bit の値はすべての縮小の段も）
@@ -884,7 +987,7 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
 // 使う（その上では細かい標高は画面で見分けられない。窓を組み直すのは 1 回 約 0.1 秒かかり、時間を早回しすると真下が
 // 速く動いて毎フレーム組み直すことになる）
 static void UpdateDetailWindows(App& app) {
-    PollMoonSouth(app);
+    UpdatePolarMaps(app);
     V3 ship = ShipWorld(app);
     for (int k = 0; k < 3; k++) {
         const Body& b = app.B[k == 0 ? B_EARTH : k == 1 ? B_MOON : B_MARS];
@@ -1014,10 +1117,12 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
         PlanetUniform(app, app.locDetE, de, SHADER_UNIFORM_VEC4);
         app.mat.maps[MATERIAL_MAP_EMISSION].texture = app.detailTex[dk + 3];
     }
-    if (T.body == B_MOON && !g_moonSouth.v.empty() && app.moonSouthTex.id) {   // 月の南極の細かい標高
-        float df[4] = {(float)g_moonSouth.n, (float)g_moonSouth.scale, 1, (float)PolarMap::MARGIN};
+    // 極の細かい標高: 真下のある半球の極のもの（反対の極は地平線の向こう）
+    if (int qi = PolarIndex(T.body, c.y > 0); qi >= 0 && !g_polar[qi].v.empty() && app.polarTex[qi].id) {
+        const PolarMap& Q = g_polar[qi];
+        float df[4] = {(float)Q.n, (float)Q.scale, (float)Q.pole, (float)PolarMap::MARGIN};
         PlanetUniform(app, app.locDetF, df, SHADER_UNIFORM_VEC4);
-        app.mat.maps[MATERIAL_MAP_HEIGHT].texture = app.moonSouthTex;
+        app.mat.maps[MATERIAL_MAP_HEIGHT].texture = app.polarTex[qi];
     }
     // データより細かい手続きの起伏: 半径 m・全球の標高の周波数・種類（1 月, 2 地図のある天体）・細かい標高の周波数
     float te[4] = {(float)(d.radius * 1000), (float)(texH / (2 * PI)), (float)T.bumps, (float)(det ? g_detail[dk].H / (2 * PI) : 0)};
@@ -1194,7 +1299,6 @@ static void LoadMoonTextures(App& app) {
     }
     LoadDetail(app, 1, MoonDetailBin());
     LoadPatches(app, 1, MoonPatchesBin());
-    LoadMoonSouth(app, MoonSouthBin());
 }
 
 // 天の川の光: 赤道座標の全天画像を、カメラを中心とする球の内側に薄く貼る（星より先に描く）。

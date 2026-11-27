@@ -175,7 +175,7 @@ struct App {
     Material mat{};
     Shader shader{};
     Texture2D earthColor{}, earthData{};  // 地球の実データ（読めなければ手続き生成で描く）
-    Texture2D moonSouthTex{};  // 月の南極の細かい標高（g_moonSouth。texture6）
+    Texture2D polarTex[4]{};   // 月と火星の極の細かい標高（g_polar。texture6）
     Texture2D detailTex[6]{};  // 地球・月・火星の細かい標高と、その地域だけのもっと細かい標高のカメラの周りの窓（g_detail）
     Texture2D earthMonths{}, earthClouds{};  // 地球の 12 か月の地表の色と雲（読めなければ 4 月の色と手続きの雲）
     bool earthTex = false;

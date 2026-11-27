@@ -5,7 +5,9 @@
 
 Chrome の DevTools プロトコルを標準ライブラリだけで話す（WebSocket も自前）。WebGL2 はソフトウェア描画
 （SwiftShader）で動かす。各 URL について、起動（raylib の初期化のログ）を待ってから指定の秒数ごとに画面を撮る。
-起動しなかった URL、ページで捕まえられなかった例外、撮れなかった画面があれば終了コード 1。
+起動しなかった URL、ページで捕まえられなかった例外、撮れなかった画面、取得に失敗した後から読むデータがあれば終了コード 1。
+後から読むデータ（地図など）がページを開いてから全部届くまでの秒数（assets=。開いている間に届かなければ -）と、近づいた時だけ
+取得するデータ（極の細かい標高）が頼んでから届くまでの秒数も表示する（アプリのログの "ASSETS:" の行から）。
 
 使い方: python3 tools/web_smoke.py <出力ディレクトリ> <ページの URL> [<クエリ>[|<操作>] ...]
   例: python3 tools/web_smoke.py shots-web http://localhost:8000/ "" "?voyage=BepiColombo&scene=arrive"
@@ -18,6 +20,7 @@ Chrome の DevTools プロトコルを標準ライブラリだけで話す（Web
 import base64
 import json
 import os
+import re
 import shutil
 import socket
 import struct
@@ -265,11 +268,17 @@ def main():
                 log.append("[smoke] screenshots not taken: " + " ".join(missing))
             with open(os.path.join(out, name + ".log"), "w", encoding="utf-8") as f:
                 f.write("URL: %s\n" % (base + q) + "\n".join(log) + "\n")
-            ok = booted is not None and errors == 0 and not actions and not missing
+            # 後から読むデータの届いた時間（embedded_assets_files.cpp のログ）
+            text = "\n".join(log)
+            m = re.search(r"ASSETS: all \d+ deferred files arrived ([\d.]+) s after the page opened \((\d+) failed\)", text)
+            assets = "%ss" % m.group(1) if m else "-"
+            lost_files = int(m.group(2)) if m else 0
+            ondemand = " ".join("%s:%ss" % (a, b) for a, b in re.findall(r"ASSETS: (\S+) arrived ([\d.]+) s after it was requested", text))
+            ok = booted is not None and errors == 0 and not actions and not missing and lost_files == 0
             failed += not ok
-            print("%-8s %s  booted=%s  exceptions=%d  missing=%d  %s" % (name, "OK" if ok else "FAIL", booted is not None, errors,
-                                                                    len(missing), base + q),
-                  flush=True)
+            print("%-8s %s  booted=%s  exceptions=%d  missing=%d  assets=%s%s%s  %s" % (
+                name, "OK" if ok else "FAIL", booted is not None, errors, len(missing), assets,
+                " (%d failed)" % lost_files if lost_files else "", "  on-demand " + ondemand if ondemand else "", base + q), flush=True)
     finally:
         proc.terminate()
         try:

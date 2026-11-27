@@ -42,14 +42,16 @@ if(EMSCRIPTEN)
       "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
   # 起動に要るものだけを index.data に入れ（約 21 MB）、大きなデータはページの assets/ に置いて起動後に取得する
   set(WEB_PRELOAD stars.bin sky.txt probes.bin apollo.bin landers.bin earth_color.jpg earth_data.png milkyway.jpg saturn_rings.png icon.png)
-  set(WEB_DEFERRED maps.bin shapes.bin moon_data.png moon_color.jpg earth_clouds.jpg asteroids.bin earth_months.jpg earth_detail.bin moon_detail.bin mars_detail.bin mars_detail2.bin mars_patches.bin earth_patches.bin moon_patches.bin moon_south.bin moon_rock.png mars_ti.png place_names.txt)
+  set(WEB_DEFERRED maps.bin shapes.bin moon_data.png moon_color.jpg earth_clouds.jpg asteroids.bin earth_months.jpg earth_detail.bin moon_detail.bin mars_detail.bin mars_detail2.bin mars_patches.bin earth_patches.bin moon_patches.bin moon_rock.png mars_ti.png place_names.txt)
+  # 極の細かい標高は、その天体に近づいた時だけ取得する（embedded_assets_files.cpp の RequestAsset）
+  set(WEB_ON_DEMAND moon_south.bin moon_north.bin mars_south.bin mars_north.bin)
   foreach(f ${WEB_PRELOAD})
     list(APPEND WEB_LINK "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/assets/${f}@/assets/${f}")
   endforeach()
   if(SOLAR_WEB_MUSIC)
     list(APPEND WEB_LINK "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/assets/music@/assets/music")
   endif()
-  foreach(f ${WEB_DEFERRED})
+  foreach(f ${WEB_DEFERRED} ${WEB_ON_DEMAND})
     add_custom_command(TARGET solar_voyager POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        "${CMAKE_CURRENT_SOURCE_DIR}/assets/${f}" "${CMAKE_CURRENT_BINARY_DIR}/assets/${f}")
   endforeach()
@@ -86,7 +88,7 @@ set(EMBED_ASSET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets" CACHE PATH "Folder of t
 target_compile_definitions(solar_voyager PRIVATE ASSET_DIR="${EMBED_ASSET_DIR}" APP_VERSION="${PROJECT_VERSION}")
 file(GLOB MUSIC_FILES "${EMBED_ASSET_DIR}/music/*.ogg")
 set_source_files_properties(src/embedded_assets.cpp PROPERTIES
-  OBJECT_DEPENDS "${EMBED_ASSET_DIR}/earth_color.jpg;${EMBED_ASSET_DIR}/earth_data.png;${EMBED_ASSET_DIR}/moon_color.jpg;${EMBED_ASSET_DIR}/moon_data.png;${EMBED_ASSET_DIR}/icon.png;${EMBED_ASSET_DIR}/stars.bin;${EMBED_ASSET_DIR}/sky.txt;${EMBED_ASSET_DIR}/probes.bin;${EMBED_ASSET_DIR}/apollo.bin;${EMBED_ASSET_DIR}/landers.bin;${EMBED_ASSET_DIR}/milkyway.jpg;${EMBED_ASSET_DIR}/shapes.bin;${EMBED_ASSET_DIR}/maps.bin;${EMBED_ASSET_DIR}/asteroids.bin;${EMBED_ASSET_DIR}/saturn_rings.png;${EMBED_ASSET_DIR}/earth_months.jpg;${EMBED_ASSET_DIR}/earth_clouds.jpg;${EMBED_ASSET_DIR}/earth_detail.bin;${EMBED_ASSET_DIR}/moon_detail.bin;${EMBED_ASSET_DIR}/mars_detail.bin;${EMBED_ASSET_DIR}/mars_detail2.bin;${EMBED_ASSET_DIR}/mars_patches.bin;${EMBED_ASSET_DIR}/earth_patches.bin;${EMBED_ASSET_DIR}/moon_patches.bin;${EMBED_ASSET_DIR}/moon_south.bin;${EMBED_ASSET_DIR}/moon_rock.png;${EMBED_ASSET_DIR}/mars_ti.png;${EMBED_ASSET_DIR}/place_names.txt;${MUSIC_FILES}")
+  OBJECT_DEPENDS "${EMBED_ASSET_DIR}/earth_color.jpg;${EMBED_ASSET_DIR}/earth_data.png;${EMBED_ASSET_DIR}/moon_color.jpg;${EMBED_ASSET_DIR}/moon_data.png;${EMBED_ASSET_DIR}/icon.png;${EMBED_ASSET_DIR}/stars.bin;${EMBED_ASSET_DIR}/sky.txt;${EMBED_ASSET_DIR}/probes.bin;${EMBED_ASSET_DIR}/apollo.bin;${EMBED_ASSET_DIR}/landers.bin;${EMBED_ASSET_DIR}/milkyway.jpg;${EMBED_ASSET_DIR}/shapes.bin;${EMBED_ASSET_DIR}/maps.bin;${EMBED_ASSET_DIR}/asteroids.bin;${EMBED_ASSET_DIR}/saturn_rings.png;${EMBED_ASSET_DIR}/earth_months.jpg;${EMBED_ASSET_DIR}/earth_clouds.jpg;${EMBED_ASSET_DIR}/earth_detail.bin;${EMBED_ASSET_DIR}/moon_detail.bin;${EMBED_ASSET_DIR}/mars_detail.bin;${EMBED_ASSET_DIR}/mars_detail2.bin;${EMBED_ASSET_DIR}/mars_patches.bin;${EMBED_ASSET_DIR}/earth_patches.bin;${EMBED_ASSET_DIR}/moon_patches.bin;${EMBED_ASSET_DIR}/moon_south.bin;${EMBED_ASSET_DIR}/moon_north.bin;${EMBED_ASSET_DIR}/mars_south.bin;${EMBED_ASSET_DIR}/mars_north.bin;${EMBED_ASSET_DIR}/moon_rock.png;${EMBED_ASSET_DIR}/mars_ti.png;${EMBED_ASSET_DIR}/place_names.txt;${MUSIC_FILES}")
 target_link_libraries(solar_voyager PRIVATE raylib)
 
 if(MINGW)
