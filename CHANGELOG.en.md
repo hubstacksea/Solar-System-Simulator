@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.72.1 (2026-11-27)
+
+- The desktop versions (Linux, Windows, macOS) load the polar elevations of the Moon and Mars at startup again, as in 2.71.0 (they are decoded on another thread, so startup is not delayed). In 2.72.0 the desktop versions also waited until you came near that body, so for about 0.3 s after a warp the area near the pole kept the coarser elevation. Loading on approach remains for the browser version only
+
 ## 2.72.0 (2026-11-27)
 
 - Added finer elevation for the Moon's north pole (poleward of 85° N), as for the south pole: the LRO LOLA polar elevation from the NASA PDS (LDEM_85N_40M, 40 m per pixel) reduced to 80 m (assets/moon_north.bin, 9.3 MB)

@@ -728,15 +728,14 @@ static void ApplyPolarKeepAltitude(App& app, int i, PolarBuild& b) {
     ApplyPolar(app, i, b);
     if (d - r0 < 100) SetShipWorld(app, body.pos + dir * (d + SurfaceRadius(body, dir) - r0));
 }
-// 極の細かい標高は、その天体の半径の 8 倍（立体の地形を描く距離）より近く、その極の側の半球に来た時に読み込む（ブラウザ版は
-// その時に取得する）。展開に約 0.3 秒かかるので、別のスレッドで作り、できたら使い始める。画面の保存（--shot）はその場で作り、
-// ブラウザ版（スレッドを使わない）は 1 フレームに 6 ms か、前のフレームにかかった時間の 1/4 の長いほうずつ進める（遅い環境でも
-// 何秒かで終わる）
+// 極の細かい標高: デスクトップ版は起動時に 4 つとも、ブラウザ版はその天体の半径の 8 倍（立体の地形を描く距離）より近く、
+// その極の側の半球に来た時に取得して読み込む。展開に約 0.3 秒かかるので、デスクトップ版は別のスレッドで作り、できたら使い始める
+// （起動を待たせない）。画面の保存（--shot）はその場で作り、ブラウザ版（スレッドを使わない）は 1 フレームに 6 ms か、前の
+// フレームにかかった時間の 1/4 の長いほうずつ進める（遅い環境でも何秒かで終わる）
 static std::future<PolarBuild> g_polarJob[4];
 static PolarBuild g_polarStep[4];
 static bool g_polarStepping[4], g_polarStarted[4];   // 少しずつ作っている / 作り始めた（失敗しても、もう読まない）
 static void UpdatePolarMaps(App& app) {
-    V3 ship = ShipWorld(app);
     for (int i = 0; i < 4; i++) {
         if (g_polarJob[i].valid()) {
             if (g_polarJob[i].wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
@@ -756,9 +755,12 @@ static void UpdatePolarMaps(App& app) {
         const PolarFile& P = POLAR_FILES[i];
         const Body& b = app.B[P.body];
         bool global = P.body == B_MOON ? app.moonTex : b.map >= 0 && !app.maps.empty();   // 全球の標高が読めている
-        V3 rel = ship - b.pos;
-        if (b.terrain < 0 || !global || Len(rel) > b.d.radius * 8 || (Dot(rel, b.pole) > 0) != (i % 2 == 1)) continue;
+        if (b.terrain < 0 || !global) continue;
+#if defined(__EMSCRIPTEN__)
+        V3 rel = ShipWorld(app) - b.pos;
+        if (Len(rel) > b.d.radius * 8 || (Dot(rel, b.pole) > 0) != (i % 2 == 1)) continue;
         RequestAsset(P.name);
+#endif
         EmbeddedFile f = P.file();
         PolarBuild pb;
         if (!f.data) continue;
