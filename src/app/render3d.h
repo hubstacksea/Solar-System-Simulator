@@ -329,6 +329,46 @@ static void SetAux(Terrain& T, EmbeddedFile f, const char* ext, int n) {
     UnloadImage(img);
 }
 
+// 標高の 1 行（経度方向に len 画素。wrap なら一周つながる）の、画素の境目で測った区間 [a, b) の平均（端の画素は掛かる割合で）
+struct RowMean {
+    std::vector<double> S;   // S[i]: 最初の i 画素の和
+    const unsigned short* v = nullptr;
+    int n = 0;
+    bool wrap = false;
+    void Set(const unsigned short* src, int len, bool w) {
+        v = src, n = len, wrap = w;
+        S.assign(len + 1, 0.0);
+        for (int i = 0; i < len; i++) S[i + 1] = S[i] + src[i];
+    }
+    double Sum(double x) const {   // [0, x) の和
+        double base = 0;
+        if (wrap) {
+            double k = std::floor(x / n);
+            base = k * S[n], x -= k * n;
+        }
+        int i = std::max(0, std::min(n - 1, (int)x));
+        return base + S[i] + (x - i) * v[i];
+    }
+    double Mean(double a, double b) const {
+        if (!wrap) a = std::max(0.0, std::min((double)n, a)), b = std::max(0.0, std::min((double)n, b));
+        return b > a ? (Sum(b) - Sum(a)) / (b - a) : v[std::max(0, std::min(n - 1, (int)a))];
+    }
+};
+// 経度方向の全球の画素は、地表では緯度方向の画素の cos(緯度) 倍の幅しかない。その細かさの起伏は経度方向にしかなく、地形の
+// 格子の頂点（間隔に合わせた縮小画像から引くが、縮小は緯度方向の画素で決まる）が地表を滑る時に拾ったり外したりして、極の
+// 近くで地表が波打つ。各行を緯度方向の 1 画素の幅（1 / cos(緯度) 画素）で平均し、経度方向も緯度方向と同じ細かさにする
+static void LowpassLonRows(std::vector<unsigned short>& v, int w, int h) {
+    std::vector<unsigned short> row(w);
+    RowMean m;
+    for (int r = 0; r < h; r++) {
+        double c = std::cos(PI * (0.5 - (r + 0.5) / h)), wpx = std::min((double)w, 1.0 / std::max(c, 1e-9));
+        if (wpx <= 1.0 + 1e-9) continue;
+        std::copy(v.begin() + (size_t)r * w, v.begin() + (size_t)(r + 1) * w, row.begin());
+        m.Set(row.data(), w, true);
+        for (int i = 0; i < w; i++) v[(size_t)r * w + i] = (unsigned short)std::lround(m.Mean(i + 0.5 - wpx / 2, i + 0.5 + wpx / 2));
+    }
+}
+
 static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext, int terrainBody = -1, App* app = nullptr, bool wide = false) {
     Image img = LoadImageFromMemory(ext, f.data, (int)f.size);
     if (!img.data) return Texture2D{};
@@ -345,6 +385,15 @@ static Texture2D LoadEmbeddedTexture(EmbeddedFile f, const char* ext, int terrai
         T.v.resize((size_t)T.w * T.h);
         for (size_t k = 0; k < T.v.size(); k++) T.v[k] = T.earth ? px[k].r : (unsigned short)(px[k].r * 256 + px[k].a);
         if (!rgba) UnloadImageColors(px);
+        // 地球（高さコード。海と陸の境があり平均できない）のほかは、経度方向を緯度方向と同じ細かさに平均し、GPU にも同じ値を載せる
+        if (!T.earth && (rgba || img.format == PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA)) {
+            LowpassLonRows(T.v, T.w, T.h);
+            unsigned char* b = (unsigned char*)img.data;
+            for (size_t k = 0; k < T.v.size(); k++) {
+                if (rgba) b[k * 4] = (unsigned char)(T.v[k] >> 8), b[k * 4 + 3] = (unsigned char)(T.v[k] & 255);
+                else b[k * 2] = (unsigned char)(T.v[k] >> 8), b[k * 2 + 1] = (unsigned char)(T.v[k] & 255);
+            }
+        }
         // 高さは値とともに増える（Km）ので、最も低い・高い所は値の最小・最大の所
         auto mm = std::minmax_element(T.v.begin(), T.v.end());
         T.lo = T.Km((int)(mm.first - T.v.begin()));
@@ -562,12 +611,22 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
             return;
         }
     }
-    int x0 = (int)std::lround(cx - N / 2);
+    // 極の窓: 経度方向の全球の画素が地表で緯度方向の N / W 倍より細かい所（月は緯度 69° より極側、火星は 80°）では、窓の
+    // 1 画素に経度方向の W / N 画素をまとめて、窓が経度 360° を覆うようにする（細かさは緯度方向の 1 画素以上のまま）。経度
+    // 128°（月）ほどの窓では、極のそばで自機の周りの半分以上が窓の外（粗い全球の標高）になる。境目で組み直しを繰り返さない
+    // よう、入る・出る緯度を 0.5° ずつずらす
+    bool polar = false;
+    if (D.boxes.empty() && D.fmt == 2) {
+        double th = std::acos(std::min(1.0, (double)N / D.W)) + (D.active && D.sx > 1 ? -0.5 : 0.5) * DEG;
+        polar = std::fabs(lat) > th;
+    }
+    double sx = polar ? (double)D.W / N : 1.0;
+    int x0 = polar ? 0 : (int)std::lround(cx - N / 2);
     int y0 = std::max(0, std::min(D.H - N, (int)std::lround(cy - N / 2)));
     x0 = ((x0 % D.W) + D.W) % D.W;
     int ddx = x0 - D.x0;
     ddx -= D.W * (int)std::floor((double)ddx / D.W + 0.5);
-    if (D.active && box == D.box && std::abs(ddx) <= N / 4 && std::abs(y0 - D.y0) <= N / 4) return;
+    if (D.active && box == D.box && sx == D.sx && std::abs(ddx) <= N / 4 && std::abs(y0 - D.y0) <= N / 4) return;
     // 展開した区画（最近使ったものだけ残す。細かい標高ごと）
     static std::map<int, std::vector<unsigned short>> caches[6];
     static std::map<int, unsigned> useds[6];
@@ -601,16 +660,40 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
             }
         }
     } else {
-        for (int j = 0; j < N; j++) {
-            int gy = y0 + j, tr = gy / D.tile, py = gy % D.tile;
-            unsigned short* row = &D.win[(size_t)j * N];
-            for (int i = 0; i < N;) {
-                int gx = (x0 + i) % D.W, tc = gx / D.tile, px = gx % D.tile;
-                int run = std::min(N - i, D.tile - px);
+        // 全球の行 gy の、経度の画素 xs から n 画素（一周つながる）
+        auto readRow = [&](int gy, int xs, int n, unsigned short* out) {
+            int tr = gy / D.tile, py = gy % D.tile;
+            for (int i = 0; i < n;) {
+                int gx = ((xs + i) % D.W + D.W) % D.W, tc = gx / D.tile, px = gx % D.tile;
+                int run = std::min(n - i, D.tile - px);
                 const unsigned short* t = tileData(tr * D.cols + tc);
-                if (t) std::memcpy(row + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
-                else std::fill(row + i, row + i + run, sea);
+                if (t) std::memcpy(out + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
+                else std::fill(out + i, out + i + run, sea);
                 i += run;
+            }
+        };
+        std::vector<unsigned short> src;
+        RowMean m;
+        for (int j = 0; j < N; j++) {
+            int gy = y0 + j;
+            unsigned short* row = &D.win[(size_t)j * N];
+            // 経度方向は緯度方向の 1 画素の幅（1 / cos(緯度) 画素。極の窓では窓の 1 画素の幅と大きい方）で平均する（LowpassLonRows）。
+            // 地球は高さコード（海と陸の境があり平均できない）なのでそのまま
+            double c = std::cos(PI * (0.5 - (gy + 0.5) / D.H));
+            double wpx = D.fmt == 1 ? 1.0 : std::min((double)D.W, std::max(sx, 1.0 / std::max(c, 1e-9)));
+            if (wpx <= 1.0 + 1e-9) {
+                readRow(gy, x0, N, row);
+                continue;
+            }
+            // 窓の外の左右も平均に入れる（極の窓は一周。普通の窓は両側を全球の画素の数まで）
+            int pad = polar ? 0 : (int)std::min(std::ceil(wpx / 2) + 1, (D.W - N) / 2.0);
+            int n = polar ? D.W : N + 2 * pad;
+            src.resize(n);
+            readRow(gy, x0 - pad, n, src.data());
+            m.Set(src.data(), n, polar);
+            for (int i = 0; i < N; i++) {
+                double ctr = pad + (i + 0.5) * sx;
+                row[i] = (unsigned short)std::lround(m.Mean(ctr - wpx / 2, ctr + wpx / 2));
             }
         }
     }
@@ -622,6 +705,7 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
     }
     D.x0 = x0;
     D.y0 = y0;
+    D.sx = sx;
     D.box = box;
     D.active = true;
     if (D.fmt == 1) {
@@ -652,6 +736,7 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
     app.detailTex[k] = LoadTextureFromImage(img);
     SetTextureFilter(app.detailTex[k], TEXTURE_FILTER_TRILINEAR);
     SetTextureWrap(app.detailTex[k], TEXTURE_WRAP_CLAMP);
+    if (D.sx > 1) rlTextureParameters(app.detailTex[k].id, RL_TEXTURE_WRAP_S, RL_TEXTURE_WRAP_REPEAT);   // 極の窓は経度方向に一周する
 }
 
 // 自機の真下に、近くの天体（半径の 8 倍まで）の細かい標高の窓を合わせる。描く前に、高度・衝突の計算にも同じ窓を
@@ -770,7 +855,7 @@ static void DrawTerrain(App& app, const Body& b, V3 rel, double dist, double alt
     if (det) {
         const DetailMap& D = g_detail[dk];
         float da[4] = {(float)D.x0, (float)D.y0, (float)DetailMap::N, (float)DetailMap::MARGIN};
-        float db[4] = {(float)D.W, (float)D.H, 1, (float)D.fmt};
+        float db[4] = {(float)D.W, (float)D.H, (float)D.sx, (float)D.fmt};
         PlanetUniform(app, app.locDetA, da, SHADER_UNIFORM_VEC4);
         PlanetUniform(app, app.locDetB, db, SHADER_UNIFORM_VEC4);
         app.mat.maps[MATERIAL_MAP_OCCLUSION].texture = app.detailTex[dk];

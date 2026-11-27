@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.10 (2026-11-27)
+
+- Flying near the poles, as at the Moon's south pole, the ground turned into jagged faces and rippled. Near the poles a pixel of the elevation map is only a few meters wide in longitude on the ground (at 89.9° S; about 1.9 km in latitude), and the terrain mesh vertices picked up that fine relief only here and there. Each row of the elevation map is now averaged in longitude over the width of one latitude pixel, so both directions have the same resolution (Earth is excluded, since its values encode land and sea). Near the poles (poleward of 69° on the Moon, 80° on Mars) the fine elevation around the ship now covers all 360° of longitude; covering 128° (the Moon) left more than half of the surroundings near the pole on the coarse global elevation
+- The terrain was drawn shifted north or south of the map and of the CPU heights (collision, altitude, lander positions). The shaders computed map latitude with asin, and the GPU's asin approximation (checked on an Intel GPU) was off by 0.3 to 1.3 km at 28° N and about 660 m at 70° S on the Moon; near the poles float rounding alone gives tens of meters. Latitude is now computed with atan. Where the drawn ground was above the CPU surface, flying low clipped the ground right in front and showed the sky
+- Retook the README image of the Everest massif from 32 km south of Everest, since its camera had been placed for the shifted terrain. Also retook the Apollo 15 landing, the Moon's terrain, the hazy horizon and the sky crane
+
 ## 2.70.9 (2026-11-26)
 
 - Stopped on the Moon's surface with time sped up, the ground slid away (about 0.7 km a day, about 40 km a month). Near the surface a stopped ship turns with the body's rotation, but only the change of the rotation angle was applied, not the change of the spin axis direction from the Moon's libration. The ship now keeps its body-fixed position and heading using the body's axes before and after each time step (Earth's precession is included too)

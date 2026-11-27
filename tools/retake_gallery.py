@@ -61,8 +61,9 @@ SHOTS = {
              None),   # 月の表側（満月の前日）
     "moon_terrain": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Moon", 1737.4, 25.9, 3.3, 0.5, 50, -3, 9819.0)], None),
     "mars_terrain": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Mars", 3395.4, -12.5, -66, 3, 100, -8, 9816.9)], None),
+    # エベレストの南 32 km の上空から、エベレスト・ローツェの山塊を見る
     "earth_mountains": (lambda: ["--frames", "240", *COCKPIT, "--share",
-                                 at("Earth", 6378.137, 27.80, 86.95, earth_alt(27.80, 7.0), 0, 5, 9816.58)], None),
+                                 at("Earth", 6378.137, 27.70, 86.90, earth_alt(27.70, 7.0), 5, 1, 9816.58)], None),
     # エウロパの二重の尾根（太陽高度が低く、尾根の陰影が出る時刻）と、冥王星のスプートニク平原の多角形
     "europa_ridges": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Europa", 1560.8, 10, -90, 15, 0, -15, 9830.55)], None),
     "pluto_sputnik": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Pluto", 1188.3, 15, 178, 12, 270, -12, 9831.35)], None),

@@ -204,15 +204,18 @@ float moonDark(vec3 c) { return 1.0 - smoothstep(0.12, 0.3, dot(pow(c, vec3(1.3)
 #define DETAIL_GLSL R"(
 uniform sampler2D texture4;
 uniform vec4 detA;   // xy: 窓の左上（全球の 1 分角の画素）, z: 窓の一辺の画素数, w: 縁でなじませる幅（画素）
-uniform vec4 detB;   // xy: 全球の画素数, z: 1 で窓あり, w: 値の形式（1 地球の高さコード, 2 上位・下位バイト 0.5 m 単位で −10000 m から）
+uniform vec4 detB;   // xy: 全球の画素数, z: 窓の 1 画素の経度方向の全球の画素数（0 は窓なし。1 より大きい極の窓は経度 360° を覆う）,
+                     // w: 値の形式（1 地球の高さコード, 2 上位・下位バイト 0.5 m 単位で −10000 m から）
 const float EARTH_RM = 6378137.0;
 // 窓の中の位置 l（画素）と重み（窓の外は 0、縁から detA.w 画素で 1）。uv は全球の画像の座標
 float detWeight(vec2 uv, out vec2 l) {
     l = vec2(0.0);
     if (detB.z < 0.5) return 0.0;
-    l = uv * detB.xy - 0.5 - detA.xy;
-    l.x -= detB.x * floor(l.x / detB.x + 0.5);
+    l = vec2((uv.x * detB.x - detA.x) / detB.z - 0.5, uv.y * detB.y - 0.5 - detA.y);
+    if (detB.z > 1.0) l.x -= detA.z * floor(l.x / detA.z);
+    else l.x -= detB.x * floor(l.x / detB.x + 0.5);
     vec2 e = min(l, detA.z - 1.0 - l);
+    if (detB.z > 1.0) e.x = 1e30;
     return clamp(min(e.x, e.y) / detA.w, 0.0, 1.0);
 }
 // 窓の画像の値 → m（地球は陸 128..255 = 0..8900 m、海は海面）
@@ -226,13 +229,14 @@ float detHeight(vec2 l) {
     ivec2 i = ivec2(floor(l)), n = ivec2(int(detA.z) - 1);
     vec2 f = l - floor(l);
     ivec2 a = clamp(i, ivec2(0), n), b = clamp(i + 1, ivec2(0), n);
+    if (detB.z > 1.0) { a.x = (i.x % (n.x + 1) + n.x + 1) % (n.x + 1); b.x = (a.x + 1) % (n.x + 1); }   // 極の窓は経度方向に一周する
     float h00 = detDecode(texelFetch(texture4, a, 0)), h10 = detDecode(texelFetch(texture4, ivec2(b.x, a.y), 0));
     float h01 = detDecode(texelFetch(texture4, ivec2(a.x, b.y), 0)), h11 = detDecode(texelFetch(texture4, b, 0));
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
 // 窓の画素 l の標高の傾き（tan。両隣の画素の差。CPU の DetailMap::Slope と同じ）。lat: 緯度 rad、R: 半径 m
 float detSlope(vec2 l, float lat, float R) {
-    float dy = 3.1415927 * R / detB.y, dx = 6.2831853 * R / detB.x * max(cos(lat), 0.05);
+    float dy = 3.1415927 * R / detB.y, dx = 6.2831853 * R * detB.z / detB.x * max(cos(lat), 0.05);
     float gx = (detHeight(l + vec2(1.0, 0.0)) - detHeight(l - vec2(1.0, 0.0))) / (2.0 * dx);
     float gy = (detHeight(l + vec2(0.0, 1.0)) - detHeight(l - vec2(0.0, 1.0))) / (2.0 * dy);
     return length(vec2(gx, gy));
@@ -338,6 +342,9 @@ uniform float sunAng;      // 太陽の視半径 rad
 // 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
 // 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
 vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
+// 地図の緯度 rad。asin(y) は極の近くで y のわずかな誤差を大きく広げる（float の丸めだけで南緯 89.9° では 60 m ほど、GPU の
+// asin の近似ではさらに大きく、地表の標高を数百 m 離れた所から引いて地形が CPU の高さとずれた）ので、atan で求める
+float mapLat(vec3 p) { vec3 m = mapDir(p); return atan(m.y, length(m.xz)); }
 
 float terrDecode(vec4 t) {
     if (terrA.w < 1.5) {   // 陸 128..255 = 0..8900 m（平方根で詰めてある）。海は海面（0）
@@ -349,7 +356,7 @@ float terrDecode(vec4 t) {
 }
 // 標高 m。頂点の間隔が画素より細かい所は CPU 側と同じく 4 画素の値から双線形に補間し、粗い所は縮小した画像を使う
 float terrHeight(vec3 d, float lod) {
-    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    float lat = mapLat(d), lon = atan(-d.z, d.x);
     vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927);
     if (lod > 0.0) return terrDecode(textureLod(texture1, uv, lod));
     vec2 xy = uv * terrD.xy - 0.5, f = fract(xy);
@@ -377,7 +384,7 @@ float bumpAt(vec3 q, float L, float fLo, vec3 o) {
         return r;
     }
     vec3 n = mapDir(q);
-    vec2 uv = vec2(atan(-n.z, n.x) / 6.2831853 + 0.5, 0.5 - asin(clamp(n.y, -1.0, 1.0)) / 3.1415927);
+    vec2 uv = vec2(atan(-n.z, n.x) / 6.2831853 + 0.5, 0.5 - atan(n.y, length(n.xz)) / 3.1415927);
     float h;
     if (terrE.z < 1.5) {   // 月: 海（暗い所）はクレーターが少なく平ら
         float dark = moonDark(textureLod(texture0, uv, 0.0).rgb);
@@ -420,7 +427,7 @@ float vertexBumps(vec3 d, float sp, float Lmin, float fLo, vec3 o) {
 }
 // 地球: カメラの周り（1 分角の窓の中）は細かい標高と、それより細かい山肌を足した高さ m。sp は頂点の間隔、hm は全球の標高
 float earthDetailHeight(vec3 d, float sp, float hm) {
-    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    float lat = mapLat(d), lon = atan(-d.z, d.x);
     vec2 l;
     float w = detWeight(vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l);
     if (w <= 0.0) return hm;
@@ -437,7 +444,7 @@ float earthDetailHeight(vec3 d, float sp, float hm) {
 }
 // 地球以外: カメラの周り（月・火星の窓の中）は細かい標高。データより細かい手続きの起伏（クレーター・山肌）を足した高さ m
 float bodyHeight(vec3 d, float sp, float hm) {
-    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    float lat = mapLat(d), lon = atan(-d.z, d.x);
     vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l;
     float w = detWeight(uv, l), w2 = 0.0;
     vec2 l2 = vec2(0.0);
@@ -462,7 +469,7 @@ float bodyHeight(vec3 d, float sp, float hm) {
 // s: 調べる間隔（単位球の長さ）。それに合わせて縮小した画像から引く
 float dataHeight(vec3 d, float s) {
     float h = terrHeight(d, log2(max(s * terrD.y / 3.1415927, 1.0)));
-    float lat = asin(clamp(mapDir(d).y, -1.0, 1.0)), lon = atan(-d.z, d.x);
+    float lat = mapLat(d), lon = atan(-d.z, d.x);
     vec2 l;
     vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 - lat / 3.1415927), l2;
     float w = detWeight(uv, l), w2;
@@ -917,6 +924,9 @@ uniform float mapLatK;
 // 地図（正距円筒図法）を引く向き: 球のメッシュの点 p（楕円体では y を縮める前）の y に 1 + mapLatK を掛ける（地球の地図は
 // 測地緯度、ほかの天体は惑星中心緯度。CPU の MapLatScale）
 vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
+// 地図の緯度 rad。asin(y) は極の近くで y のわずかな誤差を大きく広げる（float の丸めだけで南緯 89.9° では 60 m ほど、GPU の
+// asin の近似ではさらに大きく、地表の標高を数百 m 離れた所から引いて地形が CPU の高さとずれた）ので、atan で求める
+float mapLat(vec3 p) { vec3 m = mapDir(p); return atan(m.y, length(m.xz)); }
 
 // 緯度・経度 (lon は -PI..PI)
 vec2 latLon(vec3 p) { return vec2(asin(clamp(p.y, -1.0, 1.0)), atan(p.z, p.x)); }
@@ -1065,8 +1075,8 @@ float detGradient(vec2 uv, vec2 dx, vec2 dy, float lat, float R, out vec2 sl, ou
     float w = detWeight(uv, l);
     sl = vec2(0.0); hd = 0.0;
     if (w <= 0.0) return 0.0;
-    vec2 k = detB.xy / detA.z, gx = dx * k, gy = dy * k;
-    vec2 sd = max(1.0 / detB.xy, vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
+    vec2 k = vec2(detB.x / detB.z, detB.y) / detA.z, gx = dx * k, gy = dy * k;
+    vec2 sd = max(vec2(detB.z / detB.x, 1.0 / detB.y), vec2(fw / (2.0 * PI * max(cos(lat), 0.05)), fw / PI));
     vec2 q = (l + 0.5) / detA.z, sq = sd * k;
     float hE = detDecode(textureGrad(texture4, q + vec2(sq.x, 0.0), gx, gy));
     float hW = detDecode(textureGrad(texture4, q - vec2(sq.x, 0.0), gx, gy));
@@ -1100,7 +1110,7 @@ float earthHeightM(float c) {
 // 実データの地球。大陸・標高・夜景は NASA のデータ、テクスチャより細かい部分は手続きで補う
 vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out float lights, out float cloud) {
     // 本体座標: X 軸がグリニッジ子午線、Y 軸が北極、東経は -Z 方向
-    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
+    float lat = mapLat(p);
     float lon = atan(-p.z, p.x);
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     // 経度 ±180° の継ぎ目で微分が跳ばないようにする
@@ -1256,7 +1266,7 @@ float mapHeightM(vec4 t) { return mapInfo.z > 1.5 ? (t.r * 255.0 * 256.0 + t.a *
 vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     g_ray = 0.0;
     // 本体座標: X 軸が経度 0°（地球を向く側）、Y 軸が北極、東経は -Z 方向
-    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
+    float lat = mapLat(p);
     float lon = atan(-p.z, p.x);
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);
@@ -1328,7 +1338,7 @@ vec3 mapColor(vec2 uv, vec2 dx, vec2 dy) {
 
 vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     g_ray = 0.0;
-    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
+    float lat = mapLat(p);
     float lon = atan(-p.z, p.x);
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);
@@ -1450,7 +1460,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
 // 地図のあるガス惑星（木星・土星）: 雲の模様を貼る。撮影されていない所は手続き的な雲。地図は mapInfo2.y だけ回す（大赤斑を今の経度に合わせる）
 vec3 gasMap(vec3 p, vec3 o) {
     vec3 pb = gas(p, MAP_STYLE, o);
-    float lat = asin(clamp(mapDir(p).y, -1.0, 1.0));
+    float lat = mapLat(p);
     float lon = atan(-p.z, p.x) + mapInfo2.y;
     vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
     vec2 dx = dFdx(uv), dy = dFdy(uv);

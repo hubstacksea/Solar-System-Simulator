@@ -109,14 +109,17 @@ struct DetailMap {
     int box = -1;                                     // 窓のある地域
     bool active = false;                              // 窓あり
     int x0 = 0, y0 = 0;                               // 窓の左上（全球の画素）
+    // 窓の 1 画素の経度方向の全球の画素数。1 か、極の近く（極の窓）では W / N（窓が経度 360° を覆い、経度方向に一周する）
+    double sx = 1;
     std::vector<unsigned short> win;                  // 窓の値（N x N）
     // 窓の中の位置 l（画素）と重み（窓の外は 0）。uv は全球の画像の座標
     double Weight(double u, double v, double* lx, double* ly) const {
         if (!active) return 0;
-        double x = u * W - 0.5 - x0, y = v * H - 0.5 - y0;
-        x -= W * std::floor(x / W + 0.5);
+        double x = (u * W - x0) / sx - 0.5, y = v * H - 0.5 - y0;
+        if (sx > 1) x -= N * std::floor(x / N);
+        else x -= W * std::floor(x / W + 0.5);
         *lx = x, *ly = y;
-        double e = std::min(std::min(x, N - 1 - x), std::min(y, N - 1 - y));
+        double e = std::min(sx > 1 ? 1e30 : std::min(x, N - 1 - x), std::min(y, N - 1 - y));
         if (box >= 0) {   // 地域の縁
             const Box& B = boxes[box];
             double bx = x + x0 - B.c0 * tile, by = y + y0 - B.r0 * tile;
@@ -135,7 +138,7 @@ struct DetailMap {
         int i = (int)std::floor(lx), j = (int)std::floor(ly);
         double fx = lx - i, fy = ly - j;
         auto at = [&](int a, int b) {
-            a = std::max(0, std::min(N - 1, a));
+            a = sx > 1 ? ((a % N) + N) % N : std::max(0, std::min(N - 1, a));
             b = std::max(0, std::min(N - 1, b));
             return Decode(win[(size_t)b * N + a]);
         };
@@ -143,7 +146,7 @@ struct DetailMap {
     }
     // 標高の傾き（tan。両隣の画素の差。lat は緯度 rad、R は半径 m）
     double Slope(double lx, double ly, double lat, double R) const {
-        double dy = PI * R / H, dx = 2 * PI * R / W * std::max(std::cos(lat), 0.05);
+        double dy = PI * R / H, dx = 2 * PI * R * sx / W * std::max(std::cos(lat), 0.05);
         double gx = (Height(lx + 1, ly) - Height(lx - 1, ly)) / (2 * dx), gy = (Height(lx, ly + 1) - Height(lx, ly - 1)) / (2 * dy);
         return std::sqrt(gx * gx + gy * gy);
     }
