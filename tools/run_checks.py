@@ -16,6 +16,9 @@
   8. 地表すれすれの光速飛行（画面が要る）: 扁平な惑星の北緯 45° の高度 20 km から光速エンジンで飛び出し、
      まだ地表すれすれ（高度 30 km 以下）にいる間に、画面の下側の明るさが急に落ちる（表面が消える）フレームがないか。
      （上昇して地平線が画面から外れたことによる暗さは数えない）
+  9. 高緯度の低空飛行（画面が要る）: 月の南緯 70° を地表すれすれにジェット機で飛び、画面の下側に暗い所（地面が消えて
+     見える空）が 3 割を超えるフレームがないか。描いた地形と CPU の地表の高さがずれると、地面が手前で切り取られる
+     （2.70.10 で直した、シェーダの緯度を GPU の asin で求めていたずれ）。日時は固定（クレーターの影の付き方を一定にする）
 
 使い方: python3 tools/run_checks.py [実行ファイル=build/solar_voyager] [--no-display] [--jobs N]
 画面が要る確認は DISPLAY（Linux）が必要。画面のない環境では --no-display で飛ばす。
@@ -205,8 +208,8 @@ def check_warps(exe, jobs):
     return not bad, ("%d bodies OK" % n) if not bad else "; ".join(bad[:5])
 
 
-def png_lower_mean(path):
-    """PNG（8 ビット RGB/RGBA）の下側（高さ 62〜89%）の明るさの平均（外部ライブラリなしで読む）"""
+def png_rows(path):
+    """PNG（8 ビット RGB/RGBA）の画素の行（外部ライブラリなしで読む）と幅・高さ・1 画素のバイト数"""
     data = open(path, "rb").read()
     pos, w, h, ctype, idat = 8, 0, 0, 0, b""
     while pos < len(data):
@@ -235,9 +238,24 @@ def png_lower_mean(path):
                 line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
         rows.append(line)
         prev = line
+    return rows, w, h, bpp
+
+
+def png_lower_mean(path):
+    """PNG の下側（高さ 62〜89%）の明るさの平均"""
+    rows, w, h, bpp = png_rows(path)
+    stride = w * bpp
     sel = rows[int(h * 0.62):int(h * 0.89)]
     tot = sum(sum(r[x] + r[x + 1] + r[x + 2] for x in range(0, stride, bpp * 8)) for r in sel)
     return tot / (3 * len(sel) * (stride // (bpp * 8)))
+
+
+def png_lower_dark(path):
+    """PNG の下側（高さ 75〜97%）の、暗い（明るさ 12 未満の）画素の割合"""
+    rows, w, h, bpp = png_rows(path)
+    sel = rows[int(h * 0.75):int(h * 0.97)]
+    xs = range(0, w * bpp, bpp * 8)
+    return sum(r[x] + r[x + 1] + r[x + 2] < 36 for r in sel for x in xs) / (len(sel) * len(xs))
 
 
 def skim_one(exe, t, tmp):
@@ -260,6 +278,19 @@ def check_skim(exe, jobs):
     return not bad, "; ".join(bad) if bad else "no surface loss on %d oblate planets" % len(res)
 
 
+def check_lowfly(exe):
+    with tempfile.TemporaryDirectory() as tmp:
+        base = os.path.join(tmp, "f.png")
+        hours = (9827.0 - (time.time() - 946728000) / 86400) * 24   # 2026-11-27 12:00 UTC（J2000 からの日数）
+        run(exe, ["--shot", base, "--shot-every", "60", "--frames", "720", "--hours", "%.6f" % hours, "--target", "10",
+                  "--at", "-70", "0", "0.01", "--cockpit", "--photo", "1", "--engine", "4", "--throttle", "30"], timeout=600)
+        files = sorted(f for f in os.listdir(tmp) if f.startswith("f_"))
+        dark = [png_lower_dark(os.path.join(tmp, f)) for f in files]
+    bad = [re.search(r"_(\d+)\.png$", f).group(1) for f, d in zip(files, dark) if d > 0.3]
+    info = "%d frames, darkest %.2f" % (len(dark), max(dark, default=0))
+    return len(dark) > 5 and not bad, info + (", ground lost at frames %s" % bad if bad else "")
+
+
 def main():
     args = sys.argv[1:]
     exe = next((a for a in args if not a.startswith("--") and not a.isdigit()), "build/solar_voyager")
@@ -268,7 +299,7 @@ def main():
     checks = [("assets", check_assets), ("eclipses", check_eclipses), ("history", check_history), ("voyages", check_voyages),
               ("webfont", check_webfont), ("shader", check_shader)]
     if display:
-        checks += [("voyagelink", check_voyage_link), ("warps", lambda e: check_warps(e, jobs)), ("skim", lambda e: check_skim(e, jobs))]
+        checks += [("voyagelink", check_voyage_link), ("warps", lambda e: check_warps(e, jobs)), ("skim", lambda e: check_skim(e, jobs)), ("lowfly", check_lowfly)]
     failed = 0
     for name, fn in checks:
         t0 = time.time()
@@ -279,7 +310,7 @@ def main():
         failed += not ok
         print("%-9s %s  (%.0f s)  %s" % (name, "PASS" if ok else "FAIL", time.time() - t0, info), flush=True)
     if not display:
-        print("warps / skim skipped (--no-display)")
+        print("warps / skim / lowfly skipped (--no-display)")
     sys.exit(1 if failed else 0)
 
 

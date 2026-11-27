@@ -107,7 +107,7 @@ float craterWorn(int style) { return style == 3 || style == 7 ? 1.0 : 0.0; }
 // 縁は場所で ±7% ほど揺らす
 float plutoSP(vec3 p, vec3 o) {
     vec3 n = normalize(p);
-    float la = degrees(asin(clamp(n.y, -1.0, 1.0))) - 20.0, lo = mod(degrees(atan(-n.z, n.x)) + 360.0, 360.0) - 180.0;
+    float la = degrees(atan(n.y, length(n.xz))) - 20.0, lo = mod(degrees(atan(-n.z, n.x)) + 360.0, 360.0) - 180.0;
     float e = (la / 26.0) * (la / 26.0) + (lo / 20.0) * (lo / 20.0) + (vnoise(n * 12.0 + o + 5.0) - 0.5) * 0.3;
     return 1.0 - smoothstep(0.85, 1.0, e);
 }
@@ -929,9 +929,17 @@ vec3 mapDir(vec3 p) { return normalize(vec3(p.x, p.y * (1.0 + mapLatK), p.z)); }
 // 地図の緯度 rad。asin(y) は極の近くで y のわずかな誤差を大きく広げる（float の丸めだけで南緯 89.9° では 60 m ほど、GPU の
 // asin の近似ではさらに大きく、地表の標高を数百 m 離れた所から引いて地形が CPU の高さとずれた）ので、atan で求める
 float mapLat(vec3 p) { vec3 m = mapDir(p); return atan(m.y, length(m.xz)); }
+// 地図の uv（経度・地図の緯度）
+vec2 mapUV(vec3 p) { return vec2(atan(-p.z, p.x) / (2.0 * PI) + 0.5, 0.5 - mapLat(p) / PI); }
+// 極の近くの標高の勾配: 経度・緯度の差分では東西の傾きを cos(緯度) で割るので、極の近く（緯度 87° より極側）では東西の傾きを
+// 抑えていて陰影が平らになった。cos(緯度) が 0.1 より小さい所（緯度 84° より極側）では、地表に沿った 2 つの向き t1・t2 に
+// 単位球の長さ s ずらした 4 点の差分に移していく（縮小画像は s に合わせて引く。標高の行は経度方向にも緯度方向の 1 画素の幅で
+// 平均してある）。poleK: 移す割合
+float poleK(float lat) { return smoothstep(0.1, 0.05, cos(lat)); }
+void poleTangents(vec3 p, out vec3 t1, out vec3 t2) { t1 = normalize(cross(vec3(1.0, 0.0, 0.0), p)); t2 = cross(p, t1); }
 
 // 緯度・経度 (lon は -PI..PI)
-vec2 latLon(vec3 p) { return vec2(asin(clamp(p.y, -1.0, 1.0)), atan(p.z, p.x)); }
+vec2 latLon(vec3 p) { return vec2(atan(p.y, length(p.xz)), atan(p.z, p.x)); }
 float lonDiff(float a, float b) { float d = a - b; return d - 2.0 * PI * floor((d + PI) / (2.0 * PI)); }
 
 // ---------------------------------------------------------------- 岩石・氷天体
@@ -1072,7 +1080,7 @@ float earthClouds(vec3 p, vec3 o, float bias) {
 
 // カメラの周りの細かい標高の窓（地球・月・火星）の、uv の標高 m（hd）と勾配（sl: 東・北の向きの tan。半径 R m）。
 // 間隔は 1 画素か画面の 1 画素の大きい方。戻り値は窓の重み（窓の外は 0）
-float detGradient(vec2 uv, vec2 dx, vec2 dy, float lat, float R, out vec2 sl, out float hd) {
+float detGradient(vec3 p, vec2 uv, vec2 dx, vec2 dy, float lat, float R, out vec2 sl, out float hd) {
     vec2 l;
     float w = detWeight(uv, l);
     sl = vec2(0.0); hd = 0.0;
@@ -1086,6 +1094,20 @@ float detGradient(vec2 uv, vec2 dx, vec2 dy, float lat, float R, out vec2 sl, ou
     float hS = detDecode(textureGrad(texture4, q + vec2(0.0, sq.y), gx, gy));
     hd = detDecode(textureGrad(texture4, q, gx, gy));
     sl = vec2((hE - hW) / (2.0 * sd.x) / (2.0 * PI * max(cos(lat), 0.05)), (hN - hS) / (2.0 * sd.y) / PI) / R;
+    float pk = poleK(lat);
+    if (pk > 0.0) {   // 極の近く（poleK）
+        vec3 t1, t2;
+        poleTangents(p, t1, t2);
+        float s = max(PI / detB.y, fw), lod = log2(s * detB.y / PI), lon = (uv.x - 0.5) * 2.0 * PI;
+        vec2 la, lb, lc, ld;
+        detWeight(mapUV(p + t1 * s), la); detWeight(mapUV(p - t1 * s), lb);
+        detWeight(mapUV(p + t2 * s), lc); detWeight(mapUV(p - t2 * s), ld);
+        float a = detDecode(textureLod(texture4, (la + 0.5) / detA.z, lod)) - detDecode(textureLod(texture4, (lb + 0.5) / detA.z, lod));
+        float b = detDecode(textureLod(texture4, (lc + 0.5) / detA.z, lod)) - detDecode(textureLod(texture4, (ld + 0.5) / detA.z, lod));
+        vec3 g = (t1 * a + t2 * b) / (2.0 * s * R);
+        vec3 east = vec3(-sin(lon), 0.0, -cos(lon)), north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
+        sl = mix(sl, vec2(dot(g, east), dot(g, north)), pk);
+    }
     vec2 l2;
     float w2 = det2Weight(uv, l2);
     if (w2 > 0.0) {   // 地域だけのもっと細かい標高
@@ -1148,7 +1170,7 @@ vec4 earthTex(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
     // カメラの周り（1 分角の窓の中）: 細かい標高の勾配。傾き s は細かい山肌の振幅に使う
     vec2 sl;
-    float dm, dw = detGradient(uv, dx, dy, lat, R, sl, dm), s = length(sl);
+    float dm, dw = detGradient(p, uv, dx, dy, lat, R, sl, dm), s = length(sl);
     if (dw > 0.0) {
         grad = mix(grad, east * sl.x + north * sl.y, dw);
         if (hm > 0.0 || dm > 0.0) hm = mix(hm, dm, dw);
@@ -1290,9 +1312,17 @@ vec4 moonTex(vec3 p, vec3 o, out vec3 base) {
     vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
     vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
     vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
+    if (poleK(lat) > 0.0) {   // 極の近く（poleK）
+        vec3 t1, t2;
+        poleTangents(p, t1, t2);
+        float s = max(PI * texel.y, fw), lod = log2(s / (PI * texel.y));
+        float a = moonHeightM(textureLod(texture1, mapUV(p + t1 * s), lod)) - moonHeightM(textureLod(texture1, mapUV(p - t1 * s), lod));
+        float b = moonHeightM(textureLod(texture1, mapUV(p + t2 * s), lod)) - moonHeightM(textureLod(texture1, mapUV(p - t2 * s), lod));
+        grad = mix(grad, (t1 * a + t2 * b) / (2.0 * s * R), poleK(lat));
+    }
     // カメラの周り（16 ピクセル/度の窓の中）: 細かい標高
     vec2 sl;
-    float hd, dw = detGradient(uv, dx, dy, lat, R, sl, hd);
+    float hd, dw = detGradient(p, uv, dx, dy, lat, R, sl, hd);
     if (dw > 0.0) {
         grad = mix(grad, east * sl.x + north * sl.y, dw);
         hm = mix(hm, hd, dw);
@@ -1368,7 +1398,7 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
     float dust = 0.0, sand = 0.0, rock = 0.0, R = mapInfo.w * 1000.0;
     g_floor = 0.0;
     vec2 sl = vec2(0.0);   // カメラの周り（火星の 32 ピクセル/度の窓の中）の細かい標高 hd と勾配 sl
-    float hd = 0.0, dw = mapInfo.z > 0.5 ? detGradient(uv, dx, dy, lat, R, sl, hd) : 0.0;
+    float hd = 0.0, dw = mapInfo.z > 0.5 ? detGradient(p, uv, dx, dy, lat, R, sl, hd) : 0.0;
     float cs = length(sl), cliff = mars ? cliffWall(cs) * dw : 0.0;
     if (mars) {
         g_ice = whiteness(tc) * smoothstep(55.0, 65.0, abs(degrees(lat)));   // 極冠: 白い所（緯度 60° より極側）
@@ -1439,6 +1469,14 @@ vec4 mapTex(vec3 p, vec3 o, out vec3 base) {
         vec3 east = vec3(-sin(lon), 0.0, -cos(lon));
         vec3 north = vec3(-sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
         vec3 grad = east * dhdLon / max(cos(lat), 0.05) + north * dhdLat;
+        if (poleK(lat) > 0.0) {   // 極の近く（poleK）
+            vec3 t1, t2;
+            poleTangents(p, t1, t2);
+            float s = max(PI * texel.y, fw), lod = log2(s / (PI * texel.y));
+            float a = mapHeightM(textureLod(texture1, mapUV(p + t1 * s), lod)) - mapHeightM(textureLod(texture1, mapUV(p - t1 * s), lod));
+            float b = mapHeightM(textureLod(texture1, mapUV(p + t2 * s), lod)) - mapHeightM(textureLod(texture1, mapUV(p - t2 * s), lod));
+            grad = mix(grad, (t1 * a + t2 * b) / (2.0 * s * R), poleK(lat));
+        }
         if (dw > 0.0) {
             grad = mix(grad, east * sl.x + north * sl.y, dw);
             hm = mix(hm, hd, dw);
@@ -1564,7 +1602,7 @@ vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
         vec3 d; float r, rnd;
         if (cellSpot(p, 9.0 * float(k + 1), dens, o + float(k) * 5.3, 0.06, 0.2, d, r, rnd)) {
             float x = length(d) / r;
-            float lat = degrees(asin(clamp(abs(p.y), 0.0, 1.0)));
+            float lat = degrees(atan(abs(p.y), length(p.xz)));
             float belt = cyc ? exp(-pow((lat - sunInfo.y) / sunInfo.z, 2.0))
                              : smoothstep(0.08, 0.15, abs(p.y)) * (1.0 - smoothstep(0.45, 0.55, abs(p.y)));
             c = mix(c, c * 0.55, (1.0 - smoothstep(0.8, 1.0, x)) * belt);
@@ -1921,7 +1959,7 @@ void main() {
     vec2 qc = q / max(r, 1.0);
     float cz = sqrt(max(1.0 - dot(qc, qc), 0.0));   // 中心から見た角度の cos
     float s0 = sin(miniCenter.x), c0 = cos(miniCenter.x);
-    float lat = asin(clamp(cz * s0 + qc.y * c0, -1.0, 1.0));
+    float lat = atan(cz * s0 + qc.y * c0, length(vec2(qc.x, cz * c0 - qc.y * s0)));   // asin は極の近くで誤差が大きい（mapLat）
     float lon = miniCenter.y + atan(qc.x, cz * c0 - qc.y * s0);
     vec2 uv = vec2(fract(lon / 6.2831853 + 0.5), 0.5 - lat / 3.1415927);
     vec2 dx = dFdx(uv), dy = dFdy(uv);

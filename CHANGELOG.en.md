@@ -4,6 +4,12 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.70.12 (2026-11-27)
+
+- The ground's shading was flat near the poles (poleward of 87°). Elevation gradients were taken from longitude and latitude differences, dividing the east-west slope by cos(latitude), so near the poles that slope was held down. Poleward of 84° they are now taken from differences along two directions on the surface (sampling the reduced image that matches the offset). Between 84° and 87° both ways give nearly the same result, so there is no seam
+- Replaced the remaining asin in the shaders with atan (the extent of Pluto's Sputnik Planitia, the latitude of gas giant patterns, storm belts and the small map at the lower left; as in 2.70.10, asin is inaccurate near the poles)
+- Added a low flight at 70° S on the Moon to the release checks (tools/run_checks.py). It looks for frames whose lower part is more than 30% dark (sky showing where the ground vanished); with 2.70.9 it finds such frames
+
 ## 2.70.11 (2026-11-27)
 
 - Near the Moon's south pole the ground dropped like a valley, and crossing the pole the terrain folded. The fine elevation around the ship is blended into the global elevation over 64 pixels from its edges (about 120 km on the Moon), and this was also done at the edge on the pole side, which is the end of the global data, so closer to the pole the coarse global elevation took over. That edge is no longer blended. The row nearest the pole also held different values by longitude, so the pole had a different height in each direction; it is now the average around the whole circle (the height of the pole)
