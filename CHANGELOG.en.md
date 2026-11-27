@@ -4,6 +4,10 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.73.1 (2026-11-28)
+
+- In the browser version, the finer elevation under the camera (Earth, Moon, Mars) is no longer built all at once; each frame builds 6 ms of it, or a quarter of the previous frame's time if that is longer. Until now the screen stopped while it was built (near the poles of Mars, the same work takes about 0.4 s on desktop). Until it is ready, the current window or the global elevation is used, and when it is put to use a ship near the surface (below 100 km) keeps its height above the ground. The result is the same as before. The desktop versions are unchanged
+
 ## 2.73.0 (2026-11-27)
 
 - In the browser version, the finer elevation and the regional elevation of the Moon and Mars are no longer part of the background loading after startup; they are fetched when you come within 8 radii of that body. The data loaded in the background after startup drops from about 175 MB to about 67 MB, and in a local test everything arrived in 11.3 s instead of 22.5 s. The desktop versions still load everything at startup

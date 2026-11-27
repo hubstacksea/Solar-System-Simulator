@@ -718,16 +718,20 @@ static void ApplyPolar(App& app, int i, PolarBuild& b) {
     TraceLog(LOG_INFO, "DETAIL: %s %dx%d (%.0f m per pixel, built in %.2f s over %d steps)", POLAR_FILES[i].label, b.n, b.n, b.scaleM,
              b.work, b.steps);
 }
-// 使い始めると地表の高さが変わる（全球の細かい標高との差は数百 m）ので、地表の近く（高度 100 km まで）にいる自機は地表からの
-// 高さを保つ（降りた所で読み込みが終わっても、浮いたり埋まったりしない）
-static void ApplyPolarKeepAltitude(App& app, int i, PolarBuild& b) {
-    const Body& body = app.B[POLAR_FILES[i].body];
+// apply で地表の高さが変わる時（細かい標高を後から使い始める。全球の標高との差は数百 m）、地表の近く（高度 100 km まで）に
+// いる自機は地表からの高さを保つ（降りた所で読み込みが終わっても、浮いたり埋まったりしない）
+template <class F>
+static void KeepAltitude(App& app, int bi, F apply) {
+    const Body& body = app.B[bi];
     V3 rel = ShipWorld(app) - body.pos;
     double d = Len(rel);
     V3 dir = rel * (1.0 / d);
     double r0 = SurfaceRadius(body, dir);
-    ApplyPolar(app, i, b);
+    apply();
     if (d - r0 < 100) SetShipWorld(app, body.pos + dir * (d + SurfaceRadius(body, dir) - r0));
+}
+static void ApplyPolarKeepAltitude(App& app, int i, PolarBuild& b) {
+    KeepAltitude(app, POLAR_FILES[i].body, [&] { ApplyPolar(app, i, b); });
 }
 // 極の細かい標高: デスクトップ版は起動時に 4 つとも、ブラウザ版はその天体の半径の 8 倍（立体の地形を描く距離）より近く、
 // その極の側の半球に来た時に取得して読み込む。展開に約 0.3 秒かかるので、デスクトップ版は別のスレッドで作り、できたら使い始める
@@ -808,14 +812,21 @@ struct DetailBuild {
     double sx = 1;
     std::vector<unsigned short> win;
     std::vector<unsigned char> px;
+    // 組み立ての途中（BuildDetailStep で少しずつ進める。ブラウザ版）: 次の窓の行、作っている縮小の段の値・その次の段・一辺・次の行
+    int row = 0;
+    std::vector<unsigned> lv, half;
+    int m = 0, mrow = 0;
+    bool done = false;
 };
-// 窓 b（x0・y0・box・sx を決めたもの）の値を区画から組み立てる。GPU には触らない（別のスレッドでも組み立てられる）
-static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
+// 窓 b（x0・y0・box・sx を決めたもの）の値を区画から組み立てる。budget 秒ほど進める（0 以下は最後まで）。
+// GPU には触らない（別のスレッドでも組み立てられる）
+static void BuildDetailStep(const DetailMap& D, int k, DetailBuild& b, double budget) {
     const int N = DetailMap::N;
     const int x0 = b.x0, y0 = b.y0, box = b.box;
     const double sx = b.sx;
     const bool polar = sx > 1;
-    b.win.assign((size_t)N * N, 0);
+    auto t0 = std::chrono::steady_clock::now();
+    auto over = [&] { return budget > 0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() > budget; };
     // 展開した区画（最近使ったものだけ残す。細かい標高ごと）
     static std::map<int, std::vector<unsigned short>> caches[6];
     static std::map<int, unsigned> useds[6];
@@ -823,18 +834,30 @@ static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
     unsigned& stamp = stamps[k];
     std::map<int, std::vector<unsigned short>>& cache = caches[k];
     std::map<int, unsigned>& used = useds[k];
-    stamp++;
+    if (b.done) return;
+    if (b.win.empty()) {
+        b.win.assign((size_t)N * N, 0);
+        stamp++;
+    }
+    bool stalled = false;   // 時間が来て展開しなかった区画がある（その行は次に組み直す）
     auto tileData = [&](int i) -> const unsigned short* {
         used[i] = stamp;
         auto it = cache.find(i);
-        if (it == cache.end()) it = cache.emplace(i, DecodeDetailTile(D, i)).first;
+        if (it == cache.end()) {
+            if (stalled || over()) {
+                stalled = true;
+                return nullptr;
+            }
+            it = cache.emplace(i, DecodeDetailTile(D, i)).first;
+        }
         return it->second.empty() ? nullptr : it->second.data();
     };
     unsigned short sea = D.fmt == 1 ? 127 : 20000;   // 地球の陸の無い区画は海面
     if (box >= 0) {
         const DetailMap::Box& B = D.boxes[box];
         int bx0 = B.c0 * D.tile, by0 = B.r0 * D.tile, bw = B.cols * D.tile, bh = B.rows * D.tile;
-        for (int j = 0; j < N; j++) {
+        for (; b.row < N && !over(); b.row++) {
+            const int j = b.row;
             int gy = std::max(0, std::min(bh - 1, y0 + j - by0)), tr = gy / D.tile, py = gy % D.tile;
             unsigned short* row = &b.win[(size_t)j * N];
             for (int i = 0; i < N;) {
@@ -848,6 +871,7 @@ static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
                 else std::memcpy(row + i, t + (size_t)py * D.tile + px, run * sizeof(unsigned short));
                 i += run;
             }
+            if (stalled) return;
         }
     } else {
         // 全球の行 gy の、経度の画素 xs から n 画素（一周つながる）
@@ -864,7 +888,8 @@ static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
         };
         std::vector<unsigned short> src;
         RowMean m;
-        for (int j = 0; j < N; j++) {
+        for (; b.row < N && !over(); b.row++) {
+            const int j = b.row;
             int gy = y0 + j;
             unsigned short* row = &b.win[(size_t)j * N];
             // 経度方向は緯度方向の 1 画素の幅（1 / cos(緯度) 画素。極の窓では窓の 1 画素の幅と大きい方）で平均する（LowpassLonRows）。
@@ -873,6 +898,7 @@ static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
             double wpx = D.fmt == 1 ? 1.0 : gy == 0 || gy == D.H - 1 ? D.W : std::min((double)D.W, std::max(sx, 1.0 / std::max(c, 1e-9)));
             if (wpx <= 1.0 + 1e-9) {
                 readRow(gy, x0, N, row);
+                if (stalled) return;
                 continue;
             }
             // 窓の外の左右も平均に入れる（極の窓は一周。普通の窓は両側を全球の画素の数まで）
@@ -880,6 +906,7 @@ static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
             int n = polar ? D.W : N + 2 * pad;
             src.resize(n);
             readRow(gy, x0 - pad, n, src.data());
+            if (stalled) return;
             m.Set(src.data(), n, polar);
             for (int i = 0; i < N; i++) {
                 double ctr = pad + (i + 0.5) * sx;
@@ -887,33 +914,56 @@ static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) {
             }
         }
     }
-    for (auto it = used.begin(); it != used.end();) {   // 今の窓で使わなかった区画は、多ければ捨てる
-        if (cache.size() > 48 && it->second != stamp) {
-            cache.erase(it->first);
-            it = used.erase(it);
-        } else ++it;
-    }
-    if (D.fmt == 1) {
-        b.px.assign(b.win.begin(), b.win.end());
-        return;
+    if (b.row < N) return;
+    if (b.m == 0) {
+        for (auto it = used.begin(); it != used.end();) {   // 今の窓で使わなかった区画は、多ければ捨てる
+            if (cache.size() > 48 && it->second != stamp) {
+                cache.erase(it->first);
+                it = used.erase(it);
+            } else ++it;
+        }
+        if (D.fmt == 1) {
+            b.px.assign(b.win.begin(), b.win.end());
+            b.done = true;
+            return;
+        }
+        b.lv.assign(b.win.begin(), b.win.end());
+        b.m = N;
+        b.half.assign((size_t)(N / 2) * (N / 2), 0);
+        b.px.reserve((size_t)N * N * 8 / 3 + 64);
     }
     // 16 bit の値は上位・下位バイトに分けて載せるので、縮小画像は GPU に作らせず（バイトごとに丸めると上位バイトの丸めで
-    // 最大 64 m ずれる）、値のまま 2x2 を平均して作り、すべての段をまとめて載せ直す
-    std::vector<unsigned> lv(b.win.begin(), b.win.end());
-    b.levels = 0;
-    for (int n = N;; n /= 2) {
-        for (unsigned v : lv) b.px.push_back((unsigned char)(v >> 8)), b.px.push_back((unsigned char)(v & 255));
-        b.levels++;
-        if (n == 1) break;
-        std::vector<unsigned> next((size_t)(n / 2) * (n / 2));
-        for (int y = 0; y < n / 2; y++)
-            for (int x = 0; x < n / 2; x++) {
-                size_t a = (size_t)(2 * y) * n + 2 * x;
-                next[(size_t)y * (n / 2) + x] = (lv[a] + lv[a + 1] + lv[a + n] + lv[a + n + 1] + 2) / 4;
+    // 最大 64 m ずれる）、値のまま 2x2 を平均して作り、すべての段をまとめて載せ直す。64 行ずつ進める
+    while (!over()) {
+        const int m = b.m, h = m / 2;
+        for (int y = b.mrow; y < std::min(b.mrow + 64, m); y++) {
+            for (int x = 0; x < m; x++) {
+                unsigned u = b.lv[(size_t)y * m + x];
+                b.px.push_back((unsigned char)(u >> 8));
+                b.px.push_back((unsigned char)(u & 255));
             }
-        lv.swap(next);
+            if (y & 1)
+                for (int x = 0; x < h; x++) {
+                    size_t a = (size_t)(y - 1) * m + 2 * x;
+                    b.half[(size_t)(y / 2) * h + x] = (b.lv[a] + b.lv[a + 1] + b.lv[a + m] + b.lv[a + m + 1] + 2) / 4;
+                }
+        }
+        b.mrow = std::min(b.mrow + 64, m);
+        if (b.mrow < m) continue;
+        b.levels++;
+        if (m == 1) {
+            b.done = true;
+            b.lv.clear();
+            b.half.clear();
+            return;
+        }
+        b.lv.swap(b.half);
+        b.m = h;
+        b.mrow = 0;
+        b.half.assign((size_t)(h / 2) * (h / 2), 0);
     }
 }
+static void BuildDetail(const DetailMap& D, int k, DetailBuild& b) { BuildDetailStep(D, k, b, 0); }
 // 組み立てた窓を使い始める（高度・衝突の計算と GPU）
 static void ApplyDetail(App& app, int k, DetailBuild& b) {
     DetailMap& D = g_detail[k];
@@ -941,8 +991,14 @@ static void ApplyDetail(App& app, int k, DetailBuild& b) {
 // 地域だけのもの（boxes）は、カメラに一番近い地域が窓の半分より近い時だけ、その地域の窓を作る（地域の外の画素は
 // 地域の縁の値で埋める。重みは 0）。組み直し（約 0.1 秒、極の窓に切り替える時は 0.2〜0.4 秒）は、窓がある間は別のスレッドで
 // 進め、できるまで今の窓を使う（画面が止まらない）。窓が無い時（地表に降りた時など）と画面の保存（--shot）では、その場で
-// 組み立てる（保存する画面を毎回同じにする）。ブラウザ版はスレッドを使わない
+// 組み立てる（保存する画面を毎回同じにする）。ブラウザ版はスレッドを使わず、窓が無い時も含めて 1 フレームに 6 ms か、前の
+// フレームにかかった時間の 1/4 の長いほうずつ組み立てる（極の標高と同じ。窓が無かった時は、できるまで全球の標高を使い、
+// 使い始める時に地表の近くの自機の高さを保つ）
 static std::future<DetailBuild> g_detailJobs[6];
+#if defined(__EMSCRIPTEN__)
+static DetailBuild g_detailStep[6];
+static bool g_detailStepping[6];
+#endif
 static void UpdateDetail(App& app, int k, double lat, double lon) {
     DetailMap& D = g_detail[k];
     const int N = DetailMap::N;
@@ -953,6 +1009,16 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
         DetailBuild b = job.get();
         ApplyDetail(app, k, b);
     }
+#if defined(__EMSCRIPTEN__)
+    if (g_detailStepping[k]) {   // 少しずつ組み立てている窓: 今のフレームの分だけ進める
+        BuildDetailStep(D, k, g_detailStep[k], std::max(0.006, 0.25 * GetFrameTime()));
+        if (!g_detailStep[k].done) return;
+        if (D.active) ApplyDetail(app, k, g_detailStep[k]);
+        else KeepAltitude(app, k % 3 == 0 ? B_EARTH : k % 3 == 1 ? B_MOON : B_MARS, [&] { ApplyDetail(app, k, g_detailStep[k]); });
+        g_detailStep[k] = DetailBuild();
+        g_detailStepping[k] = false;
+    }
+#endif
     double cx = (lon / (2 * PI) + 0.5) * D.W - 0.5, cy = (0.5 - lat / PI) * D.H - 0.5;
     int box = -1;
     if (!D.boxes.empty()) {
@@ -987,7 +1053,13 @@ static void UpdateDetail(App& app, int k, double lat, double lon) {
     if (D.active && box == D.box && sx == D.sx && std::abs(ddx) <= N / 4 && std::abs(y0 - D.y0) <= N / 4) return;
     DetailBuild b;
     b.x0 = x0, b.y0 = y0, b.box = box, b.sx = sx;
-#if !defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__)
+    if (!app.shotMode) {
+        g_detailStep[k] = std::move(b);
+        g_detailStepping[k] = true;
+        return;
+    }
+#else
     if (D.active && !app.shotMode) {
         job = std::async(std::launch::async, [&D, k, b]() mutable {
             BuildDetail(D, k, b);
