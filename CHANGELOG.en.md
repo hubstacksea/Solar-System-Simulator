@@ -4,6 +4,14 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.75.1 (2026-11-28)
+
+- Fixed solar eclipses seen from the ground. The Sun's glare seen from inside the atmosphere is now drawn over the 3D scene, including the Moon (glare forms in the eye or lens). Before, the Moon's disk (the color of the sky) showed as a round hole in the glare before and after the eclipse
+- The glare of the eclipsed Sun now weakens with the logarithm of the visible fraction (90% left at half coverage, half left at 99%, gone just before totality). Before, it vanished as soon as the Moon covered the Sun's center, leaving only a thin crescent
+- The sky during an eclipse also dims with the logarithm of the visible fraction (almost unchanged at half coverage; at totality about 1/100,000 of daylight, a deep blue like twilight with the Sun 9° below the horizon). Before, it darkened a lot from half coverage and was pitch black at totality. The faintest visible magnitude follows the same brightness
+- The glare of a partly hidden Sun, such as one setting behind the horizon, weakens with the hidden fraction (before, it vanished once the center was hidden)
+- The README images of the 2027 total solar eclipse from the ground, the 1919 eclipse, the sunset, the sunset over the sea and the Martian daytime sky were retaken
+
 ## 2.75.0 (2026-11-28)
 
 - The Moon in the night sky seen from inside the atmosphere is brighter. The eye adapts to the dark, so the darker the sky, the more it is lifted (about 2.7 times in dark areas, easing to 1 in bright ones, without blowing out to white; the maria stay visible). In 2.74.0 it had the brightness of a daytime view and the full Moon looked grey

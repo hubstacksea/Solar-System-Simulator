@@ -876,6 +876,8 @@ int main(int argc, char** argv) {
         DrawProbes(app);
         if (app.photoMode < 2) DrawShipPass(app, dt);
         EndMode3D();
+        if (lowRes) rlScalef(rk, rk, 1);
+        DrawSunGlareOver(app);   // 大気の中から見た太陽のまぶしさは、手前の月なども覆う
         if (lowRes) {
             EndTextureMode();
             // 半透明の描画でバッファのアルファが下がっているので、ブレンドせずにそのまま写す

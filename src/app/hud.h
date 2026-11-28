@@ -314,6 +314,72 @@ static void DrawGlowRing(Vector2 c, float r0, float r1, Color in, Color out) {
     rlEnableBackfaceCulling();
 }
 
+// 恒星のまぶしさの強さ（0〜1）と等級（フレアの間は最大で約 3 等明るい）
+static double StarFlare(const App& app, size_t i) {
+    int seq;
+    return FlareLevel(app.B[i], (int)i, app.tDays, &seq);
+}
+static double StarGlare(const App& app, size_t i, double dist, float* mag) {
+    *mag = (float)(StarApparentMag(app.B[i].d, dist) - 2.5 * std::log10(1 + 15 * StarFlare(app, i)));
+    return std::max(0.0, std::min(1.0, (-3.0 - *mag) / 10.0));
+}
+// 大気の中から見た太陽のまぶしさは、3D の後に重ねる（目やレンズの中で起きるので、手前の月なども覆う。昼の空の月や、日食で
+// 欠けた太陽の前の月の黒い影がまぶしさの中に抜けない）。宇宙からは 3D の前（地球の縁などに隠れる）
+static bool SunGlareOver(const App& app) {
+    double density, sunEl;
+    V3 up;
+    return CameraAtmosphere(app, &density, &up, &sunEl) != nullptr;
+}
+// 恒星 i（画面の p、見かけの半径 px 画素）のまぶしさを描く。cover: 日食で隠れた割合
+static void DrawStarGlare(const App& app, size_t i, Vector2 p, double px, double dist, double cover) {
+    const Body& b = app.B[i];
+    // まぶしさ: −3 等より明るい時（惑星から見た太陽、恒星のすぐそば）。フレアの間は最大で約 3 等明るい
+    float mag;
+    double glare = StarGlare(app, i, dist, &mag), flare = StarFlare(app, i);
+    {
+        // 光の色: 太陽の色との比で染める（太陽は今まで通り）。フレアの間は青白く
+        Col3 tc = b.d.c1;
+        const Col3& sc = app.B[B_SUN].d.c1;
+        float fk = (float)std::min(1.0, flare * 1.5);
+        tc = {tc.r + (sc.r * 0.85f - tc.r) * fk, tc.g + (sc.g * 0.95f - tc.g) * fk, tc.b + (sc.b * 1.25f - tc.b) * fk};
+        // 光の広がりは明るいほど大きく（−13 等から −27 等まで。地球から見た太陽は −26.7 等）
+        // 大気の中から見た太陽は、通り抜ける光の分だけ暗く、その色に染める（地平線の近くでは赤く）
+        if (i == B_SUN) {
+            Col3 k = ColorThroughAir(SunTransmission(app));
+            mag -= 2.5f * std::log10(std::max(SunTransmission(app).g, 1e-6f));
+            tc = {tc.r * k.r, tc.g * k.g, tc.b * k.b};
+        }
+        // 日食で欠けた分だけ暗く。目は明るさの比で感じるので、まぶしさは見えている割合の対数で弱める（半分欠けても 9 割、
+        // 99% 欠けても半分残り、皆既の直前に消える）
+        double seen = std::max(1.0 - cover, 1e-6);
+        mag -= 2.5f * (float)std::log10(seen);
+        float boost = (float)std::max(0.0, std::min(1.0, (-13.0 - mag) / 14.0));
+        float r = (float)(px * 1.8 + 14 + 30 * boost) * (1 + fk), g = (float)(std::max(0.0, 1.0 + std::log10(seen) / 4.0) * glare);
+        auto tint = [](float base, float k) { return (unsigned char)std::min(255.0f, base * k); };
+        BeginBlendMode(BLEND_ADDITIVE);
+        if (StarSurface(b.d) == 3) {
+            // 白色矮星: 小さな星から強い青白い光がにじみ出る（光の広がりを大きく）
+            DrawCircleGradient((int)p.x, (int)p.y, r * 2.2f, {200, 220, 255, (unsigned char)(170 * g)}, {150, 180, 255, 0});
+            DrawCircleGradient((int)p.x, (int)p.y, r * 6, {170, 200, 255, (unsigned char)(45 * g)}, {120, 160, 255, 0});
+        }
+        // 太陽の光は宇宙ではわずかに暖かい白（5,772 K の黒体の色）。外側ほどわずかに黄色みを帯びる。とても明るい時は、
+        // 円盤のすぐ外まで白く飛ぶ（円盤が小さく見える遠くでも、まぶしさが分かる）
+        // （円盤が大きく見える時は描かない。周辺減光で暗い縁の外が明るい輪になる）
+        float core = boost * (float)std::max(0.0, std::min(1.0, (20.0 - px) / 15.0));
+        if (core > 0)
+            DrawCircleGradient((int)p.x, (int)p.y, (float)(px + 3 + 7 * boost), {tint(255, tc.r / sc.r), tint(252, tc.g / sc.g), tint(248, tc.b / sc.b), (unsigned char)(255 * g * core)},
+                               {tint(255, tc.r / sc.r), tint(246, tc.g / sc.g), tint(236, tc.b / sc.b), 0});
+        // 光は円盤の縁から外へ薄れる。円盤が大きく見える時は、縁のすぐ外を周辺減光で暗い縁（中心の 3〜4 割）より明るくしない
+        float edge = (float)(1.0 - 0.55 * std::max(0.0, std::min(1.0, (px - 3.0) / 12.0)));
+        float rr = (float)std::max(px, 0.0);
+        DrawGlowRing(p, rr, r, {tint(255, tc.r / sc.r), tint(246, tc.g / sc.g), tint(236, tc.b / sc.b), (unsigned char)(200 * g * edge)},
+                     {tint(255, tc.r / sc.r), tint(236, tc.g / sc.g), tint(214, tc.b / sc.b), 0});
+        DrawGlowRing(p, rr, r * 3, {tint(255, tc.r / sc.r), tint(240, tc.g / sc.g), tint(222, tc.b / sc.b), (unsigned char)(35 * g)},
+                     {tint(255, tc.r / sc.r), tint(228, tc.g / sc.g), tint(200, tc.b / sc.b), 0});
+        EndBlendMode();
+    }
+}
+
 static void DrawSunGlowAndDots(const App& app) {
     const Cam& c = app.cam;
     double day = SkyDaylight(app), lim = LimitingMag(app);
@@ -330,51 +396,12 @@ static void DrawSunGlowAndDots(const App& app) {
                 cover = SunCover(app, c.pos);
                 double k = std::max(0.0, std::min(1.0, (cover - 0.985) / 0.015));
                 if (k > 0) DrawCorona(p, (float)px, (float)k);
-            }
-            if (Occluded(app, c.pos, b.pos, (int)i)) continue;
-            // まぶしさ: −3 等より明るい時（惑星から見た太陽、恒星のすぐそば）。フレアの間は最大で約 3 等明るい
-            int seq;
-            double flare = FlareLevel(b, (int)i, app.tDays, &seq);
-            float mag = (float)(StarApparentMag(b.d, dist) - 2.5 * std::log10(1 + 15 * flare));
-            double glare = std::max(0.0, std::min(1.0, (-3.0 - mag) / 10.0));
-            if (glare > 0) {
-                // 光の色: 太陽の色との比で染める（太陽は今まで通り）。フレアの間は青白く
-                Col3 tc = b.d.c1;
-                const Col3& sc = app.B[B_SUN].d.c1;
-                float fk = (float)std::min(1.0, flare * 1.5);
-                tc = {tc.r + (sc.r * 0.85f - tc.r) * fk, tc.g + (sc.g * 0.95f - tc.g) * fk, tc.b + (sc.b * 1.25f - tc.b) * fk};
-                // 光の広がりは明るいほど大きく（−13 等から −27 等まで。地球から見た太陽は −26.7 等）
-                // 大気の中から見た太陽は、通り抜ける光の分だけ暗く、その色に染める（地平線の近くでは赤く）
-                if (i == B_SUN) {
-                    Col3 k = ColorThroughAir(SunTransmission(app));
-                    mag -= 2.5f * std::log10(std::max(SunTransmission(app).g, 1e-6f));
-                    tc = {tc.r * k.r, tc.g * k.g, tc.b * k.b};
-                }
-                float boost = (float)std::max(0.0, std::min(1.0, (-13.0 - mag) / 14.0));
-                float r = (float)(px * 1.8 + 14 + 30 * boost) * (1 + fk), g = (float)(std::pow(1.0 - cover, 0.6) * glare);
-                auto tint = [](float base, float k) { return (unsigned char)std::min(255.0f, base * k); };
-                BeginBlendMode(BLEND_ADDITIVE);
-                if (StarSurface(b.d) == 3) {
-                    // 白色矮星: 小さな星から強い青白い光がにじみ出る（光の広がりを大きく）
-                    DrawCircleGradient((int)p.x, (int)p.y, r * 2.2f, {200, 220, 255, (unsigned char)(170 * g)}, {150, 180, 255, 0});
-                    DrawCircleGradient((int)p.x, (int)p.y, r * 6, {170, 200, 255, (unsigned char)(45 * g)}, {120, 160, 255, 0});
-                }
-                // 太陽の光は宇宙ではわずかに暖かい白（5,772 K の黒体の色）。外側ほどわずかに黄色みを帯びる。とても明るい時は、
-                // 円盤のすぐ外まで白く飛ぶ（円盤が小さく見える遠くでも、まぶしさが分かる）
-                // （円盤が大きく見える時は描かない。周辺減光で暗い縁の外が明るい輪になる）
-                float core = boost * (float)std::max(0.0, std::min(1.0, (20.0 - px) / 15.0));
-                if (core > 0)
-                    DrawCircleGradient((int)p.x, (int)p.y, (float)(px + 3 + 7 * boost), {tint(255, tc.r / sc.r), tint(252, tc.g / sc.g), tint(248, tc.b / sc.b), (unsigned char)(255 * g * core)},
-                                       {tint(255, tc.r / sc.r), tint(246, tc.g / sc.g), tint(236, tc.b / sc.b), 0});
-                // 光は円盤の縁から外へ薄れる。円盤が大きく見える時は、縁のすぐ外を周辺減光で暗い縁（中心の 3〜4 割）より明るくしない
-                float edge = (float)(1.0 - 0.55 * std::max(0.0, std::min(1.0, (px - 3.0) / 12.0)));
-                float rr = (float)std::max(px, 0.0);
-                DrawGlowRing(p, rr, r, {tint(255, tc.r / sc.r), tint(246, tc.g / sc.g), tint(236, tc.b / sc.b), (unsigned char)(200 * g * edge)},
-                             {tint(255, tc.r / sc.r), tint(236, tc.g / sc.g), tint(214, tc.b / sc.b), 0});
-                DrawGlowRing(p, rr, r * 3, {tint(255, tc.r / sc.r), tint(240, tc.g / sc.g), tint(222, tc.b / sc.b), (unsigned char)(35 * g)},
-                             {tint(255, tc.r / sc.r), tint(228, tc.g / sc.g), tint(200, tc.b / sc.b), 0});
-                EndBlendMode();
-            }
+                if (cover > 0.9999) continue;   // 月・地球などにすっかり隠れた（一部が隠れている時は、隠れた割合で弱める）
+            } else if (Occluded(app, c.pos, b.pos, (int)i)) continue;
+            // まぶしさ: −3 等より明るい時（惑星から見た太陽、恒星のすぐそば）。大気の中から見た太陽は 3D の後（DrawSunGlareOver）
+            float mag;
+            double glare = StarGlare(app, i, dist, &mag);
+            if (glare > 0 && !(i == B_SUN && SunGlareOver(app))) DrawStarGlare(app, i, p, px, dist, cover);
             if (px >= 0.8) continue;
             if (glare > 0) {
                 DrawCircleV(p, 2.5f, {255, 250, 230, 255});
@@ -434,6 +461,20 @@ static void DrawSunGlowAndDots(const App& app) {
             DrawStarDot(p, std::max(StarDotSize((float)mag), 1.0f), col);
         }
     }
+}
+
+// 大気の中から見た太陽のまぶしさ（3D の後に重ねる。SunGlareOver）
+static void DrawSunGlareOver(const App& app) {
+    if (!SunGlareOver(app)) return;
+    const Cam& c = app.cam;
+    const Body& b = app.B[B_SUN];
+    V3 rel = ViewRel(app, b.pos);
+    Vector2 p;
+    if (!Project(c, rel, &p)) return;
+    double cover = SunCover(app, c.pos), dist = Len(rel);
+    if (cover > 0.9999) return;
+    float mag;
+    if (StarGlare(app, B_SUN, dist, &mag) > 0) DrawStarGlare(app, B_SUN, p, b.d.radius / dist * c.focal, dist, cover);
 }
 
 // ラベルの重なり回避: 既に置いた矩形（HUD パネル含む）と重ならない位置まで縦にずらす

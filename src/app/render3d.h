@@ -1615,7 +1615,7 @@ static double LimitingMag(const App& app) {
     V3 up;
     if (!CameraAtmosphere(app, &density, &up, &sunEl)) return 99;
     double logL = TwilightLogLum(std::asin(std::max(-1.0, std::min(1.0, sunEl))) / DEG) +
-                  std::log10(std::max(1.0 - SunCover(app, app.cam.pos), 3e-4));
+                  std::log10(std::max(1.0 - SunCover(app, app.cam.pos), 1e-5));   // 皆既は昼の 10 万分の 1（空の色と同じ）
     static const double LL[] = {-3.5, -3.0, -2.0, -0.8, 0.5, 1.6, 2.7, 3.6}, M[] = {8.5, 5.2, 3.5, 2.0, 0.3, -1.8, -3.2, -4.0};
     const int n = sizeof LL / sizeof LL[0];
     double m = M[0];
