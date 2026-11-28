@@ -40,7 +40,8 @@ static bool DeepSkyPlace(const App& app, int i, DeepSkyQuad* q, double* D) {
 
 static void DrawDeepSky(const App& app) {
     if (!app.showMilkyWay || app.deepSkyTex.empty()) return;
-    double vis = 1 - SkyDaylight(app);
+    // 天の川・星雲の淡い光（4〜5 等の星と同じくらいの淡さ）は、空が十分暗い時だけ（薄明では消える）
+    double vis = std::max(0.0, std::min(1.0, (LimitingMag(app) - 4.5) / 2.5));
     if (vis < 0.02) return;
     const Cam& c = app.cam;
     rlDrawRenderBatchActive();
@@ -87,13 +88,14 @@ static void DrawStars(const App& app) {
                     if (Project(c, line[i], &p) && Project(c, line[i + 1], &q)) DrawLineEx(p, q, 1.2f, lc);
                 }
     }
-    // 昼の空では見えない（空の色は空気の薄い火星では淡く、それだけでは星が透けて見える。惑星の点・星雲と同じく昼の明るさで消す）
-    double vis = 1 - SkyDaylight(app);
+    // 空が明るいほど暗い星から見えなくなる（目で見える一番暗い等級 LimitingMag。薄明では明るい星だけ、昼は見えない。空の色は
+    // 空気の薄い火星では淡く、それだけでは星が透けて見える）
+    double lim = LimitingMag(app);
     for (const Star& st : app.sky.stars) {
         Vector2 p;
         V3 dir = st.dir;
         Color col = st.col;
-        col.a = (unsigned char)(col.a * vis);
+        col.a = (unsigned char)(col.a * StarVisibility(st.mag, lim));
         if (col.a < 4) continue;
         if (rel.on) {
             double D;
@@ -109,8 +111,10 @@ static void DrawStars(const App& app) {
     for (int k = 0; k < SUPERNOVA_COUNT; k++) {
         double mag = SupernovaMag(k, app.tDays);
         if (std::isnan(mag) || mag > 6.5) continue;
+        double sv = StarVisibility(mag, lim);
+        if (sv <= 0) continue;
         V3 dir = EquToRender(SUPERNOVAE[k].ra, SUPERNOVAE[k].dec);
-        Color col = StarColor(0.1, (unsigned char)StarDotAlpha((float)mag));
+        Color col = StarColor(0.1, (unsigned char)(StarDotAlpha((float)mag) * sv));
         if (rel.on) {
             double D;
             dir = Aberrate(rel, dir, &D);
@@ -121,7 +125,7 @@ static void DrawStars(const App& app) {
         if (mag < 0) {
             BeginBlendMode(BLEND_ADDITIVE);
             float r = (float)(6 - mag * 3) * g_dpiScale;
-            DrawCircleGradient((int)p.x, (int)p.y, r, {235, 240, 255, (unsigned char)std::min(200.0, 40 - mag * 20)}, {200, 215, 255, 0});
+            DrawCircleGradient((int)p.x, (int)p.y, r, {235, 240, 255, (unsigned char)(std::min(200.0, 40 - mag * 20) * sv)}, {200, 215, 255, 0});
             EndBlendMode();
         }
         DrawStarDot(p, std::max(StarDotSize((float)mag), mag < 0 ? 3.6f : 0.0f), col);
@@ -280,6 +284,14 @@ static void DrawCorona(Vector2 c, float rs, float k) {
     EndBlendMode();
 }
 
+// 見え方（明るさ・満ち欠け・見かけの大きさ・月齢。SeenFrom・SeenFromPoint）
+struct Appearance {
+    bool ok = false, here = false;
+    double mag = NAN, k = 0, alpha = 0, size = 0, age = NAN;
+    int moonPhase = -1;
+};
+static Appearance SeenFromPoint(const App& app, int i, V3 O);
+
 // 円盤の縁 r0 から r1 まで外へ薄れる光（加算で描く。中は円盤が隠すので描かない）
 static void DrawGlowRing(Vector2 c, float r0, float r1, Color in, Color out) {
     const int N = 96;
@@ -304,7 +316,7 @@ static void DrawGlowRing(Vector2 c, float r0, float r1, Color in, Color out) {
 
 static void DrawSunGlowAndDots(const App& app) {
     const Cam& c = app.cam;
-    double day = SkyDaylight(app);
+    double day = SkyDaylight(app), lim = LimitingMag(app);
     for (size_t i = 0; i < app.B.size(); i++) {
         const Body& b = app.B[i];
         V3 rel = ViewRel(app, b.pos);   // 光速に近いと天体も背景の星と同じく前方へ集まる
@@ -369,7 +381,7 @@ static void DrawSunGlowAndDots(const App& app) {
             } else if (mag < 8.5f) {
                 // 星空の星と同じ描き方（太陽から見た明るさなら、星表の星と同じ見た目）。昼の空では見えない
                 double bv = b.d.star >= 0 ? NEARBY_STARS[b.d.star].bv : 0.65;
-                float a = StarDotAlpha(mag) * (float)(i == B_SUN ? 1.0 : 1.0 - day);
+                float a = StarDotAlpha(mag) * (float)(i == B_SUN ? 1.0 : StarVisibility(mag, lim));
                 if (a >= 4) DrawStarDot(p, StarDotSize(mag), StarColor(bv, (unsigned char)a));
             }
         } else if (i == B_MOON && px >= 0.8 && !Occluded(app, c.pos, b.pos, (int)i)) {
@@ -396,9 +408,30 @@ static void DrawSunGlowAndDots(const App& app) {
                 EndBlendMode();
             }
         } else if (b.d.probe < 0 && b.outer / Len(rel) * c.focal < 0.8) {
-            Color col = BodyColor(b);   // 昼の空では見えない
-            col.a = (unsigned char)(col.a * (1.0 - day));
-            if (col.a >= 4) DrawCircleV(p, b.d.parent == 0 ? 1.8f : 1.2f, col);
+            Appearance ap = SeenFromPoint(app, (int)i, c.pos);
+            if (!ap.ok || std::isnan(ap.mag)) {   // 明るさの分からない天体（小さな衛星・小惑星など）: 色の点。昼の空では見えない
+                Color col = BodyColor(b);
+                col.a = (unsigned char)(col.a * (1.0 - day));
+                if (col.a >= 4) DrawCircleV(p, b.d.parent == 0 ? 1.8f : 1.2f, col);
+                continue;
+            }
+            // 惑星など: 星と同じく等級で大きさと濃さを決める（金星は −4 等台で空で一番明るい点）。大気の中では地平線に近いほど
+            // 暗く赤く（月と同じ式）、空が明るいほど暗いものから見えなくなる（金星は明るい薄明や昼でも見える）。とても明るい時は
+            // 光がにじむ
+            Col3 T = ViewTransmission(app, b.pos - c.pos), k = ColorThroughAir(T);
+            double mag = ap.mag - 2.5 * std::log10(std::max(T.g, 1e-6f)), v = StarVisibility(mag, lim);
+            if (v <= 0) continue;
+            const Col3& bc = b.d.c1;
+            float m = std::max(bc.r, std::max(bc.g, bc.b));
+            auto ch = [&](float x, float kk) { return (unsigned char)std::min(255.0f, (x / m * 0.55f + 0.45f) * 255 * kk); };
+            Color col = {ch(bc.r, k.r), ch(bc.g, k.g), ch(bc.b, k.b), (unsigned char)(StarDotAlpha((float)mag) * v)};
+            if (mag < -1.5) {
+                BeginBlendMode(BLEND_ADDITIVE);
+                float r = (float)(4 - mag * 2.5) * g_dpiScale;
+                DrawCircleGradient((int)p.x, (int)p.y, r, {col.r, col.g, col.b, (unsigned char)(std::min(160.0, -mag * 30) * v)}, {col.r, col.g, col.b, 0});
+                EndBlendMode();
+            }
+            DrawStarDot(p, std::max(StarDotSize((float)mag), 1.0f), col);
         }
     }
 }
@@ -845,19 +878,12 @@ static void DrawToast(const App& app) {
 // 月・太陽は標準的な式、準惑星・大きな衛星は絶対等級 H から（位相の補正は 0.03 等/度の目安）
 static int GroundBody(const App& app);
 
-struct Appearance {
-    bool ok = false, here = false;
-    double mag = NAN, k = 0, alpha = 0, size = 0, age = NAN;
-    int moonPhase = -1;
-};
 
-static Appearance SeenFrom(const App& app, int i) {
+// 点 O から見た天体 i の見え方（月齢は入れない）
+static Appearance SeenFromPoint(const App& app, int i, V3 O) {
     Appearance a;
-    int g = GroundBody(app);
-    a.here = g >= 0;
-    V3 O = a.here ? ShipWorld(app) : app.B[B_EARTH].pos;
     const Body& b = app.B[i];
-    if (i == g || (!a.here && i == B_EARTH) || b.d.kind == KIND_PROBE) return a;
+    if (b.d.kind == KIND_PROBE) return a;
     V3 T = b.pos, S = app.B[HostStar(app.B, i)].pos;   // 太陽系の外の惑星はその恒星に照らされる
     double delta = Len(T - O), r = Len(T - S);
     if (delta <= b.d.radius) return a;
@@ -900,6 +926,21 @@ static Appearance SeenFrom(const App& app, int i) {
                 if (en == h.en) a.mag = h.H + rd + 0.03 * x;
         }
     }
+    return a;
+}
+
+static Appearance SeenFrom(const App& app, int i) {
+    int g = GroundBody(app);
+    bool here = g >= 0;
+    if (i == g || (!here && i == B_EARTH)) {
+        Appearance a;
+        a.here = here;
+        return a;
+    }
+    Appearance a = SeenFromPoint(app, i, here ? ShipWorld(app) : app.B[B_EARTH].pos);
+    a.here = here;
+    if (!a.ok) return a;
+    V3 T = app.B[i].pos, S = app.B[HostStar(app.B, i)].pos;
     // 月齢: 地球（の上）から見た月と太陽の黄経の差から
     if (i == B_MOON && (!a.here || g == B_EARTH)) {
         V3 e = app.B[B_EARTH].pos, m = T - e, s = S - e;

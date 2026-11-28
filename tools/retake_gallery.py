@@ -77,6 +77,9 @@ SHOTS = {
     # プロキシマ・ケンタウリ（番号 102）のフレア（明るさが最大の 13:50:12 に撮る）と、プロキシマ・ケンタウリ b の地上（都市 39）
     "red_dwarf_flare": (lambda: ["--frames", "200", "--hours", hours("2026-10-31 13:50:08.667"), "--target", "102", "--warp"], None),
     "proxima_b_ground": (lambda: ["--frames", "200", "--hours", hours("2026-11-05 22:23:09"), "--city", "39"], None),
+    # 歴史上の天文現象（イベント一覧の 4 ページ目。並びは固定）: 1054 年の超新星（明け方）と、ガリレオの見た木星（夕方）
+    "supernova_1054": (lambda: ["--frames", "400", "--events-page", "3", "--goto-event", "5"], None),
+    "galileo_1610": (lambda: ["--frames", "400", "--events-page", "3", "--goto-event", "12"], None),
     "apollo15_undock": (lambda: ["--frames", "400", "--photo", "2", "--share", "?apollo=15&scene=10"], None),
     "apollo15_landing": (lambda: ["--frames", "600", "--photo", "2", "--share", "?apollo=15&scene=12"], None),
     # 深宇宙での船外活動（飛行士がハッチの外に出たところ）

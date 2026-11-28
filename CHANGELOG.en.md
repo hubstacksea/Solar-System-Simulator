@@ -4,6 +4,14 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.75.0 (2026-11-28)
+
+- The Moon in the night sky seen from inside the atmosphere is brighter. The eye adapts to the dark, so the darker the sky, the more it is lifted (about 2.7 times in dark areas, easing to 1 in bright ones, without blowing out to white; the maria stay visible). In 2.74.0 it had the brightness of a daytime view and the full Moon looked grey
+- Planets and similar bodies are drawn as points whose size and intensity follow their magnitude (Mallama & Hilton 2018), like stars; those brighter than magnitude -1.5, such as Venus and Jupiter, have a glow, and inside an atmosphere they dim and redden toward the horizon. Before, they were points of one size regardless of brightness, and the morning star Venus could not be told from the stars around it
+- The faintest magnitude the eye can see now follows the brightness of the sky (rough zenith values by solar altitude: about 500 cd/m² at sunset, 3 at the end of civil twilight, 0.01 at the end of nautical twilight, 0.0003 at the end of astronomical twilight), and stars, planets, the Milky Way and supernovae fainter than that are hidden (-3.2 at sunset, 0.3 at the end of civil twilight, 3.5 at the end of nautical twilight, 8.5 at night as before, -4 in daytime). In twilight the brightest stars come out first, Venus shows even in bright twilight and in the daytime sky, and during a total solar eclipse the sky darkens enough to show bright planets and stars. Before, all stars faded together with the sky brightness
+- The brightness of the twilight sky now follows the logarithm of the rough sky brightness (the eye responds to ratios). Before, the sky was almost black once the Sun was more than 10° below the horizon. The sky with the Sun above the horizon is unchanged
+- The README images of the 2027 total solar eclipse from the ground, the supernova of 1054 and Galileo in 1610 were retaken, and the README's sky section describes the visible magnitude and how planets shine
+
 ## 2.74.0 (2026-11-28)
 
 - The Sun's surface now has the color seen from space (a 5,772 K blackbody, a slightly warm white) instead of the orange seen from the ground. Sun-like stars and red dwarfs also get the blackbody color of their temperature

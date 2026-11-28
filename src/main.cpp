@@ -453,6 +453,7 @@ int main(int argc, char** argv) {
     app.locThruBeta = PlanetLoc(app, "thruBeta");
     app.locThruMie = PlanetLoc(app, "thruMie");
     app.locThruOzone = PlanetLoc(app, "thruOzone");
+    app.locThruNight = PlanetLoc(app, "thruNight");
     app.locTerrA = PlanetLoc(app, "terrA");
     app.locTerrB = PlanetLoc(app, "terrB");
     app.locTerrC = PlanetLoc(app, "terrC");

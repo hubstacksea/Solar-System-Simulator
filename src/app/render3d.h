@@ -1593,6 +1593,44 @@ static double SkyDaylight(const App& app) {
     return std::min(1.0, density * 2.0) * light;
 }
 
+// 天頂の空の明るさ log10(cd/m²) の目安（地球。太陽高度 deg ごと）: 昼 約 4,000、日の入り 約 500、市民薄明の終わり（−6°）約 3、
+// 航海薄明の終わり（−12°）約 0.01、天文薄明の終わり（−18°）約 0.0003（夜空）。値は代表的な観測値からの目安
+static double TwilightLogLum(double sunAltDeg) {
+    static const double H[] = {-18, -15, -12, -9, -6, -3, 0, 10}, L[] = {-3.5, -3.0, -2.0, -0.8, 0.5, 1.6, 2.7, 3.6};
+    const int n = sizeof H / sizeof H[0];
+    if (sunAltDeg <= H[0]) return L[0];
+    if (sunAltDeg >= H[n - 1]) return L[n - 1];
+    int i = 0;
+    while (sunAltDeg > H[i + 1]) i++;
+    return L[i] + (L[i + 1] - L[i]) * (sunAltDeg - H[i]) / (H[i + 1] - H[i]);
+}
+// 目で見える一番暗い等級（点の天体）: 空の明るさ（上の目安。日食で欠けた分は暗く）から。昼 −4 等（金星がやっと）、
+// 日の入り −3.2 等、市民薄明の終わり 0.3 等、航海薄明の終わり 3.5 等、夜は星表の 8.5 等まで（これまでどおりすべて）。
+// 大気の外では制限なし、金星の雲・タイタンのもやの下では何も見えない
+static double LimitingMag(const App& app) {
+    for (const Body& v : app.B)
+        if (const HazeWorld* hw = HazeWorldOf(v.d))
+            if (Len(app.cam.pos - v.pos) < v.d.radius + hw->top) return -30;
+    double density, sunEl;
+    V3 up;
+    if (!CameraAtmosphere(app, &density, &up, &sunEl)) return 99;
+    double logL = TwilightLogLum(std::asin(std::max(-1.0, std::min(1.0, sunEl))) / DEG) +
+                  std::log10(std::max(1.0 - SunCover(app, app.cam.pos), 3e-4));
+    static const double LL[] = {-3.5, -3.0, -2.0, -0.8, 0.5, 1.6, 2.7, 3.6}, M[] = {8.5, 5.2, 3.5, 2.0, 0.3, -1.8, -3.2, -4.0};
+    const int n = sizeof LL / sizeof LL[0];
+    double m = M[0];
+    if (logL >= LL[n - 1]) m = M[n - 1];
+    else if (logL > LL[0]) {
+        int i = 0;
+        while (logL > LL[i + 1]) i++;
+        m = M[i] + (M[i + 1] - M[i]) * (logL - LL[i]) / (LL[i + 1] - LL[i]);
+    }
+    double k = std::min(1.0, density * 2.0);   // 上空ほど空が暗い
+    return k > 0 ? m + (1 - k) * (12 - m) : 99;
+}
+// 等級 mag の点が見える割合（限界より 1 等明るければすべて）
+static double StarVisibility(double mag, double limit) { return std::max(0.0, std::min(1.0, limit - mag)); }
+
 // 明るさの自動調整（露出）: 地表の近くでは、真下の地面に当たる光（直射 + 空の光。シェーダの sunTint・skyL と同じ式、太陽が
 // 真上の時を 1）が弱いほど画面を明るくし、白い物が白く写るようにする（光の -0.7 乗、最大 2.2 倍）。場面の平均で決めると雪原が
 // 灰色に写るので、光の強さで決める。目は明るい夕焼けの空にも合わせるので、太陽高度 2〜12° で弱めて日の入りで 1。宇宙からと夜は 1
@@ -2012,7 +2050,7 @@ static void DrawBodies(App& app) {
             PlanetUniform(app, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
         }
         {   // カメラのいる大気の外の天体（地上から見た月など）: その大気を通して見る
-            float air[4] = {0, 1, 0, 0}, ext[4] = {0, 0, 0, 0};
+            float air[4] = {0, 1, 0, 0}, ext[4] = {0, 0, 0, 0}, night = 0;
             Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, ozone = {0, 0, 0};
             double density, sunEl;
             V3 u;
@@ -2020,12 +2058,16 @@ static void DrawBodies(App& app) {
                 air[0] = (float)u.x, air[1] = (float)u.y, air[2] = (float)u.z, air[3] = (float)density;
                 ext[0] = a->ext.x, ext[1] = a->ext.y, ext[2] = a->ext.z, ext[3] = (float)(1.0 - SunCover(app, app.cam.pos));
                 beta = a->beta, mie = a->mie, ozone = a->ozone;
+                // 夜の空では目が暗さに慣れ、月はまぶしいほど明るく白く見える（満月の明るさは約 2,500 cd/m²、夜空はその 10 万分の 1
+                // 以下）。昼の空の明るさで見る時より明るく持ち上げる（満月の高地がほぼ白、海は暗く見分けられる。持ち上げ方は目安）
+                night = (float)(1.0 - SkyDaylight(app));
             }
             PlanetUniform(app, app.locThruAir, air, SHADER_UNIFORM_VEC4);
             PlanetUniform(app, app.locThruExt, ext, SHADER_UNIFORM_VEC4);
             PlanetUniform(app, app.locThruBeta, &beta, SHADER_UNIFORM_VEC3);
             PlanetUniform(app, app.locThruMie, &mie, SHADER_UNIFORM_VEC3);
             PlanetUniform(app, app.locThruOzone, &ozone, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locThruNight, &night, SHADER_UNIFORM_FLOAT);
         }
         int ri = -1;   // 環（RingSets() の番号）
         for (size_t k = 0; k < RingSets().size(); k++)

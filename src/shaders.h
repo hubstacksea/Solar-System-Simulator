@@ -643,6 +643,7 @@ uniform vec4 thruExt;
 uniform vec3 thruBeta;
 uniform vec3 thruMie;
 uniform vec3 thruOzone;
+uniform float thruNight;  // 夜の目の慣れ（0: 昼の空, 1: 夜の空）。暗い空では月などを明るく見る
 in float fragShade;  // 地形の影（頂点シェーダの vertexShadow）
 out vec4 finalColor;
 uniform float exposure;    // 明るさの自動調整の倍率（UpdateExposure）。0.75 までは掛けたまま、それより明るい所はなめらかに 1 へ寄せる（白く飛ばない）
@@ -653,6 +654,22 @@ vec3 expo(vec3 c) {
 }
 
 const float PI = 3.14159265;
+// 薄明の空の明るさ（0〜1。散乱の強さに掛ける）: 目は明るさの比で感じるので、天頂の空の明るさ（太陽高度ごとの目安。
+// 日の入り 約 500 cd/m²、市民薄明の終わり 約 3、航海薄明の終わり 約 0.01、天文薄明の終わり 約 0.0003。render3d.h の
+// TwilightLogLum と同じ）の対数で決める。太陽が地平線より上は今までどおり
+float twilightLight(float sunEl) {
+    const float H[8] = float[8](-18.0, -15.0, -12.0, -9.0, -6.0, -3.0, 0.0, 10.0);
+    const float L[8] = float[8](-3.5, -3.0, -2.0, -0.8, 0.5, 1.6, 2.7, 3.6);
+    float h = degrees(asin(clamp(sunEl, -1.0, 1.0))), logL = L[0];
+    if (h >= H[7]) logL = L[7];
+    else if (h > H[0])
+        for (int i = 0; i < 7; i++)
+            if (h <= H[i + 1]) {
+                logL = mix(L[i], L[i + 1], (h - H[i]) / (H[i + 1] - H[i]));
+                break;
+            }
+    return max(smoothstep(-0.17, 0.03, sunEl), clamp((logL + 3.5) / 7.1, 0.0, 1.0));
+}
 float fw;      // 1 画素の大きさ（単位球の長さ）
 float g_ray;   // 新しいクレーターの明るさ（光条）
 float g_liquid = 0.0;   // 液体の湖・海の割合（タイタン）
@@ -1933,13 +1950,13 @@ void main() {
         vec3 ray = sunCol * (1.0 - exp(-atmBeta * airV)) * 0.75 * (1.0 + cosT * cosT);
         float g = max(cosT, 0.0);
         vec3 mie = sunCol * atmMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));
-        vec3 sky = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * atmHaze.w);
+        vec3 sky = 1.0 - exp(-(ray * 3.0 + mie) * twilightLight(sunEl) * atmHaze.w);
         vec3 T = exp(-(atmBeta + 0.02) * air);
         col = col * T + sky * (1.0 - T);
     }
     // 大気の中から見た、大気の外の天体: その向きの空気で弱まり（空気の量は Kasten & Young 1989 の式。地平線で天頂の約 38 倍、
     // オゾンの層は高さ 22 km の薄い層として約 12 倍）、手前の空気が散らす日光（その向きの空の明るさ。SKY_FS と同じ式）が
-    // 重なる。昇ったばかりの月は暗く橙に、昼の月は淡く、欠けた側は空の色になる
+    // 重なる。昇ったばかりの月は暗く橙に、昼の月は淡く、欠けた側は空の色になる。夜は目が暗さに慣れるので明るく（thruNight）
     if (thruAir.w > 0.0) {
         vec3 v = normalize(fragWorld), up = thruAir.xyz;
         float dens = thruAir.w, mu = max(dot(v, up), 0.0), sunEl = dot(L, up), cosT = dot(v, L);
@@ -1955,8 +1972,10 @@ void main() {
         vec3 ray = sunCol * (1.0 - exp(-thruBeta * airV)) * 0.75 * (1.0 + cosT * cosT);
         float g = max(cosT, 0.0);
         vec3 mie = sunCol * thruMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));
-        vec3 sky = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * thruExt.w);
-        col = col * T + sky;
+        vec3 sky = 1.0 - exp(-(ray * 3.0 + mie) * twilightLight(sunEl) * thruExt.w);
+        // 夜は明るさを持ち上げる（暗い所は約 2.7 倍、明るい所はなめらかに 1 へ。白く飛ばさず、月の海は見分けられる）
+        vec3 lifted = (1.0 - exp(-2.5 * col)) / (1.0 - exp(-2.5));
+        col = mix(col, lifted, thruNight) * T + sky;
     }
     finalColor = vec4(doppler(col), 1.0);
 }
@@ -1989,6 +2008,22 @@ uniform vec3 ozone;     // 天頂方向の空気 1 つ分でオゾンが吸収�
 uniform float density;  // 高さによる空気の濃さ（地表 1）
 uniform float sunVis;   // 見えている太陽の割合（日食で欠けると減る）
 out vec4 finalColor;
+// 薄明の空の明るさ（0〜1。散乱の強さに掛ける）: 目は明るさの比で感じるので、天頂の空の明るさ（太陽高度ごとの目安。
+// 日の入り 約 500 cd/m²、市民薄明の終わり 約 3、航海薄明の終わり 約 0.01、天文薄明の終わり 約 0.0003。render3d.h の
+// TwilightLogLum と同じ）の対数で決める。太陽が地平線より上は今までどおり
+float twilightLight(float sunEl) {
+    const float H[8] = float[8](-18.0, -15.0, -12.0, -9.0, -6.0, -3.0, 0.0, 10.0);
+    const float L[8] = float[8](-3.5, -3.0, -2.0, -0.8, 0.5, 1.6, 2.7, 3.6);
+    float h = degrees(asin(clamp(sunEl, -1.0, 1.0))), logL = L[0];
+    if (h >= H[7]) logL = L[7];
+    else if (h > H[0])
+        for (int i = 0; i < 7; i++)
+            if (h <= H[i + 1]) {
+                logL = mix(L[i], L[i + 1], (h - H[i]) / (H[i + 1] - H[i]));
+                break;
+            }
+    return max(smoothstep(-0.17, 0.03, sunEl), clamp((logL + 3.5) / 7.1, 0.0, 1.0));
+}
 void main() {
     vec3 d = normalize(fragDir);
     float mu = max(dot(d, up), 0.0);
@@ -2004,7 +2039,7 @@ void main() {
     vec3 ray = sunCol * (1.0 - exp(-beta * airV)) * 0.75 * (1.0 + cosT * cosT);
     float g = max(cosT, 0.0);
     vec3 mie = sunCol * mieTint * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));
-    float light = smoothstep(-0.17, 0.03, sunEl) * sunVis;   // 太陽が地平線の下 10° まで薄明が残る
+    float light = twilightLight(sunEl) * sunVis;   // 太陽が地平線の下 18° まで薄明が残る
     vec3 col = 1.0 - exp(-(ray * 3.0 + mie) * light);   // 明るい所が白く飛ばないように丸める
     float a = clamp(max(col.r, max(col.g, col.b)) * 2.5, 0.0, 1.0);
     finalColor = vec4(min(col / max(a, 1e-3), vec3(1.0)), a);
