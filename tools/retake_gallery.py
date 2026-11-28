@@ -48,6 +48,9 @@ COCKPIT = ["--cockpit", "--photo", "2"]
 SHOTS = {
     "sunset": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 02:09"), "--target", "3", "--at", "35", "-134", "0.1",
                         "--face-sun", "3"], None),
+    # 海の夕日（太陽高度 約 2°）
+    "sunset_sea": (lambda: ["--frames", "30", "--hours", hours("2026-10-29 03:42"), "--target", "3", "--at", "30", "-160", "3",
+                            "--face-sun", "2", "--photo", "2"], None),
     "earth_day": (lambda: ["--frames", "150", "--hours", hours("2026-11-17 03:00"), "--target", "3", "--at", "36", "138", "3000"],
                   None),
     "earth_alps": (lambda: ["--frames", "240", *COCKPIT, "--share", at("Earth", 6378.137, 43, 9, 300, 0, -40, 9816.95)], None),
@@ -71,6 +74,9 @@ SHOTS = {
     "triton_cantaloupe": (lambda: ["--frames", "300", *COCKPIT, "--share", at("Triton", 1353.4, 22, -15, 150, 270, -45, 9832.9)], None),
     "lunar_eclipse": (lambda: ["--frames", "200", "--hours", hours("2028-12-31 16:52"), "--target", "10", "--warp", "--face",
                                    "--photo", "1"], None),   # 2028 年 12 月 31 日の皆既月食の最大（天体の名前が月に重なるので表示を隠す）
+    # プロキシマ・ケンタウリ（番号 102）のフレア（明るさが最大の 13:50:12 に撮る）と、プロキシマ・ケンタウリ b の地上（都市 39）
+    "red_dwarf_flare": (lambda: ["--frames", "200", "--hours", hours("2026-10-31 13:50:08.667"), "--target", "102", "--warp"], None),
+    "proxima_b_ground": (lambda: ["--frames", "200", "--hours", hours("2026-11-05 22:23:09"), "--city", "39"], None),
     "apollo15_undock": (lambda: ["--frames", "400", "--photo", "2", "--share", "?apollo=15&scene=10"], None),
     "apollo15_landing": (lambda: ["--frames", "600", "--photo", "2", "--share", "?apollo=15&scene=12"], None),
     # 深宇宙での船外活動（飛行士がハッチの外に出たところ）

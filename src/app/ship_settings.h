@@ -187,6 +187,7 @@ struct Options {
     int gotoEvent = -1;         // 1 秒後に天文イベントへワープ（確認用、1〜）
     double probeView = 0;       // ワープの後、ターゲットの探査機をこの距離 m から斜めに見る（確認用）
     double faceSunEl = NAN;     // 太陽の方位を向き、この仰角 deg を見る（--at と使う確認用）
+    int faceBody = -1;          // この天体を、地表の上を上にして見る（--at と使う確認用）
     int tour = 0;               // 1 秒後に自動ツアーをこの場面から始める（確認用、1〜）
     int photo = 0;              // 写真モード 0〜2（確認用）
     bool settings = false;      // 設定画面を開いた状態で始める（確認用）
@@ -238,6 +239,7 @@ static Options ParseArgs(int argc, char** argv) {
         else if (a == "--goto-event") o.gotoEvent = atoi(next());
         else if (a == "--probe-view") o.probeView = atof(next());
         else if (a == "--face-sun") o.faceSunEl = atof(next());
+        else if (a == "--face-body") o.faceBody = atoi(next());
         else if (a == "--tour") o.tour = atoi(next());
         else if (a == "--photo") o.photo = atoi(next());
         else if (a == "--settings") o.settings = true;

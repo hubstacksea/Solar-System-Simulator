@@ -4,6 +4,18 @@
 
 The release workflow copies the section of the version being released into the GitHub release notes.
 
+## 2.74.0 (2026-11-28)
+
+- The Sun's surface now has the color seen from space (a 5,772 K blackbody, a slightly warm white) instead of the orange seen from the ground. Sun-like stars and red dwarfs also get the blackbody color of their temperature
+- Limb darkening now depends on color (grey-atmosphere approximation): the limb is 33% of the center at 550 nm (observed 30%), darker in blue, so the limb looks reddish
+- Granulation is now cellular (bright granules with thin dark lanes, about 1,300 km across, 10% standard deviation in brightness) and appears only once it can be resolved, so it is invisible from 1 AU. Before, blotches about 1/45 of the radius covered the disk with ±45% contrast. The supergranulation pattern, which is not visible in white light, is gone
+- Sunspot umbrae (about 4,000 K) and penumbrae (about 5,450 K) now have the brightness ratio of those blackbodies to the 5,772 K surface, with radial filaments in the penumbra. Faculae are at most 20% brighter and gather at the sunspot latitudes
+- The glow around the Sun is nearly white and grows with brightness; when very bright it is blown out to white just outside the disk, so the small Sun seen from near Earth stands out. When the disk looks large, the glow fades outward from its edge
+- The Moon and the Sun seen from inside an atmosphere are dimmed and reddened by the air along the line of sight (airmass from Kasten & Young 1989), so a rising Moon is dim orange and a low Sun is orange. The sunlight scattered by the air in front (the brightness of the sky in that direction) adds to the Moon, so the daytime Moon looks pale with its dark side the color of the sky; before, the dark side showed up black against the blue sky. The Sun's disk seen from inside an atmosphere is blown out to white (an annular eclipse ring shines white too)
+- A bright Moon seen from inside an atmosphere has a faint glow around it (Moon brightness from its phase angle; none in the daytime sky or during a lunar eclipse)
+- New startup option `--face-body` (face a given body from the surface; for checking the view)
+- The README images of the sunset, the sunset over the sea, the Martian daytime sky, the 2032 transit of Mercury, the flare on Proxima Centauri and the ground of Proxima Centauri b were retaken, and the README describes the Sun's surface and the Moon and Sun seen from inside the atmosphere
+
 ## 2.73.1 (2026-11-28)
 
 - In the browser version, the finer elevation under the camera (Earth, Moon, Mars) is no longer built all at once; each frame builds 6 ms of it, or a quarter of the previous frame's time if that is longer. Until now the screen stopped while it was built (near the poles of Mars, the same work takes about 0.4 s on desktop). Until it is ready, the current window or the global elevation is used, and when it is put to use a ship near the surface (below 100 km) keeps its height above the ground. The result is the same as before. The desktop versions are unchanged

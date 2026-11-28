@@ -448,6 +448,11 @@ int main(int argc, char** argv) {
     app.locHazeSky = PlanetLoc(app, "hazeSky");
     app.locHazeBeta = PlanetLoc(app, "hazeBeta");
     app.locCamUp = PlanetLoc(app, "camUp");
+    app.locThruAir = PlanetLoc(app, "thruAir");
+    app.locThruExt = PlanetLoc(app, "thruExt");
+    app.locThruBeta = PlanetLoc(app, "thruBeta");
+    app.locThruMie = PlanetLoc(app, "thruMie");
+    app.locThruOzone = PlanetLoc(app, "thruOzone");
     app.locTerrA = PlanetLoc(app, "terrA");
     app.locTerrB = PlanetLoc(app, "terrB");
     app.locTerrC = PlanetLoc(app, "terrC");
@@ -571,6 +576,10 @@ int main(int argc, char** argv) {
     if (opt.gotoTarget >= 0 && opt.gotoTarget < (int)app.B.size()) app.target = opt.gotoTarget;
     if (!std::isnan(opt.atLat)) PlaceAt(app, app.target, opt.atLat, opt.atLon, opt.atAlt);
     if (opt.face) FaceTarget(app);
+    if (opt.faceBody >= 0 && opt.faceBody < (int)app.B.size()) {
+        V3 up = Norm(ShipWorld(app) - app.B[app.ship.ref].pos);
+        app.ship.q = QuatFromBasis(app.B[opt.faceBody].pos - ShipWorld(app), up);
+    }
     if (!std::isnan(opt.faceSunEl)) {
         V3 up = Norm(ShipWorld(app) - app.B[app.ship.ref].pos), sun = app.B[B_SUN].pos - ShipWorld(app);
         V3 h = Norm(sun - up * Dot(sun, up));

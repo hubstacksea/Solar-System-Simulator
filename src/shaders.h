@@ -636,6 +636,13 @@ uniform vec4 hazeAir;    // 金星の雲・タイタンのもやの下の地表:
 uniform vec3 hazeSky;    // 層の下の空の明るさ（色ごと。雲と厚い大気で散らされた日光）
 uniform vec4 hazeBeta;   // 空気のレイリー散乱（地表、1/km、色ごと）, w: 空気の濃さが 1/e になる高さ km
 uniform vec3 camUp;
+// 大気の中から見た、大気の外の天体（地上から見た月など）: thruAir xyz その場所の真上, w 空気の濃さ（0 なら大気の外）,
+// thruExt xyz 天頂方向の光学的厚さ（atmExt と同じ）, w 見えている太陽の割合（日食）, thruBeta・thruMie・thruOzone は空の色の値
+uniform vec4 thruAir;
+uniform vec4 thruExt;
+uniform vec3 thruBeta;
+uniform vec3 thruMie;
+uniform vec3 thruOzone;
 in float fragShade;  // 地形の影（頂点シェーダの vertexShadow）
 out vec4 finalColor;
 uniform float exposure;    // 明るさの自動調整の倍率（UpdateExposure）。0.75 までは掛けたまま、それより明るい所はなめらかに 1 へ寄せる（白く飛ばない）
@@ -1598,6 +1605,49 @@ vec4 earth(vec3 p, vec3 o, float ndlG, out vec3 base, out float specMask, out fl
 }
 
 // ---------------------------------------------------------------- 太陽
+// 温度 T の黒体の明るさと、温度 Tref の黒体の明るさの比（R・G・B の代表の波長 610・550・465 nm）
+vec3 planckRatio(float T, float Tref) {
+    const vec3 X = vec3(23587.0, 26160.0, 30942.0);   // hc / (λ k)（K）
+    return (exp(X / Tref) - 1.0) / (exp(X / T) - 1.0);
+}
+// 周辺減光（中心を 1）: 灰色大気の近似（深さ τ の温度 T⁴ = ¾ Teff⁴ (τ + ⅔)、見える明るさは τ = μ の黒体。エディントン・バービエ）。
+// 縁は 550 nm で中心の 33%（観測は 30%。Allen's Astrophysical Quantities）、青ほど暗く赤ほど明るい（縁が赤みを帯びる）
+vec3 limbDark(float mu) {
+    const float Teff = 5772.0;
+    return planckRatio(Teff * pow(0.75 * (mu + 2.0 / 3.0), 0.25), Teff * pow(1.25, 0.25));
+}
+// 粒状斑: 対流の粒（直径 1,000〜1,500 km）。明るい粒と、間の暗い筋。明るさの差は 1 割ほど（標準偏差）。画素より細かい間は
+// 平均の明るさにならす（見分けられない。1 AU からは円盤の 1/1,400 ほど）。値は平均 0
+float granulation(vec3 p, vec3 o) {
+    const float F = 530.0;   // 単位球あたりの粒の間隔の数（太陽の半径 695,700 km / 約 1,300 km）
+    float w = lodW(F);
+    if (w <= 0.0) return 0.0;
+    vec3 q = p * F + o;
+    q += (vec3(vnoise(q * 0.6), vnoise(q * 0.6 + 17.0), vnoise(q * 0.6 + 31.0)) - 0.5) * 0.5;   // 境目を少し曲げる（直線の多角形にしない）
+    vec3 fl = floor(q);
+    ivec3 c = ivec3(fl);
+    vec3 f = q - fl;
+    float d1 = 9.0, d2 = 9.0, id = 0.0;
+    for (int z = -1; z <= 1; z++)
+        for (int y = -1; y <= 1; y++)
+            for (int x = -1; x <= 1; x++) {
+                ivec3 cc = c + ivec3(x, y, z);
+                vec3 pt = vec3(x, y, z) + vec3(hash1(cc), hash1(cc + ivec3(17, 3, 5)), hash1(cc + ivec3(7, 29, 11)));
+                float d = length(pt - f);
+                if (d < d1) {
+                    d2 = d1;
+                    d1 = d;
+                    id = hash1(cc + ivec3(3, 31, 7));
+                } else if (d < d2) d2 = d;
+            }
+    // 粒は中心ほど明るく、明るさは粒ごとに違う。間の暗い筋は細い（粒の 1 割ほどの幅）
+    // 筋は粒より細かいので、画素より細くなったら先に消す（ちらつかない）
+    float wl = lodW(F * 8.0);
+    float lane = (1.0 - smoothstep(0.0, 0.1, d2 - d1)) * wl;
+    float g = (0.85 + 0.3 * id - 0.25 * d1) * (1.0 - 0.55 * lane);
+    // 平均（筋なし 0.869、筋あり 0.785）と標準偏差（筋あり 0.188）は、同じ式を乱数で 20 万点数えた値。平均 0・標準偏差 0.1 に
+    return w * (g - mix(0.869, 0.785, wl)) * 0.531;
+}
 // 恒星の表面。surf: 0 太陽型, 1 赤色矮星, 2 高温の星, 3 白色矮星, 4 褐色矮星, 5 速く自転する高温の星。flare: 整数部がフレアの通し番号、小数部が明るさ
 vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
     if (surf == 4) {
@@ -1624,9 +1674,8 @@ vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
         }
         return c;
     }
-    float g = fbmL(p, 45.0, 18, 0.55, o);                 // 粒状斑
-    float sg = fbmL(p, 6.0, 4, 0.5, o + 3.0);             // 超粒状斑
-    vec3 c = mix(color2, color1, clamp(0.65 + g * 0.45 + sg * 0.15, 0.0, 1.0));
+    // 太陽型・赤色矮星（対流のある星）: 一様な色に粒状斑（周辺ほど弱い）。超粒状斑は普通の光では見えない
+    vec3 c = color1 * (1.0 + granulation(p, o) * (0.4 + 0.6 * mu));
     if (surf == 1) {
         // 赤色矮星: 表面の数割を覆う大きな黒点が高緯度まで広がり、極のまわりにも黒点の帽子がある
         for (int k = 0; k < 2; k++) {
@@ -1645,20 +1694,27 @@ vec3 sun(vec3 p, float mu, vec3 o, int surf, float flare) {
     float dens = cyc ? 0.5 * sunInfo.x : 0.35;
     for (int k = 0; k < (surf == 1 || dens < 0.003 ? 0 : 2); k++) {
         vec3 d; float r, rnd;
-        if (cellSpot(p, 9.0 * float(k + 1), dens, o + float(k) * 5.3, 0.06, 0.2, d, r, rnd)) {
+        float F = 9.0 * float(k + 1);
+        if (cellSpot(p, F, dens, o + float(k) * 5.3, 0.06, 0.2, d, r, rnd)) {
             float x = length(d) / r;
             float lat = degrees(atan(abs(p.y), length(p.xz)));
             float belt = cyc ? exp(-pow((lat - sunInfo.y) / sunInfo.z, 2.0))
                              : smoothstep(0.08, 0.15, abs(p.y)) * (1.0 - smoothstep(0.45, 0.55, abs(p.y)));
-            c = mix(c, c * 0.55, (1.0 - smoothstep(0.8, 1.0, x)) * belt);
-            c = mix(c, vec3(0.25, 0.10, 0.03), (1.0 - smoothstep(0.35, 0.5, x)) * belt);
+            // 半影（約 5,450 K。半径は本影の約 2.4 倍）と本影（約 4,000 K）の明るさは、その温度と表面（5,772 K）の黒体の比。
+            // 半影には放射状の細い筋（間隔は半影の半径の 1/20 ほど。見分けられる時だけ）
+            vec3 dir = normalize(d + vec3(1e-6));
+            float fil = vnoise(dir * 20.0 + rnd * 50.0) * 2.0 - 1.0;
+            vec3 pen = planckRatio(5450.0, 5772.0) * (1.0 + 0.15 * fil * lodW(20.0 * F / r));
+            c = mix(c, c * pen, (1.0 - smoothstep(0.8, 1.0, x)) * belt);
+            c = mix(c, c * planckRatio(4000.0, 5772.0), (1.0 - smoothstep(0.35, 0.45, x)) * belt);
         }
     }
-    // 白斑（周辺部で目立つ）
-    float fac = smoothstep(0.2, 0.55, fbmL(p, 18.0, 5, 0.5, o + 7.0)) * pow(1.0 - mu, 2.0) * (cyc ? 0.3 + 0.7 * min(1.0, sunInfo.x) : 1.0);
-    c *= 1.0 + fac * 0.5;
-    c *= 0.42 + 0.58 * pow(mu, 0.5);                       // 周辺減光
-    c *= vec3(1.0, 0.94 + 0.06 * mu, 0.82 + 0.18 * mu);    // 縁ほど赤い
+    // 白斑: 黒点の帯に多く、周辺部でだけ見える（普通の光での明るさの差は縁の近くで 1〜2 割）
+    float lat = degrees(atan(abs(p.y), length(p.xz)));
+    float facBelt = cyc ? exp(-pow((lat - sunInfo.y) / (sunInfo.z * 1.5), 2.0)) : 1.0 - smoothstep(25.0, 40.0, lat);
+    float fac = smoothstep(0.2, 0.55, fbmL(p, 18.0, 5, 0.5, o + 7.0)) * pow(1.0 - mu, 2.0) * facBelt * (cyc ? 0.3 + 0.7 * min(1.0, sunInfo.x) : 1.0);
+    c *= 1.0 + fac * 0.2;
+    c *= limbDark(mu);
     if (flare > 0.0) {
         // フレア: 低〜中緯度の 1 か所が青白く強く光り、まわりに 2 本の光の帯（フレアリボン）が伸びる
         int n = int(flare);
@@ -1880,6 +1936,27 @@ void main() {
         vec3 sky = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * atmHaze.w);
         vec3 T = exp(-(atmBeta + 0.02) * air);
         col = col * T + sky * (1.0 - T);
+    }
+    // 大気の中から見た、大気の外の天体: その向きの空気で弱まり（空気の量は Kasten & Young 1989 の式。地平線で天頂の約 38 倍、
+    // オゾンの層は高さ 22 km の薄い層として約 12 倍）、手前の空気が散らす日光（その向きの空の明るさ。SKY_FS と同じ式）が
+    // 重なる。昇ったばかりの月は暗く橙に、昼の月は淡く、欠けた側は空の色になる
+    if (thruAir.w > 0.0) {
+        vec3 v = normalize(fragWorld), up = thruAir.xyz;
+        float dens = thruAir.w, mu = max(dot(v, up), 0.0), sunEl = dot(L, up), cosT = dot(v, L);
+        float el = degrees(asin(mu));
+        float X = 1.0 / (mu + 0.50572 * pow(el + 6.07995, -1.6364));
+        float cosE = sqrt(1.0 - mu * mu) * 0.99656;   // 地球の半径 6,371 km / (6,371 + 22) km
+        float Xo = 1.0 / sqrt(1.0 - cosE * cosE);
+        vec3 T = exp(-thruExt.xyz * X * dens - thruOzone * Xo * min(dens * 4.0, 1.0));
+        float airV = dens / (mu + 0.06);
+        float airS = min(dens / (max(sunEl, 0.0) + 0.06), 7.0) * (1.0 - 0.7 * sqrt(mu));
+        float airO = min(1.0 / (max(sunEl, 0.0) + 0.03), 25.0) * min(dens * 4.0, 1.0);
+        vec3 sunCol = exp(-thruBeta * airS - thruOzone * airO);
+        vec3 ray = sunCol * (1.0 - exp(-thruBeta * airV)) * 0.75 * (1.0 + cosT * cosT);
+        float g = max(cosT, 0.0);
+        vec3 mie = sunCol * thruMie * (0.12 * pow(g, 6.0) + 0.5 * pow(g, 60.0)) * (1.0 - exp(-0.3 * airV));
+        vec3 sky = 1.0 - exp(-(ray * 3.0 + mie) * smoothstep(-0.17, 0.03, sunEl) * thruExt.w);
+        col = col * T + sky;
     }
     finalColor = vec4(doppler(col), 1.0);
 }

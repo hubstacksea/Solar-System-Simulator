@@ -1558,6 +1558,29 @@ static const SkyAtmosphere* CameraAtmosphere(const App& app, double* density, V3
     return nullptr;
 }
 
+// 大気の中から見た、向き dir の大気の外の光が通り抜ける割合（R・G・B）。惑星のシェーダの thruAir と同じ式（空気の量は
+// Kasten & Young 1989 の式で地平線で天頂の約 38 倍、オゾンの層は高さ 22 km の薄い層として約 12 倍）。大気の外では 1
+static Col3 ViewTransmission(const App& app, V3 dir) {
+    double density, sunEl;
+    V3 up;
+    const SkyAtmosphere* a = CameraAtmosphere(app, &density, &up, &sunEl);
+    if (!a) return {1, 1, 1};
+    double mu = std::max(0.0, Dot(Norm(dir), up)), el = std::asin(mu) / DEG;
+    double X = 1.0 / (mu + 0.50572 * std::pow(el + 6.07995, -1.6364));
+    double cosE = std::sqrt(1.0 - mu * mu) * 0.99656;
+    double Xo = 1.0 / std::sqrt(1.0 - cosE * cosE), o = Xo * std::min(density * 4.0, 1.0);
+    return {(float)std::exp(-a->ext.x * X * density - a->ozone.x * o), (float)std::exp(-a->ext.y * X * density - a->ozone.y * o),
+            (float)std::exp(-a->ext.z * X * density - a->ozone.z * o)};
+}
+static Col3 SunTransmission(const App& app) { return ViewTransmission(app, app.B[B_SUN].pos - app.cam.pos); }
+
+// 大気の中から見た太陽・月の円盤とまぶしさの色（掛ける色）: 通り抜ける光 T の色。どちらも画面の白よりずっと明るく写るので、
+// 色の比を 3 倍して 1 で頭打ちにする（真上と高い時は白、地平線の近くでは橙〜赤。実際の夕日も写真では中心が白く飛び、まわりが橙）
+static Col3 ColorThroughAir(Col3 T) {
+    float m = std::max(std::max(T.r, T.g), T.b) / 3.0f;
+    return {std::min(1.0f, T.r / m), std::min(1.0f, T.g / m), std::min(1.0f, T.b / m)};
+}
+
 // 昼の空の明るさ（0: 宇宙・夜、1: 昼の地表）。星座名などの表示を消すのに使う
 static double SkyDaylight(const App& app) {
     double density, sunEl;
@@ -1835,6 +1858,28 @@ static void DrawBodies(App& app) {
         V3 Lobj(Dot(L, b.ex), Dot(L, b.pole), Dot(L, b.ez));
         Vector3 lf = ToF(L), lo = ToF(Lobj);
         Vector3 c1 = {d.c1.r, d.c1.g, d.c1.b}, c2 = {d.c2.r, d.c2.g, d.c2.b}, atm = {d.atm.r, d.atm.g, d.atm.b};
+        if (d.kind == KIND_STAR && StarSurface(d) <= 1) {
+            // 太陽型・赤色矮星の表面の色: 恒星の色は太陽の色との比で決めてある。太陽の色（d.c1。地上で見るような黄色み）を、
+            // 宇宙から見た太陽の表面の色（5,772 K の黒体の色。わずかに暖かい白）に置き換える（一番明るい色を 1 のまま）。
+            // これで表面の色は、その星の温度の黒体の色になる。高温の星は青白さを強めてあるので（solar_data.h）、そのまま
+            Col3 w = TempColor(5772), s = app.B[B_SUN].d.c1;
+            auto white = [&](Vector3 v) {
+                Vector3 r = {v.x * w.r / s.r, v.y * w.g / s.g, v.z * w.b / s.b};
+                float m = std::max(std::max(v.x, v.y), v.z) / std::max(std::max(r.x, r.y), r.z);
+                return Vector3{r.x * m, r.y * m, r.z * m};
+            };
+            c1 = white(c1);
+            c2 = white(c2);
+        }
+        double airDensity, airSunEl;
+        V3 airUp;
+        if (it.i == B_SUN && CameraAtmosphere(app, &airDensity, &airUp, &airSunEl)) {
+            // 大気の中から見た太陽: 地平線に近いほど橙〜赤く。目で見る太陽は画面の白よりずっと明るいので、円盤は 3 倍の明るさで
+            // 白く飛ばす（周辺減光の縁も白く写る。金環日食の環など）。宇宙からは表面の模様が見える明るさのまま
+            Col3 k = ColorThroughAir(SunTransmission(app));
+            c1 = {c1.x * k.r * 3, c1.y * k.g * 3, c1.z * k.b * 3};
+            c2 = {c2.x * k.r * 3, c2.y * k.g * 3, c2.z * k.b * 3};
+        }
         // 大気の縁の光は外から見た時だけ（地表付近では地面全体が光ってしまう）
         float atmK = (float)std::min(1.0, std::max(0.0, alt / (d.radius * 0.05)));
         float params[4] = {(float)d.kind, d.bands, (float)(it.i * 7.31), d.atmStrength * atmK};
@@ -1965,6 +2010,22 @@ static void DrawBodies(App& app) {
             PlanetUniform(app, app.locAtmAlb, &alb, SHADER_UNIFORM_VEC3);
             PlanetUniform(app, app.locAtmHaze, haze, SHADER_UNIFORM_VEC4);
             PlanetUniform(app, app.locCamUp, &up, SHADER_UNIFORM_VEC3);
+        }
+        {   // カメラのいる大気の外の天体（地上から見た月など）: その大気を通して見る
+            float air[4] = {0, 1, 0, 0}, ext[4] = {0, 0, 0, 0};
+            Vector3 beta = {0, 0, 0}, mie = {0, 0, 0}, ozone = {0, 0, 0};
+            double density, sunEl;
+            V3 u;
+            if (const SkyAtmosphere* a = CameraAtmosphere(app, &density, &u, &sunEl); a && a->body != it.i) {
+                air[0] = (float)u.x, air[1] = (float)u.y, air[2] = (float)u.z, air[3] = (float)density;
+                ext[0] = a->ext.x, ext[1] = a->ext.y, ext[2] = a->ext.z, ext[3] = (float)(1.0 - SunCover(app, app.cam.pos));
+                beta = a->beta, mie = a->mie, ozone = a->ozone;
+            }
+            PlanetUniform(app, app.locThruAir, air, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locThruExt, ext, SHADER_UNIFORM_VEC4);
+            PlanetUniform(app, app.locThruBeta, &beta, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locThruMie, &mie, SHADER_UNIFORM_VEC3);
+            PlanetUniform(app, app.locThruOzone, &ozone, SHADER_UNIFORM_VEC3);
         }
         int ri = -1;   // 環（RingSets() の番号）
         for (size_t k = 0; k < RingSets().size(); k++)
